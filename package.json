@@ -1,0 +1,77 @@
+{
+  "name": "cctvdl",
+  "version": "0.1.0",
+  "description": "跨平台央视视频下载器",
+  "main": "./out/main/index.js",
+  "author": "POI-WX",
+  "license": "MIT",
+  "homepage": "https://github.com/POI-WX/cctvdl#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/POI-WX/cctvdl.git"
+  },
+  "bugs": {
+    "url": "https://github.com/POI-WX/cctvdl/issues"
+  },
+  "keywords": [
+    "cctv",
+    "cntv",
+    "video",
+    "downloader",
+    "electron",
+    "vue",
+    "h5e",
+    "hls",
+    "央视",
+    "视频下载"
+  ],
+  "engines": {
+    "node": ">=22.0.0 <23.0.0"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "build:icons": "electron-icon-builder --input=resources/icons/icon.png --output=resources/_tmp && node -e \"const fs=require('fs'),p=require('path'),t=p.join('resources','_tmp','icons');fs.copyFileSync(p.join(t,'win','icon.ico'),'resources/icons/icon.ico');fs.copyFileSync(p.join(t,'mac','icon.icns'),'resources/icons/icon.icns');fs.rmSync(p.join('resources','_tmp'),{recursive:true,force:true});console.log('Done')\"",
+    "dist": "electron-vite build && electron-builder",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "dist:linux": "electron-vite build && electron-builder --linux",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:gui": "electron-vite build && playwright test --config=tests/gui/playwright.config.ts",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:all": "npm run test && npm run test:gui && npm run test:e2e"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "electron-log": "^5.0.0",
+    "electron-store": "^8.2.0",
+    "element-plus": "^2.9.0",
+    "ffmpeg-static": "^5.2.0",
+    "p-queue": "^6.6.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.61.0",
+    "@vitejs/plugin-vue": "^5.2.0",
+    "@vue/test-utils": "^2.4.0",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8",
+    "electron-icon-builder": "^2.0.1",
+    "electron-vite": "^2.3.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-vue": "^9.33.0",
+    "globals": "^17.6.0",
+    "jsdom": "^25.0.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.61.1",
+    "vite": "^5.4.0",
+    "vitest": "^2.0.0",
+    "vue": "^3.5.0",
+    "vue-eslint-parser": "^9.4.3"
+  }
+}

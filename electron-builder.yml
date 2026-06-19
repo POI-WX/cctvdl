@@ -1,0 +1,62 @@
+appId: com.cctvdl.app
+productName: cctvdl
+directories:
+  output: dist-electron
+  buildResources: resources
+# No native modules to rebuild — skip the slow rebuild step.
+npmRebuild: false
+asar: true
+asarUnpack:
+  - "node_modules/ffmpeg-static/**"
+# Drop source, tests and dev config (out/ + prod node_modules are kept by default).
+files:
+  - "!src/**"
+  - "!tests/**"
+  - "!test-results/**"
+  - "!docs/**"
+  - "!.github/**"
+  - "!**/*.md"
+  - "!eslint.config.mjs"
+  - "!.editorconfig"
+  - "!.gitattributes"
+  - "!.nvmrc"
+  - "!**/{tsconfig.json,vitest.config.ts,vitest.e2e.config.ts,electron.vite.config.ts}"
+extraResources:
+  - from: "resources/decrypt"
+    to: "decrypt"
+  - from: "resources/icons/icon.png"
+    to: "icons/icon.png"
+win:
+  target: nsis
+  icon: resources/icons/icon.ico
+# Assisted installer (user can choose the install dir); per-user, no UAC prompt.
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  # Clear %APPDATA% config/cache on a real uninstall (kept on upgrade).
+  deleteAppDataOnUninstall: true
+  artifactName: ${productName} v${version}.${ext}
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: resources/icons/icon.icns
+  category: public.app-category.video
+  # Unsigned/unnotarized build — hardened runtime is for notarized apps only.
+  hardenedRuntime: false
+# ${arch} is required, else the two dmgs collide on a single filename.
+dmg:
+  artifactName: ${productName} v${version} ${arch}.${ext}
+linux:
+  target: AppImage
+  executableName: cctvdl
+  synopsis: CCTV video downloader
+  description: Download CCTV programs in HD — browse, search, batch download, resume. Works out of the box.
+  category: AudioVideo
+  icon: resources/icons/icon.png
+  artifactName: ${productName} v${version}.${ext}

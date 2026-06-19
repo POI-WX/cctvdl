@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 常见问题 / FAQ
+    url: https://github.com/POI-WX/cctvdl/blob/main/docs/FAQ.md
+    about: 提问前请先看常见问题与排查指南，很多问题这里已有答案。
+  - name: 安全漏洞 / Security
+    url: https://github.com/POI-WX/cctvdl/security/advisories/new
+    about: 安全漏洞请私密报告，不要提交公开 Issue。

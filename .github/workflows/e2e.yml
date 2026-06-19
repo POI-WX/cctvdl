@@ -1,0 +1,26 @@
+name: E2E (live CCTV)
+
+# The e2e pipeline tests do a real resolve → decrypt → merge against the live
+# CCTV API + CDN. That CDN geo-blocks GitHub's runner IPs (HTTP 403), so they
+# cannot pass in CI and would only add noise. Manual-only: run them locally, or
+# via this dispatch from a network that can reach CCTV.
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    name: E2E (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: E2E tests
+        run: npm run test:e2e

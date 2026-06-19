@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # Build each platform's installers and stash them as workflow artifacts.
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            script: dist:linux
+          - os: windows-latest
+            script: dist:win
+          - os: macos-latest
+            script: dist:mac
+    steps:
+      - uses: actions/checkout@v4
+
+      # electron-builder names artifacts from package.json's version, not the tag.
+      - name: Verify tag matches package.json version
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          pkg="v$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::Tag $tag does not match package.json version $pkg"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Build installers only (no electron-builder publish), so no auto-update
+      # latest*.yml / *.blockmap files are produced. macOS builds are unsigned.
+      - run: npm run ${{ matrix.script }} -- --publish never
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.dmg
+            dist-electron/*.AppImage
+          if-no-files-found: error
+
+  # A single job creates ONE draft Release and uploads every installer to it.
+  # Splitting build from publish guarantees a single draft (no matrix race).
+  release:
+    name: Publish draft Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create draft Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: ${{ github.ref_name }}
+          files: artifacts/*

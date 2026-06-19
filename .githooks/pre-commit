@@ -1,0 +1,15 @@
+#!/bin/sh
+# Opt-in pre-commit hook: auto-fix lint on staged JS/TS/Vue files.
+# Enable once per clone:  git config core.hooksPath .githooks
+# Skip a single commit with: git commit --no-verify
+
+files=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|vue|mjs|cjs|js)$' || true)
+[ -z "$files" ] && exit 0
+
+# Auto-fix what can be fixed, then re-stage those files.
+echo "$files" | xargs npx eslint --fix
+status=$?
+echo "$files" | xargs git add
+
+# Block the commit if eslint still reports unfixable errors.
+exit $status

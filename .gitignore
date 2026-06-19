@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist-electron/
+
+# Runtime logs (never commit)
+*.log
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+test-results/
+tests/gui/screenshots/
+playwright-report/
+
+# Environment
+.env
+.env.*

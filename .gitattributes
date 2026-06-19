@@ -1,0 +1,16 @@
+# Normalize line endings: text files are LF in the repo and working tree.
+# Avoids the "LF will be replaced by CRLF" churn on Windows checkouts.
+* text=auto eol=lf
+
+# Binary assets — never normalize or diff as text.
+*.png binary
+*.ico binary
+*.icns binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+
+# The third-party decrypt bundles are large generated artifacts; don't diff them.
+resources/decrypt/decrypt.js -diff
+resources/decrypt/cctv_wasm.js -diff

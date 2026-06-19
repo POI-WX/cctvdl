@@ -1,0 +1,135 @@
+import { ipcMain, BrowserWindow, dialog, shell } from 'electron'
+import type { DownloadCoordinator } from './download/coordinator'
+import type { BrowseService } from './api/browse'
+import type { ConfigStore } from './config'
+import path from 'path'
+import fs from 'fs'
+import { appendFailures, logger } from './logger'
+import { checkSaveDir } from './preflight'
+import type { ProgramInfo, Settings, DownloadJob, DownloadProgress, BatchResult } from '../shared/types'
+
+export function registerIpcHandlers(
+  getWindow: () => BrowserWindow,
+  coordinator: DownloadCoordinator,
+  browse: BrowseService,
+  config: ConfigStore
+): void {
+  // Resolve the current window lazily so handlers survive window recreation (macOS).
+  const send = (channel: string, payload?: unknown): void => {
+    const wc = getWindow()?.webContents
+    if (wc && !wc.isDestroyed()) wc.send(channel, payload)
+  }
+  ipcMain.handle('browse-program', (_, url: string) => browse.resolveColumnInfo(url))
+
+  ipcMain.handle('list-videos', async (_, columnId: string, itemId: string, month: string) => {
+    const result = await browse.getColumnVideoList(columnId, 1, month)
+    if (!result.length && itemId) {
+      return browse.getAlbumVideoList(itemId, 1, month)
+    }
+    return result
+  })
+
+  ipcMain.handle('import-program', (_, program: ProgramInfo) => config.addProgram(program))
+
+  // Delete by columnId (safe against index drift)
+  ipcMain.handle('delete-program', (_, columnId: string) => config.deleteProgram(columnId))
+
+  ipcMain.handle('get-programs', () => config.getPrograms())
+
+  ipcMain.handle('export-programs', async () => {
+    const programs = config.getPrograms()
+    if (!programs.length) return false
+    const result = await dialog.showSaveDialog(getWindow(), {
+      defaultPath: 'programs.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (result.canceled || !result.filePath) return false
+    fs.writeFileSync(result.filePath, JSON.stringify(programs, null, 2), 'utf-8')
+    return true
+  })
+
+  const launchBatch = (jobs: DownloadJob[], skipHistory: boolean): void => {
+    // Pre-flight: make sure the target directory exists and is writable before
+    // spawning any work. Throws so the renderer's catch surfaces the reason.
+    const saveDir = jobs.length ? path.dirname(jobs[0].savePath) : ''
+    const pf = checkSaveDir(saveDir)
+    if (!pf.ok) throw new Error(pf.reason)
+
+    // Filter out already-downloaded videos (unless this is an explicit retry).
+    const newJobs = skipHistory
+      ? jobs
+      : jobs.filter(job => {
+          if (job.guid && config.isInDownloadHistory(job.guid)) {
+            send('download-skipped', { guid: job.guid, title: job.title, reason: '已下载' })
+            return false
+          }
+          return true
+        })
+    if (newJobs.length > 0) {
+      send('batch-started', {
+        total: newJobs.length,
+        jobs: newJobs.map(j => ({ id: j.id, title: j.title, guid: j.guid }))
+      })
+      coordinator.startBatch(newJobs)
+    } else {
+      // All jobs were already downloaded - send empty batch-finished to reset UI
+      send('batch-finished', {
+        completed: 0, failed: 0, cancelled: 0, total: 0, failedJobs: []
+      })
+    }
+  }
+
+  ipcMain.handle('start-download', (_, jobs: DownloadJob[]) => launchBatch(jobs, false))
+
+  // Retry bypasses the download-history filter and resumes from any cached segments.
+  ipcMain.handle('retry-job', (_, job: DownloadJob) => launchBatch([job], true))
+  ipcMain.handle('retry-jobs', (_, jobs: DownloadJob[]) => launchBatch(jobs, true))
+
+  ipcMain.handle('cancel-download', (_, jobId: string) => coordinator.cancel(jobId))
+
+  ipcMain.handle('cancel-all-downloads', () => coordinator.cancelAll())
+
+  ipcMain.handle('get-settings', () => {
+    const settings = config.getSettings()
+    logger.info(`get-settings: savePath=${settings.savePath}, threadCount=${settings.threadCount}`)
+    return settings
+  })
+
+  ipcMain.handle('save-settings', (_, settings: Settings) => {
+    logger.info(`save-settings: savePath=${settings.savePath}, threadCount=${settings.threadCount}`)
+    config.saveSettings(settings)
+    return true
+  })
+
+  ipcMain.handle('get-download-history', () => config.getDownloadHistory())
+
+  ipcMain.handle('clear-download-history', () => config.clearDownloadHistory())
+
+  ipcMain.handle('select-directory', async (_, defaultPath?: string) => {
+    const result = await dialog.showOpenDialog(getWindow(), {
+      properties: ['openDirectory'],
+      defaultPath: defaultPath || undefined
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
+  ipcMain.handle('open-path', (_, p: string) => shell.openPath(p))
+
+  // Reveal a specific file in the OS file manager (selects it).
+  ipcMain.handle('reveal-file', (_, p: string) => shell.showItemInFolder(p))
+
+  coordinator.on('progress', (p: DownloadProgress) => {
+    send('download-progress', p)
+  })
+
+  coordinator.on('jobFinished', (job: DownloadJob) => {
+    send('job-finished', job)
+  })
+
+  coordinator.on('batchFinished', (result: BatchResult) => {
+    send('batch-finished', result)
+    if (result.failedJobs.length > 0) {
+      appendFailures(new Date().toISOString(), result.failedJobs)
+    }
+  })
+}

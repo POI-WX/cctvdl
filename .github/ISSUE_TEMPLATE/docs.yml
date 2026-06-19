@@ -1,0 +1,19 @@
+name: 文档问题
+description: 报告文档错误、不清晰或缺失之处
+labels: [documentation]
+body:
+  - type: input
+    id: location
+    attributes:
+      label: 文档位置
+      description: 哪个文件 / 章节？
+      placeholder: 例如 README「使用方法」、docs/FAQ.md
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题描述
+      description: 哪里有误、含糊或缺失？建议如何改进？
+    validations:
+      required: true

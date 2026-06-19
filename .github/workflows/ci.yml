@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Gate 0: it must lint, typecheck and bundle before we run any test layer ─
+  static:
+    name: Lint, typecheck & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+
+  # ── Layer 1: tests/unit — fully mocked & offline, fast ────────────────────
+  unit:
+    name: Unit (${{ matrix.os }})
+    needs: static
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+
+  # ── Layer 2: tests/gui — Playwright drives a real Electron window (Linux
+  # headless via xvfb). The live-CCTV e2e suite is manual-only — see e2e.yml.
+  gui:
+    name: GUI (${{ matrix.os }})
+    needs: unit
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Install Electron system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: npx playwright install-deps
+
+      - name: GUI tests (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum npm run test:gui
+
+      - name: GUI tests (Windows/macOS)
+        if: runner.os != 'Linux'
+        run: npm run test:gui
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-screenshots-${{ matrix.os }}
+          path: tests/gui/screenshots/
+          if-no-files-found: ignore
