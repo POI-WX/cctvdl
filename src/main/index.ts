@@ -105,7 +105,10 @@ app.whenReady().then(() => {
         { role: 'about' },
         { type: 'separator' },
         { role: 'quit' }
-      ]}
+      ]},
+      // Edit menu wires up Cmd+C/V/X/A — on macOS these shortcuts route through
+      // the native menu, so without it paste into inputs silently fails.
+      { role: 'editMenu' }
     ]))
   } else {
     Menu.setApplicationMenu(null)

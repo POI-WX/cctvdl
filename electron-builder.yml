@@ -3,6 +3,10 @@ productName: cctvdl
 directories:
   output: dist-electron
   buildResources: resources
+# No auto-update: disable the inferred GitHub publish provider so electron-builder
+# stops emitting the latest*.yml update manifest. Installers are attached to the
+# Release manually by the workflow.
+publish: null
 # No native modules to rebuild — skip the slow rebuild step.
 npmRebuild: false
 asar: true
@@ -33,6 +37,8 @@ win:
 nsis:
   oneClick: false
   perMachine: false
+  # No auto-update — skip the differential-update .blockmap artifact.
+  differentialPackage: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
@@ -47,7 +53,12 @@ mac:
         - arm64
   icon: resources/icons/icon.icns
   category: public.app-category.video
-  # Unsigned/unnotarized build — hardened runtime is for notarized apps only.
+  # Ad-hoc signature ("-"): no Apple cert, but a self-consistent bundle signature
+  # (CodeResources + bound Info.plist) so Gatekeeper reports "unidentified
+  # developer" (with an "Open Anyway" option) instead of "damaged". v25's
+  # linker-only adhoc left CodeResources missing, which Gatekeeper read as damaged.
+  identity: "-"
+  # Hardened runtime is for notarized apps only — keep off for ad-hoc builds.
   hardenedRuntime: false
 # ${arch} is required, else the two dmgs collide on a single filename.
 dmg:

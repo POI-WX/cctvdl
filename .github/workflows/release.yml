@@ -44,8 +44,11 @@ jobs:
 
       - run: npm ci
 
-      # Build installers only (no electron-builder publish), so no auto-update
-      # latest*.yml / *.blockmap files are produced. macOS builds are unsigned.
+      # No auto-update: publish:null + nsis.differentialPackage:false (in
+      # electron-builder.yml) stop latest*.yml / *.blockmap from being generated
+      # at all. --publish never is just belt-and-suspenders. macOS builds use an
+      # ad-hoc signature (identity: "-") — no Apple cert, but a self-consistent
+      # bundle so Gatekeeper won't report "damaged".
       - run: npm run ${{ matrix.script }} -- --publish never
 
       - name: Upload installers
