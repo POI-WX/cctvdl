@@ -1,6 +1,6 @@
 {
   "name": "cctvdl",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "跨平台央视视频下载器",
   "main": "./out/main/index.js",
   "author": "POI-WX",
