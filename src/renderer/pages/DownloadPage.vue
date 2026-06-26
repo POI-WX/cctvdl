@@ -46,6 +46,7 @@
         <div class="dl-empty-icon">⬇️</div>
         <p class="dl-empty-title">暂无下载任务</p>
         <p class="dl-empty-hint">在「首页」选择视频并点击「下载选中」</p>
+        <el-button size="small" @click="emit('go-home')">去首页选择视频</el-button>
       </div>
 
       <!-- group: active -->
@@ -191,6 +192,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+const emit = defineEmits<{ 'go-home': [] }>()
 import type { DownloadProgress, DownloadJob, BatchResult, BatchStartInfo, JobState, JobStage } from '../../shared/types'
 import { formatSpeed, formatTime } from '../../shared/format'
 import { humanizeError } from '../../shared/errors'

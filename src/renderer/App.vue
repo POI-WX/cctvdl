@@ -10,6 +10,7 @@
       <button class="sidebar-brand" title="关于 cctvdl" @click="aboutOpen = true">
         <div class="sidebar-logo-wrap">
           <span class="sidebar-logo">📺</span>
+          <span v-if="updateVersion" class="sidebar-update-dot" title="有新版本可用" />
         </div>
         <span class="sidebar-app-name">cctvdl</span>
       </button>
@@ -60,7 +61,7 @@
     <!-- main content -->
     <main class="app-content">
       <!-- DownloadPage always mounted (v-show) so in-flight jobs aren't lost on tab switch -->
-      <DownloadPage v-show="activeTab === 'download'" />
+      <DownloadPage v-show="activeTab === 'download'" @go-home="activeTab = 'home'" />
       <Transition name="page-fade" mode="out-in">
         <HomePage v-if="activeTab === 'home'" ref="homePageRef" />
         <SettingsPage v-else-if="activeTab === 'settings'" />
@@ -79,6 +80,13 @@
           <div class="about-divider" />
           <div class="about-feat">批量下载 · 高清画质 · 断点续传</div>
           <div class="about-feat">开箱即用，无需额外配置</div>
+          <template v-if="updateVersion">
+            <div class="about-divider" />
+            <a class="about-update-link" href="#"
+               @click.prevent="openReleasePage">
+              发现新版本 v{{ updateVersion }}，点击前往下载
+            </a>
+          </template>
         </div>
       </div>
     </Transition>
@@ -101,6 +109,11 @@ const isDragging = ref(false)
 const aboutOpen = ref(false)
 const sidebarExpanded = ref(localStorage.getItem('cctvdl-sidebar-expanded') === 'true')
 const appVersion = __APP_VERSION__ // replaced by vite define at build/dev time
+const updateVersion = ref('')
+
+function openReleasePage() {
+  window.cctvdlApi.openUrl('https://github.com/POI-WX/cctvdl/releases/latest')
+}
 
 function toggleSidebar() {
   sidebarExpanded.value = !sidebarExpanded.value
@@ -149,6 +162,10 @@ onMounted(() => {
       const remaining = p.batchTotal - p.batchCompleted
       activeDownloads.value = remaining > 0 ? remaining : 0
     }
+  }))
+
+  cleanups.push(window.cctvdlApi.onUpdateAvailable(({ version }) => {
+    updateVersion.value = version
   }))
 })
 
@@ -555,6 +572,27 @@ function onDrop(e: DragEvent) {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   line-height: 1.8;
+}
+
+.about-update-link {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  text-decoration: none;
+  padding: 2px 0;
+}
+.about-update-link:hover { text-decoration: underline; }
+
+.sidebar-logo-wrap { position: relative; }
+
+.sidebar-update-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--el-color-danger);
+  border: 2px solid var(--el-bg-color);
 }
 
 .about-fade-enter-active,

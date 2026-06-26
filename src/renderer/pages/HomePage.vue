@@ -73,6 +73,8 @@
               >
                 <span class="program-dot" />
                 <span class="program-name" :title="row.program.name">{{ row.program.name }}</span>
+                <span v-if="newContentMap.has(row.program.columnId)" class="program-new-dot"
+                      :title="`${newContentMap.get(row.program.columnId)} 个新视频`" />
                 <span class="program-actions">
                   <button
                     class="prog-action-btn star"
@@ -105,6 +107,7 @@
               value-format="YYYYMM"
               style="width: 118px"
             />
+            <span v-if="emptyMonths.has(selectedMonth)" class="month-empty-dot" title="本月暂无视频" />
             <button class="month-quick-btn" title="上个月" @click="jumpMonth(-1)">‹</button>
             <button class="month-quick-btn" title="本月" @click="jumpMonth(0)">今</button>
             <button class="month-quick-btn" title="下个月" @click="jumpMonth(1)">›</button>
@@ -140,7 +143,7 @@
         <!-- video items -->
         <div class="video-list">
           <div v-if="viewMode === 'column' && !selectedProgram" class="video-hint">← 先选择一个栏目</div>
-          <div v-else-if="loadingVideos" class="video-hint">加载中…</div>
+          <el-skeleton v-else-if="loadingVideos" :rows="6" animated class="video-skeleton" />
           <div v-else-if="!filteredVideos.length" class="video-hint">{{ emptyHint }}</div>
           <template v-else>
             <!-- 单视频集合：扁平列表 + 行内移除 -->
@@ -153,10 +156,13 @@
                 @click="onVideoClick(v)"
               >
                 <el-checkbox v-model="v.selected" @click.stop size="small" />
+                <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
+                     @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                 <div class="video-item-info">
                   <span class="video-item-title" :title="v.title">{{ v.title }}</span>
                   <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
                 </div>
+                <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
                 <button class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)">🗑</button>
               </div>
             </template>
@@ -170,10 +176,13 @@
                 @click="onVideoClick(v)"
               >
                 <el-checkbox v-model="v.selected" @click.stop size="small" />
+                <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
+                     @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                 <div class="video-item-info">
                   <span class="video-item-title" :title="v.title" v-html="highlightText(v.title, debouncedSearch)" />
                   <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
                 </div>
+                <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
               </div>
             </template>
             <!-- grouped by date -->
@@ -188,9 +197,12 @@
                   @click="onVideoClick(v)"
                 >
                   <el-checkbox v-model="v.selected" @click.stop size="small" />
+                  <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
+                       @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
                     <span class="video-item-title" :title="v.title">{{ v.title }}</span>
                   </div>
+                  <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
                 </div>
               </template>
             </template>
@@ -222,7 +234,10 @@
     </div>
 
     <!-- right preview panel -->
-    <div class="home-preview">
+    <div class="home-preview" :class="{ collapsed: previewCollapsed }">
+      <button class="preview-toggle" :title="previewCollapsed ? '展开预览' : '折叠预览'" @click="previewCollapsed = !previewCollapsed">
+        {{ previewCollapsed ? '›' : '‹' }}
+      </button>
       <Transition name="preview-fade" mode="out-in">
         <div v-if="selectedVideo" :key="selectedVideo.guid" class="preview-inner">
           <!-- cover image -->
@@ -344,6 +359,7 @@ import { filterVideos } from '../../shared/video-filter'
 import { sortPrograms, isProgramDeleteKey } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
 import { buildOutputPath } from '../../shared/filename'
+import { recordMonthResult } from '../../shared/month-tracker'
 
 const isMac = window.cctvdlApi.isMac
 
@@ -409,6 +425,8 @@ const loadingVideos = ref(false)
 const coverError = ref(false)
 const coverLoading = ref(false)
 const lightboxOpen = ref(false)
+const previewCollapsed = ref(false)
+const emptyMonths = ref<Set<string>>(new Set())
 
 function openLightbox() {
   if (selectedVideo.value?.coverUrl && !coverError.value) {
@@ -465,6 +483,8 @@ async function refreshDownloadedSet() {
 
 let cleanupSkipped: (() => void) | null = null
 let cleanupClipboard: (() => void) | null = null
+let cleanupNewContent: (() => void) | null = null
+const newContentMap = ref<Map<string, number>>(new Map())
 let lastClipboardUrl = ''
 
 // Clipboard auto-import (opt-in): the main process only sends a link while the
@@ -521,6 +541,11 @@ onMounted(async () => {
     ElMessage.info(`跳过：${info.title}（${info.reason}）`)
   })
   cleanupClipboard = window.cctvdlApi.onClipboardLink(onClipboardLink)
+  cleanupNewContent = window.cctvdlApi.onNewContent(({ columnId, count }) => {
+    const next = new Map(newContentMap.value)
+    next.set(columnId, count)
+    newContentMap.value = next
+  })
 
   // 设置页清除历史后刷新已下载标记
   window.addEventListener('cctvdl:history-cleared', refreshDownloadedSet)
@@ -529,6 +554,7 @@ onMounted(async () => {
 onUnmounted(() => {
   cleanupSkipped?.()
   cleanupClipboard?.()
+  cleanupNewContent?.()
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('cctvdl:history-cleared', refreshDownloadedSet)
   if (placeholderTimer) clearInterval(placeholderTimer)
@@ -599,7 +625,7 @@ async function doImport(url: string) {
 
 defineExpose({ handleDropImport })
 
-function onProgramClick(row: ProgramInfo) { viewMode.value = 'column'; selectedProgram.value = row; loadVideos() }
+function onProgramClick(row: ProgramInfo) { viewMode.value = 'column'; selectedProgram.value = row; emptyMonths.value = new Set(); loadVideos() }
 
 // ─── Single-video collection ────────────────────────────────────────────────
 function selectSingleMode() {
@@ -686,7 +712,11 @@ async function loadVideos() {
     searchQuery.value = ''
     debouncedSearch.value = ''
     selectedVideo.value = null
-    if (list.length === 0) ElMessage.info('该月份暂无视频')
+    if (list.length === 0) {
+      emptyMonths.value = recordMonthResult(emptyMonths.value, selectedMonth.value, true)
+    } else {
+      emptyMonths.value = recordMonthResult(emptyMonths.value, selectedMonth.value, false)
+    }
   } catch (err) { ElMessage.error(`加载失败：${humanizeError(String(err))}`) }
   finally { loadingVideos.value = false }
 }
@@ -900,6 +930,16 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
   white-space: nowrap;
 }
 
+.program-new-dot {
+  flex-shrink: 0;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--el-color-danger);
+  margin-right: 2px;
+}
+
 /* 收藏 / 全部 分组头（复用视频列表日期头的视觉语言） */
 .program-group-header {
   padding: 6px 8px 3px;
@@ -996,6 +1036,10 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
   text-align: center;
 }
 
+.video-skeleton {
+  padding: 8px 4px;
+}
+
 .video-date-header {
   padding: 6px 8px 3px;
   font-size: 11px;
@@ -1073,6 +1117,25 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
   color: var(--el-text-color-secondary);
 }
 
+.v-dl-check {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--el-color-success);
+  opacity: .6;
+  pointer-events: none;
+  margin-left: auto;
+  margin-right: 2px;
+}
+
+.v-thumb {
+  flex-shrink: 0;
+  width: 40px;
+  height: 30px;
+  object-fit: cover;
+  border-radius: 2px;
+  background: var(--el-fill-color-light);
+}
+
 /* 视频底部工具栏 */
 .video-footer {
   display: flex;
@@ -1101,7 +1164,37 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
   overflow-y: auto;
   background: var(--el-bg-color);
   position: relative;
+  min-width: 0;
+  transition: flex .2s ease, min-width .2s ease;
 }
+
+.home-preview.collapsed {
+  flex: 0 0 28px;
+  overflow: hidden;
+}
+
+.preview-toggle {
+  position: absolute;
+  top: 8px;
+  left: 4px;
+  z-index: 2;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: .5;
+  transition: opacity .15s;
+}
+
+.preview-toggle:hover { opacity: 1; background: var(--el-fill-color); }
 
 .preview-inner {
   display: flex;
@@ -1540,6 +1633,16 @@ html.dark .preview-downloaded-badge {
   background: var(--el-color-primary-light-9);
   border-color: var(--el-color-primary-light-5);
   color: var(--el-color-primary);
+}
+
+.month-empty-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--el-color-warning);
+  opacity: .7;
+  flex-shrink: 0;
 }
 
 /* 关键词高亮 */
