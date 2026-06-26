@@ -41,7 +41,7 @@ test.describe('cctvdl GUI 测试', () => {
     await page.waitForTimeout(300)
     const htmlBefore = (await page.locator('html').getAttribute('class')) || ''
     if (!htmlBefore.includes('dark')) {
-      await page.locator('.el-switch').first().click()
+      await page.locator('.settings-item', { hasText: '深色模式' }).locator('.el-switch').click()
       await page.waitForTimeout(200)
     }
     await page.locator('.settings-save-btn').click()
@@ -52,7 +52,7 @@ test.describe('cctvdl GUI 测试', () => {
     // restore to light and persist so later tests start from a known state
     await navTab(page, '设置').click()
     await page.waitForTimeout(200)
-    await page.locator('.el-switch').first().click()
+    await page.locator('.settings-item', { hasText: '深色模式' }).locator('.el-switch').click()
     await page.waitForTimeout(200)
     await page.locator('.settings-save-btn').click()
     await page.waitForTimeout(200)
@@ -147,6 +147,14 @@ test.describe('cctvdl GUI 测试', () => {
     await expect(exportBtn).toBeDisabled()
   })
 
+  test('首页 JSON 导入按钮存在且可用', async () => {
+    await navTab(page, '首页').click()
+    await page.waitForTimeout(300)
+    const importBtn = page.locator('.icon-btn[title="从 JSON 导入栏目"]')
+    await expect(importBtn).toBeVisible()
+    await expect(importBtn).toBeEnabled()
+  })
+
   test('深色模式切换生效', async () => {
     await navTab(page, '设置').click()
     await page.waitForTimeout(500)
@@ -154,7 +162,7 @@ test.describe('cctvdl GUI 测试', () => {
     const htmlBefore = await page.locator('html').getAttribute('class') || ''
     const wasDark = htmlBefore.includes('dark')
 
-    const darkSwitch = page.locator('.el-switch').first()
+    const darkSwitch = page.locator('.settings-item', { hasText: '深色模式' }).locator('.el-switch')
     await darkSwitch.click()
     await page.waitForTimeout(500)
 
@@ -289,7 +297,7 @@ test.describe('cctvdl GUI 测试', () => {
     await page.waitForTimeout(500)
 
     // Custom settings page, labels use .settings-item-name
-    const expectedLabels = ['文件保存位置', '并发下载数', '视频清晰度', '合并方式', '日志级别', '深色模式', '日志目录']
+    const expectedLabels = ['文件保存位置', '并发下载数', '视频清晰度', '合并方式', '下载完成后打开文件夹', '日志级别', '深色模式', '日志目录']
     for (const label of expectedLabels) {
       const el = page.locator('.settings-item-name', { hasText: label })
       await expect(el).toBeVisible()

@@ -19,6 +19,10 @@ export function registerIpcHandlers(
     const wc = getWindow()?.webContents
     if (wc && !wc.isDestroyed()) wc.send(channel, payload)
   }
+  // Whether the *current* batch should auto-open the save folder when it finishes.
+  // Set per launch so partial downloads (下载选中 / 下载此集) and retries don't pop
+  // the folder — only 下载本月（全部）and single-video downloads do.
+  let currentBatchAutoOpen = false
   ipcMain.handle('browse-program', (_, url: string) => browse.resolveColumnInfo(url))
 
   ipcMain.handle('list-videos', async (_, columnId: string, itemId: string, month: string) => {
@@ -48,6 +52,18 @@ export function registerIpcHandlers(
   ipcMain.handle('delete-single-video', (_, guid: string) => config.deleteSingleVideo(guid))
   ipcMain.handle('clear-single-videos', () => config.clearSingleVideos())
 
+  // Import columns from a user-picked JSON file (symmetric with export). Returns
+  // the number added, or -1 when the dialog was cancelled.
+  ipcMain.handle('import-programs', async () => {
+    const result = await dialog.showOpenDialog(getWindow(), {
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (result.canceled || !result.filePaths[0]) return -1
+    const raw = fs.readFileSync(result.filePaths[0], 'utf-8')
+    return config.importPrograms(JSON.parse(raw))
+  })
+
   ipcMain.handle('export-programs', async () => {
     const programs = config.getPrograms()
     if (!programs.length) return false
@@ -60,7 +76,8 @@ export function registerIpcHandlers(
     return true
   })
 
-  const launchBatch = (jobs: DownloadJob[], skipHistory: boolean): void => {
+  const launchBatch = (jobs: DownloadJob[], skipHistory: boolean, autoOpen = false): void => {
+    currentBatchAutoOpen = autoOpen
     // Pre-flight: make sure the target directory exists and is writable before
     // spawning any work. Throws so the renderer's catch surfaces the reason.
     const saveDir = jobs.length ? path.dirname(jobs[0].savePath) : ''
@@ -91,7 +108,7 @@ export function registerIpcHandlers(
     }
   }
 
-  ipcMain.handle('start-download', (_, jobs: DownloadJob[]) => launchBatch(jobs, false))
+  ipcMain.handle('start-download', (_, jobs: DownloadJob[], autoOpen?: boolean) => launchBatch(jobs, false, !!autoOpen))
 
   // Retry bypasses the download-history filter and resumes from any cached segments.
   ipcMain.handle('retry-job', (_, job: DownloadJob) => launchBatch([job], true))
@@ -142,6 +159,12 @@ export function registerIpcHandlers(
     send('batch-finished', result)
     if (result.failedJobs.length > 0) {
       appendFailures(new Date().toISOString(), result.failedJobs)
+    }
+    // Auto-open the save folder only for full-set downloads (flagged at launch),
+    // when the user enabled it and something actually completed.
+    if (currentBatchAutoOpen && result.completed > 0 && config.getSettings().autoOpenFolder) {
+      const dir = config.getSettings().savePath
+      if (dir) shell.openPath(dir)
     }
   })
 }

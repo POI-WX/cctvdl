@@ -50,7 +50,8 @@ describe('ConfigStore', () => {
         reencode: true,
         logLevel: 'debug',
         darkMode: true,
-        logPath: '/custom/log'
+        logPath: '/custom/log',
+        autoOpenFolder: true
       }
       store.saveSettings(newSettings)
       const retrieved = store.getSettings()
@@ -60,6 +61,7 @@ describe('ConfigStore', () => {
       expect(retrieved.reencode).toBe(true)
       expect(retrieved.logLevel).toBe('debug')
       expect(retrieved.darkMode).toBe(true)
+      expect(retrieved.autoOpenFolder).toBe(true)
     })
   })
 
@@ -130,6 +132,23 @@ describe('ConfigStore', () => {
       store.addProgram({ name: 'A', columnId: 'TOPC001', itemId: '' })
       store.setProgramFavorite('TOPC999', true)
       expect(store.getPrograms()[0].favoritedAt).toBeUndefined()
+    })
+
+    it('importPrograms adds valid entries, dedupes, skips invalid, returns count', () => {
+      store.addProgram({ name: 'Existing', columnId: 'TOPC001', itemId: '' })
+      const added = store.importPrograms([
+        { name: 'A', columnId: 'TOPC002', itemId: 'i' },
+        { name: 'Existing', columnId: 'TOPC001', itemId: '' }, // duplicate columnId
+        { columnId: 'TOPC003' },                               // invalid: no name
+        { name: 'B', columnId: 'TOPC004' },                    // missing itemId → ''
+        'garbage'                                              // invalid: not an object
+      ])
+      expect(added).toBe(2)
+      expect(store.getPrograms().map((p) => p.columnId)).toEqual(['TOPC001', 'TOPC002', 'TOPC004'])
+    })
+
+    it('importPrograms throws on non-array input', () => {
+      expect(() => store.importPrograms({ not: 'an array' })).toThrow()
     })
   })
 

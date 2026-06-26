@@ -90,6 +90,17 @@
             </div>
           </div>
         </div>
+
+        <!-- auto-open folder -->
+        <div class="settings-item">
+          <div class="settings-item-label">
+            <span class="settings-item-name">下载完成后打开文件夹</span>
+            <span class="settings-item-desc">「下载本月」或单个视频下载完成后自动打开保存目录；下载选中不触发，避免频繁弹出</span>
+          </div>
+          <div class="settings-item-control">
+            <el-switch v-model="form.autoOpenFolder" />
+          </div>
+        </div>
       </div>
 
       <!-- section: appearance -->
@@ -226,7 +237,7 @@ import { displayPath } from '../../shared/path-display'
 
 const form = ref<Settings>({
   savePath: '', threadCount: 8, quality: 'auto',
-  reencode: false, logLevel: 'info', darkMode: false, logPath: ''
+  reencode: false, logLevel: 'info', darkMode: false, logPath: '', autoOpenFolder: false
 })
 
 const historyCount = ref(0)

@@ -22,7 +22,8 @@ const defaults: StoreSchema = {
     reencode: false,
     logLevel: 'info',
     darkMode: false,
-    logPath: app?.getPath?.('userData') || ''
+    logPath: app?.getPath?.('userData') || '',
+    autoOpenFolder: false
   },
   programs: [],
   singleVideos: [],
@@ -74,6 +75,26 @@ export class ConfigStore {
 
   clearPrograms(): void {
     this.store.set('programs', [])
+  }
+
+  // Import programs from parsed JSON (e.g. a previously exported backup). Validates
+  // each entry, dedupes by columnId via addProgram, and returns how many were added.
+  importPrograms(data: unknown): number {
+    if (!Array.isArray(data)) throw new Error('JSON 格式不正确（应为栏目数组）')
+    let added = 0
+    for (const item of data) {
+      const p = item as Partial<ProgramInfo>
+      if (p && typeof p.name === 'string' && typeof p.columnId === 'string') {
+        const program: ProgramInfo = {
+          name: p.name,
+          columnId: p.columnId,
+          itemId: typeof p.itemId === 'string' ? p.itemId : ''
+        }
+        if (typeof p.favoritedAt === 'number') program.favoritedAt = p.favoritedAt
+        if (this.addProgram(program)) added++
+      }
+    }
+    return added
   }
 
   // Favorite/unfavorite a program. favoritedAt (epoch ms) doubles as the sort key

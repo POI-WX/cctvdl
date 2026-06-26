@@ -6,6 +6,7 @@ const api: CctvdlApi = {
   listVideos: (columnId: string, itemId: string, month: string) =>
     ipcRenderer.invoke('list-videos', columnId, itemId, month),
   importProgram: (p: ProgramInfo) => ipcRenderer.invoke('import-program', p),
+  importPrograms: () => ipcRenderer.invoke('import-programs'),
   deleteProgram: (columnId: string) => ipcRenderer.invoke('delete-program', columnId),
   clearPrograms: () => ipcRenderer.invoke('clear-programs'),
   setProgramFavorite: (columnId: string, favorite: boolean) =>
@@ -17,7 +18,7 @@ const api: CctvdlApi = {
   deleteSingleVideo: (guid: string) => ipcRenderer.invoke('delete-single-video', guid),
   clearSingleVideos: () => ipcRenderer.invoke('clear-single-videos'),
   exportPrograms: () => ipcRenderer.invoke('export-programs'),
-  startDownload: (jobs: DownloadJob[]) => ipcRenderer.invoke('start-download', jobs),
+  startDownload: (jobs: DownloadJob[], autoOpen?: boolean) => ipcRenderer.invoke('start-download', jobs, autoOpen),
   retryJob: (job: DownloadJob) => ipcRenderer.invoke('retry-job', job),
   retryJobs: (jobs: DownloadJob[]) => ipcRenderer.invoke('retry-jobs', jobs),
   cancelDownload: (id: string) => ipcRenderer.invoke('cancel-download', id),

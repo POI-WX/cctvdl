@@ -92,12 +92,15 @@ export interface Settings {
   logLevel: 'info' | 'debug'
   darkMode?: boolean
   logPath?: string
+  // When true, open the save folder automatically after a batch finishes.
+  autoOpenFolder?: boolean
 }
 
 export interface CctvdlApi {
   browseProgram(url: string): Promise<ProgramInfo>
   listVideos(columnId: string, itemId: string, month: string): Promise<VideoInfo[]>
   importProgram(p: ProgramInfo): Promise<boolean>
+  importPrograms(): Promise<number>
   deleteProgram(columnId: string): Promise<void>
   clearPrograms(): Promise<void>
   setProgramFavorite(columnId: string, favorite: boolean): Promise<void>
@@ -108,7 +111,7 @@ export interface CctvdlApi {
   deleteSingleVideo(guid: string): Promise<void>
   clearSingleVideos(): Promise<void>
   exportPrograms(): Promise<boolean>
-  startDownload(jobs: DownloadJob[]): Promise<void>
+  startDownload(jobs: DownloadJob[], autoOpen?: boolean): Promise<void>
   retryJob(job: DownloadJob): Promise<void>
   retryJobs(jobs: DownloadJob[]): Promise<void>
   cancelDownload(id: string): Promise<void>

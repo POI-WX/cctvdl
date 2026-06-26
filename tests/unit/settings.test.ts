@@ -9,7 +9,8 @@ const fallback: Settings = {
   reencode: false,
   logLevel: 'info',
   darkMode: false,
-  logPath: '/logs'
+  logPath: '/logs',
+  autoOpenFolder: false
 }
 
 describe('normalizeSettings', () => {

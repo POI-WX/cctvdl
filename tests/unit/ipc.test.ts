@@ -26,7 +26,7 @@ vi.mock('../../src/main/preflight', () => ({
 }))
 
 import { registerIpcHandlers } from '../../src/main/ipc'
-import { ipcMain } from 'electron'
+import { ipcMain, shell } from 'electron'
 
 describe('IPC Handlers', () => {
   let handlers: Record<string, Function>
@@ -66,6 +66,7 @@ describe('IPC Handlers', () => {
       saveSettings: vi.fn(),
       getPrograms: vi.fn().mockReturnValue([]),
       addProgram: vi.fn().mockReturnValue(true),
+      importPrograms: vi.fn().mockReturnValue(2),
       deleteProgram: vi.fn(),
       clearPrograms: vi.fn(),
       setProgramFavorite: vi.fn(),
@@ -122,6 +123,53 @@ describe('IPC Handlers', () => {
     it('delegates to config.deleteProgram with columnId', async () => {
       await handlers['delete-program']({}, 'TOPC1')
       expect(mockConfig.deleteProgram).toHaveBeenCalledWith('TOPC1')
+    })
+  })
+
+  describe('import-programs', () => {
+    it('returns -1 and does not import when the dialog is cancelled', async () => {
+      const result = await handlers['import-programs']({})
+      expect(result).toBe(-1)
+      expect(mockConfig.importPrograms).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('auto-open folder on batch finish', () => {
+    const job = {
+      id: '1', guid: 'g', sourceUrl: 'g', title: 't', savePath: '/tmp/save/a.mp4',
+      quality: 'auto', threadCount: 8, reencode: false, state: 'Created', stage: 'None', progressPercent: 0
+    } as any
+    const done = { completed: 1, failed: 0, cancelled: 0, total: 1, failedJobs: [] }
+    function batchFinishedHandler() {
+      const call = vi.mocked(mockCoordinator.on).mock.calls.find((c) => c[0] === 'batchFinished')
+      return call?.[1] as (r: any) => void
+    }
+    const settingsWith = (autoOpenFolder: boolean) =>
+      vi.mocked(mockConfig.getSettings).mockReturnValue(
+        { savePath: '/tmp/save', autoOpenFolder, threadCount: 8, quality: 'auto', logLevel: 'info', reencode: false } as any
+      )
+
+    beforeEach(() => vi.mocked(shell.openPath).mockClear())
+
+    it('opens the save folder for a full-set download (autoOpen) when enabled', async () => {
+      settingsWith(true)
+      await handlers['start-download']({}, [job], true)
+      batchFinishedHandler()(done)
+      expect(shell.openPath).toHaveBeenCalledWith('/tmp/save')
+    })
+
+    it('does NOT open for a partial download (autoOpen false)', async () => {
+      settingsWith(true)
+      await handlers['start-download']({}, [job], false)
+      batchFinishedHandler()(done)
+      expect(shell.openPath).not.toHaveBeenCalled()
+    })
+
+    it('does NOT open when the setting is off', async () => {
+      settingsWith(false)
+      await handlers['start-download']({}, [job], true)
+      batchFinishedHandler()(done)
+      expect(shell.openPath).not.toHaveBeenCalled()
     })
   })
 

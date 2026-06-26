@@ -55,6 +55,8 @@ test.describe('单个视频集合', () => {
     // 单视频模式下无月份选择器，显示单视频标签
     await expect(page.locator('.month-row')).toHaveCount(0)
     await expect(page.locator('.single-mode-label')).toBeVisible()
+    // 「下载本月」仅栏目模式，单视频模式不显示
+    await expect(page.locator('.download-all-btn')).toHaveCount(0)
   })
 
   test('选中单视频：预览显示「单个视频」徽标与「下载此视频」', async () => {

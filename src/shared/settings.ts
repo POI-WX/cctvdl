@@ -39,6 +39,7 @@ export function normalizeSettings(raw: unknown, fallback: Settings): Settings {
     reencode: asBool(r.reencode, fallback.reencode),
     logLevel: pickEnum(r.logLevel, LOG_LEVELS, fallback.logLevel),
     darkMode: asBool(r.darkMode, fallback.darkMode ?? false),
-    logPath: asString(r.logPath, fallback.logPath ?? '')
+    logPath: asString(r.logPath, fallback.logPath ?? ''),
+    autoOpenFolder: asBool(r.autoOpenFolder, fallback.autoOpenFolder ?? false)
   }
 }

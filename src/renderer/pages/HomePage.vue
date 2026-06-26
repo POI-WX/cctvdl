@@ -8,6 +8,7 @@
         <div class="section-header">
           <span class="section-title">我的内容</span>
           <div class="section-actions">
+            <button class="icon-btn" title="从 JSON 导入栏目" @click="importPrograms">↓</button>
             <button class="icon-btn" title="导出栏目" :disabled="!programs.length" @click="exportPrograms">↑</button>
             <button class="icon-btn" title="清空全部栏目" :disabled="!programs.length" @click="clearAllPrograms">🧹</button>
           </div>
@@ -203,6 +204,12 @@
             · 选中 {{ selectedVideos.length }}
           </span>
           <el-button
+            v-if="viewMode === 'column' && filteredVideos.length"
+            size="small"
+            class="download-all-btn"
+            @click="downloadAll"
+          >下载本月</el-button>
+          <el-button
             :type="allSelectedDownloaded ? 'default' : 'primary'"
             size="small"
             :disabled="!selectedVideos.length"
@@ -273,7 +280,7 @@
             <button
               class="preview-download-btn"
               :class="{ downloaded: downloadedSet.has(selectedVideo.guid) }"
-              @click="downloadVideos([selectedVideo])"
+              @click="downloadVideos([selectedVideo], viewMode === 'single')"
             >
               <span>⬇</span>
               {{ downloadedSet.has(selectedVideo.guid) ? '重新下载' : (viewMode === 'single' ? '下载此视频' : '下载此集') }}
@@ -517,6 +524,15 @@ async function exportPrograms() {
   } catch (err) { ElMessage.error(`导出失败：${err}`) }
 }
 
+async function importPrograms() {
+  try {
+    const count = await window.cctvdlApi.importPrograms()
+    if (count < 0) return // cancelled
+    programs.value = await window.cctvdlApi.getPrograms()
+    ElMessage.success(`已导入 ${count} 个栏目`)
+  } catch (err) { ElMessage.error(`导入失败：${humanizeError(String(err))}`) }
+}
+
 async function handleImport() {
   const url = importUrl.value.trim()
   if (!url) { ElMessage.warning('请输入节目链接'); return }
@@ -703,9 +719,17 @@ async function copyBrief() {
   ElMessage.success('简介已复制')
 }
 
-async function downloadSelected() { await downloadVideos(selectedVideos.value) }
+// Selected items: auto-open only for single videos (column partial selections don't).
+async function downloadSelected() { await downloadVideos(selectedVideos.value, viewMode.value === 'single') }
 
-async function downloadVideos(videoList: VideoInfo[]) {
+// 下载本月（仅栏目）：先勾选当前列表的全部期数（复选框打勾），再整批下载；
+// 这是「全量下载」意图，会触发自动打开文件夹。
+async function downloadAll() {
+  filteredVideos.value.forEach(v => { v.selected = true })
+  await downloadVideos(filteredVideos.value, true)
+}
+
+async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
   if (!videoList.length) return
   const validVideos = videoList.filter(v => v.guid)
   if (!validVideos.length) { ElMessage.warning('选中的视频缺少 GUID'); return }
@@ -720,7 +744,7 @@ async function downloadVideos(videoList: VideoInfo[]) {
         state: 'Created' as const, stage: 'None' as const, progressPercent: 0
       }
     })
-    await window.cctvdlApi.startDownload(jobs)
+    await window.cctvdlApi.startDownload(jobs, autoOpen)
     ElMessage.success(`已添加 ${jobs.length} 个下载任务`)
   } catch (err) { ElMessage.error(`下载失败：${humanizeError(String(err))}`) }
 }
