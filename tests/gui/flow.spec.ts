@@ -42,7 +42,7 @@ test.describe('真实用户流程', () => {
     await page.waitForTimeout(500)
 
     // 2. 导入节目
-    const importInput = page.locator('input[placeholder*="粘贴节目链接"]')
+    const importInput = page.locator('.import-row input')
     await importInput.fill(COLUMN_URL)
     await importInput.press('Enter')
 
@@ -87,7 +87,7 @@ test.describe('真实用户流程', () => {
     await homeTab.click()
     await page.waitForTimeout(500)
 
-    const importInput = page.locator('input[placeholder*="粘贴节目链接"]')
+    const importInput = page.locator('.import-row input')
     await importInput.fill(EPISODE_URL)
     await importInput.press('Enter')
 

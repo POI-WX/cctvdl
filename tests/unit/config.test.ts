@@ -23,7 +23,7 @@ vi.mock('electron', () => ({
 }))
 
 import { ConfigStore } from '../../src/main/config'
-import type { ProgramInfo, Settings } from '../../src/shared/types'
+import type { ProgramInfo, Settings, VideoInfo } from '../../src/shared/types'
 
 describe('ConfigStore', () => {
   let store: ConfigStore
@@ -130,6 +130,35 @@ describe('ConfigStore', () => {
       store.addProgram({ name: 'A', columnId: 'TOPC001', itemId: '' })
       store.setProgramFavorite('TOPC999', true)
       expect(store.getPrograms()[0].favoritedAt).toBeUndefined()
+    })
+  })
+
+  describe('Single videos', () => {
+    const mk = (guid: string): VideoInfo => ({ guid, title: `t-${guid}`, brief: '', coverUrl: '', time: '' })
+
+    it('getSingleVideos returns empty initially', () => {
+      expect(store.getSingleVideos()).toEqual([])
+    })
+
+    it('addSingleVideo adds newest-first and dedupes by guid', () => {
+      expect(store.addSingleVideo(mk('A'))).toBe(true)
+      expect(store.addSingleVideo(mk('B'))).toBe(true)
+      expect(store.getSingleVideos().map((v) => v.guid)).toEqual(['B', 'A'])
+      expect(store.addSingleVideo(mk('A'))).toBe(false)
+      expect(store.getSingleVideos()).toHaveLength(2)
+    })
+
+    it('deleteSingleVideo removes by guid', () => {
+      store.addSingleVideo(mk('A'))
+      store.addSingleVideo(mk('B'))
+      store.deleteSingleVideo('A')
+      expect(store.getSingleVideos().map((v) => v.guid)).toEqual(['B'])
+    })
+
+    it('clearSingleVideos empties the list', () => {
+      store.addSingleVideo(mk('A'))
+      store.clearSingleVideos()
+      expect(store.getSingleVideos()).toEqual([])
     })
   })
 

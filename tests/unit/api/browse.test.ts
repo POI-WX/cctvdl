@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { BrowseService, cleanBrief } from '../../../src/main/api/browse'
+import { BrowseService, cleanBrief, extractTitle } from '../../../src/main/api/browse'
 
 describe('cleanBrief', () => {
   it('returns empty string for empty input', () => {
@@ -274,6 +274,54 @@ describe('BrowseService', () => {
       const service = new BrowseService(mockFetch)
       await expect(service.resolveColumnInfo('https://tv.cctv.com/lm/dzw/index.shtml'))
         .rejects.toThrow('无法解析节目信息')
+    })
+  })
+
+  describe('resolveSingleVideo', () => {
+    const fetchHtml = (html: string) =>
+      vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve(html) })
+
+    it('resolves guid from URL, title from html, date from path', async () => {
+      const service = new BrowseService(fetchHtml('<title>《大决战》_CCTV节目官网</title>'))
+      const v = await service.resolveSingleVideo('https://tv.cctv.com/2026/06/12/VIDEabc123XYZ260612.shtml?spm=x')
+      expect(v.guid).toBe('VIDEabc123XYZ260612')
+      expect(v.title).toBe('大决战')
+      expect(v.time).toBe('2026-06-12')
+    })
+
+    it('falls back to var guid when URL has no VIDE token', async () => {
+      const html = '<title>电影名_央视网</title><script>var guid = "VIDEfallback999";</script>'
+      const service = new BrowseService(fetchHtml(html))
+      const v = await service.resolveSingleVideo('https://tv.cctv.com/somepage.shtml')
+      expect(v.guid).toBe('VIDEfallback999')
+      expect(v.title).toBe('电影名')
+    })
+
+    it('extracts cover from og:image meta', async () => {
+      const html = '<meta property="og:image" content="https://img.cctv.com/c.jpg"><title>片名_CCTV节目官网</title>'
+      const service = new BrowseService(fetchHtml(html))
+      const v = await service.resolveSingleVideo('https://tv.cctv.com/2026/06/12/VIDEcover260612.shtml')
+      expect(v.coverUrl).toBe('https://img.cctv.com/c.jpg')
+    })
+
+    it('uses 未命名视频 when no title and throws when no guid', async () => {
+      const withGuidNoTitle = new BrowseService(fetchHtml('<script>var guid = "VIDExyz";</script>'))
+      expect((await withGuidNoTitle.resolveSingleVideo('https://tv.cctv.com/x.shtml')).title).toBe('未命名视频')
+
+      const noGuid = new BrowseService(fetchHtml('<html>nothing</html>'))
+      await expect(noGuid.resolveSingleVideo('https://tv.cctv.com/x.shtml')).rejects.toThrow('无法解析视频信息')
+    })
+  })
+
+  describe('extractTitle', () => {
+    it('prefers 《》 from commentTitle', () => {
+      expect(extractTitle('<script>var commentTitle = "《新闻联播》 20260612";</script>')).toBe('新闻联播')
+    })
+    it('cleans <title> suffixes when no commentTitle', () => {
+      expect(extractTitle('<title>世界战史_CCTV节目官网-CCTV-1</title>')).toBe('世界战史')
+    })
+    it('returns empty string when neither present', () => {
+      expect(extractTitle('<html>nothing</html>')).toBe('')
     })
   })
 })

@@ -102,6 +102,11 @@ export interface CctvdlApi {
   clearPrograms(): Promise<void>
   setProgramFavorite(columnId: string, favorite: boolean): Promise<void>
   getPrograms(): Promise<ProgramInfo[]>
+  resolveSingleVideo(url: string): Promise<VideoInfo>
+  getSingleVideos(): Promise<VideoInfo[]>
+  addSingleVideo(v: VideoInfo): Promise<boolean>
+  deleteSingleVideo(guid: string): Promise<void>
+  clearSingleVideos(): Promise<void>
   exportPrograms(): Promise<boolean>
   startDownload(jobs: DownloadJob[]): Promise<void>
   retryJob(job: DownloadJob): Promise<void>

@@ -18,6 +18,32 @@ export function cleanBrief(raw: string): string {
     .trim()
 }
 
+/**
+ * Extract a display name from a CCTV page's HTML — the column name on a column
+ * page, or the video title on a single-video page. Priority: commentTitle 《》 →
+ * cleaned <title>. Returns '' when neither is present.
+ */
+export function extractTitle(html: string): string {
+  const commentTitleMatch = html.match(/var\s+commentTitle\s*=\s*["']([^"']+)["']/)
+  if (commentTitleMatch) {
+    // "《我爱发明》 20190903 集名" — prefer the name inside 《》
+    const bookMatch = commentTitleMatch[1].match(/《([^》]+)》/)
+    return bookMatch ? bookMatch[1] : commentTitleMatch[1].split(/\s+\d/)[0].trim()
+  }
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/)
+  if (titleMatch) {
+    const title = titleMatch[1].trim()
+      .replace(/_CCTV节目官网.*$/i, '')
+      .replace(/-CCTV.*$/i, '')
+      .replace(/_央视网.*$/i, '')
+      .replace(/_央视网\(cctv\.com\).*$/i, '')
+      .trim()
+    const bookMatch = title.match(/《([^》]+)》/)
+    return bookMatch ? bookMatch[1] : title
+  }
+  return ''
+}
+
 export class BrowseService {
   constructor(private readonly fetch: Fetcher = createResilientFetch()) {}
 
@@ -71,26 +97,7 @@ export class BrowseService {
     // we let columnId stay empty and reject below with a clear error.
 
     // 2. Extract column name (priority: commentTitle → <title> tag)
-    let name = ''
-    const commentTitleMatch = html.match(/var\s+commentTitle\s*=\s*["']([^"']+)["']/)
-    if (commentTitleMatch) {
-      // commentTitle format: "《我爱发明》 20190903 集名" — extract name inside 《》
-      const bookMatch = commentTitleMatch[1].match(/《([^》]+)》/)
-      name = bookMatch ? bookMatch[1] : commentTitleMatch[1].split(/\s+\d/)[0].trim()
-    }
-    if (!name) {
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/)
-      if (titleMatch) {
-        const title = titleMatch[1].trim()
-          .replace(/_CCTV节目官网.*$/i, '')
-          .replace(/-CCTV.*$/i, '')
-          .replace(/_央视网.*$/i, '')
-          .replace(/_央视网\(cctv\.com\).*$/i, '')
-          .trim()
-        const bookMatch = title.match(/《([^》]+)》/)
-        name = bookMatch ? bookMatch[1] : title
-      }
-    }
+    const name = extractTitle(html)
 
     // 3. Extract itemid (optional, used for album fallback)
     let itemId = ''
@@ -99,6 +106,39 @@ export class BrowseService {
 
     if (!name || !columnId) throw new Error('无法解析节目信息')
     return { name, columnId, itemId }
+  }
+
+  /**
+   * Resolve a standalone video page (e.g. a movie that belongs to no column) into
+   * a downloadable VideoInfo. The whole download pipeline only needs the guid, so
+   * we extract the guid (from the VIDE… token in the URL, falling back to a page
+   * variable) plus a best-effort title / cover / date.
+   */
+  async resolveSingleVideo(pageUrl: string): Promise<VideoInfo> {
+    const resp = await this.fetch(pageUrl, uaInit())
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching page`)
+    const html = await resp.text()
+
+    let guid = ''
+    const urlGuidMatch = pageUrl.match(/(VIDE[A-Za-z0-9]+)\.s?html/i)
+    if (urlGuidMatch) guid = urlGuidMatch[1]
+    if (!guid) {
+      const htmlGuidMatch = html.match(/var\s+guid\s*=\s*["']([^"']+)["']/)
+      if (htmlGuidMatch) guid = htmlGuidMatch[1]
+    }
+    if (!guid) throw new Error('无法解析视频信息')
+
+    const title = extractTitle(html) || '未命名视频'
+
+    // Date from the /YYYY/MM/DD/ path segment, if present.
+    const dateMatch = pageUrl.match(/\/(\d{4})\/(\d{2})\/(\d{2})\//)
+    const time = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : ''
+
+    // Cover from the og:image meta tag, if present.
+    const coverMatch = html.match(/<meta[^>]+og:image["'][^>]+content=["']([^"']+)["']/i)
+    const coverUrl = coverMatch ? coverMatch[1] : ''
+
+    return { guid, title, brief: '', coverUrl, time }
   }
 }
 

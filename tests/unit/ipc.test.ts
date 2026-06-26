@@ -56,6 +56,7 @@ describe('IPC Handlers', () => {
 
     mockBrowse = {
       resolveColumnInfo: vi.fn().mockResolvedValue({ name: 'Test', columnId: 'TOPC1', itemId: '' }),
+      resolveSingleVideo: vi.fn().mockResolvedValue({ guid: 'VIDE1', title: 'Movie', brief: '', coverUrl: '', time: '' }),
       getColumnVideoList: vi.fn().mockResolvedValue([{ guid: 'g1', title: 'V1', brief: '', coverUrl: '', time: '' }]),
       getAlbumVideoList: vi.fn().mockResolvedValue([])
     } as unknown as BrowseService
@@ -68,6 +69,10 @@ describe('IPC Handlers', () => {
       deleteProgram: vi.fn(),
       clearPrograms: vi.fn(),
       setProgramFavorite: vi.fn(),
+      getSingleVideos: vi.fn().mockReturnValue([]),
+      addSingleVideo: vi.fn().mockReturnValue(true),
+      deleteSingleVideo: vi.fn(),
+      clearSingleVideos: vi.fn(),
       getDownloadHistory: vi.fn().mockReturnValue([]),
       addToDownloadHistory: vi.fn(),
       isInDownloadHistory: vi.fn().mockReturnValue(false),
@@ -131,6 +136,27 @@ describe('IPC Handlers', () => {
     it('delegates to config.setProgramFavorite with columnId and flag', async () => {
       await handlers['set-program-favorite']({}, 'TOPC1', true)
       expect(mockConfig.setProgramFavorite).toHaveBeenCalledWith('TOPC1', true)
+    })
+  })
+
+  describe('single videos', () => {
+    it('resolve-single-video delegates to browse.resolveSingleVideo', async () => {
+      const result = await handlers['resolve-single-video']({}, 'https://tv.cctv.com/x.shtml')
+      expect(mockBrowse.resolveSingleVideo).toHaveBeenCalledWith('https://tv.cctv.com/x.shtml')
+      expect(result).toEqual({ guid: 'VIDE1', title: 'Movie', brief: '', coverUrl: '', time: '' })
+    })
+    it('add-single-video delegates to config.addSingleVideo', async () => {
+      const v = { guid: 'VIDE1', title: 'Movie', brief: '', coverUrl: '', time: '' }
+      await handlers['add-single-video']({}, v)
+      expect(mockConfig.addSingleVideo).toHaveBeenCalledWith(v)
+    })
+    it('delete-single-video delegates to config.deleteSingleVideo', async () => {
+      await handlers['delete-single-video']({}, 'VIDE1')
+      expect(mockConfig.deleteSingleVideo).toHaveBeenCalledWith('VIDE1')
+    })
+    it('clear-single-videos delegates to config.clearSingleVideos', async () => {
+      await handlers['clear-single-videos']({})
+      expect(mockConfig.clearSingleVideos).toHaveBeenCalled()
     })
   })
 

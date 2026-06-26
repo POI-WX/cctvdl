@@ -6,7 +6,7 @@ import path from 'path'
 import fs from 'fs'
 import { appendFailures, logger } from './logger'
 import { checkSaveDir } from './preflight'
-import type { ProgramInfo, Settings, DownloadJob, DownloadProgress, BatchResult } from '../shared/types'
+import type { ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult } from '../shared/types'
 
 export function registerIpcHandlers(
   getWindow: () => BrowserWindow,
@@ -40,6 +40,13 @@ export function registerIpcHandlers(
     config.setProgramFavorite(columnId, favorite))
 
   ipcMain.handle('get-programs', () => config.getPrograms())
+
+  // Standalone (non-column) videos: resolve a video page → persist/list/remove.
+  ipcMain.handle('resolve-single-video', (_, url: string) => browse.resolveSingleVideo(url))
+  ipcMain.handle('get-single-videos', () => config.getSingleVideos())
+  ipcMain.handle('add-single-video', (_, v: VideoInfo) => config.addSingleVideo(v))
+  ipcMain.handle('delete-single-video', (_, guid: string) => config.deleteSingleVideo(guid))
+  ipcMain.handle('clear-single-videos', () => config.clearSingleVideos())
 
   ipcMain.handle('export-programs', async () => {
     const programs = config.getPrograms()

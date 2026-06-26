@@ -6,7 +6,7 @@
       <!-- program section -->
       <div class="sidebar-section program-section">
         <div class="section-header">
-          <span class="section-title">我的栏目</span>
+          <span class="section-title">我的内容</span>
           <div class="section-actions">
             <button class="icon-btn" title="导出栏目" :disabled="!programs.length" @click="exportPrograms">↑</button>
             <button class="icon-btn" title="清空全部栏目" :disabled="!programs.length" @click="clearAllPrograms">🧹</button>
@@ -32,8 +32,18 @@
           clearable
           style="margin-bottom: 4px"
         />
-        <!-- program list -->
+        <!-- content list: 单个视频集合（常驻）+ 栏目 -->
         <div class="program-list" :class="{ empty: !programs.length }">
+          <!-- 单个视频：常驻特殊条目，选中即切到「单视频集合」 -->
+          <div
+            class="single-entry"
+            :class="{ active: viewMode === 'single' }"
+            @click="selectSingleMode()"
+          >
+            <span class="single-entry-icon">📌</span>
+            <span class="single-entry-label">单个视频</span>
+            <span class="single-entry-count">{{ singleVideos.length }}</span>
+          </div>
           <div v-if="!programs.length" class="program-empty-state">
             <div class="program-empty-steps">
               <div class="empty-step">
@@ -84,7 +94,7 @@
       <!-- video section -->
       <div class="sidebar-section video-section">
         <div class="section-header">
-          <div class="month-row">
+          <div v-if="viewMode === 'column'" class="month-row">
             <el-date-picker
               v-model="selectedMonth"
               type="month"
@@ -98,6 +108,7 @@
             <button class="month-quick-btn" title="本月" @click="jumpMonth(0)">今</button>
             <button class="month-quick-btn" title="下个月" @click="jumpMonth(1)">›</button>
           </div>
+          <div v-else class="single-mode-label">📌 单个视频 · {{ singleVideos.length }}</div>
           <div class="section-actions">
             <button
               class="icon-btn"
@@ -106,6 +117,7 @@
               @click="toggleSelectAll"
             >{{ allSelected ? '☑' : '☐' }}</button>
             <button
+              v-if="viewMode === 'column'"
               class="icon-btn"
               title="刷新 (F5)"
               :disabled="!selectedProgram"
@@ -126,14 +138,29 @@
         />
         <!-- video items -->
         <div class="video-list">
-          <div v-if="!selectedProgram" class="video-hint">← 先选择一个栏目</div>
+          <div v-if="viewMode === 'column' && !selectedProgram" class="video-hint">← 先选择一个栏目</div>
           <div v-else-if="loadingVideos" class="video-hint">加载中…</div>
-          <div v-else-if="!filteredVideos.length" class="video-hint">
-            {{ videos.length ? '没有匹配的视频' : '该月份暂无视频' }}
-          </div>
+          <div v-else-if="!filteredVideos.length" class="video-hint">{{ emptyHint }}</div>
           <template v-else>
-            <!-- flat list when searching, grouped by date otherwise -->
-            <template v-if="debouncedSearch.trim()">
+            <!-- 单视频集合：扁平列表 + 行内移除 -->
+            <template v-if="viewMode === 'single'">
+              <div
+                v-for="v in filteredVideos"
+                :key="v.guid"
+                class="video-item"
+                :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
+                @click="onVideoClick(v)"
+              >
+                <el-checkbox v-model="v.selected" @click.stop size="small" />
+                <div class="video-item-info">
+                  <span class="video-item-title" :title="v.title">{{ v.title }}</span>
+                  <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
+                </div>
+                <button class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)">🗑</button>
+              </div>
+            </template>
+            <!-- 栏目·搜索：扁平高亮 -->
+            <template v-else-if="debouncedSearch.trim()">
               <div
                 v-for="v in filteredVideos"
                 :key="v.guid"
@@ -231,6 +258,7 @@
             </div>
             <h2 class="preview-title">{{ selectedVideo.title }}</h2>
             <div class="preview-meta">
+              <span v-if="viewMode === 'single'" class="preview-single-badge">📌 单个视频</span>
               <span v-if="selectedVideo.time" class="preview-date">🗓 {{ selectedVideo.time }}</span>
               <span
                 v-if="downloadedSet.has(selectedVideo.guid)"
@@ -248,7 +276,7 @@
               @click="downloadVideos([selectedVideo])"
             >
               <span>⬇</span>
-              {{ downloadedSet.has(selectedVideo.guid) ? '重新下载' : '下载此集' }}
+              {{ downloadedSet.has(selectedVideo.guid) ? '重新下载' : (viewMode === 'single' ? '下载此视频' : '下载此集') }}
             </button>
           </div>
         </div>
@@ -349,6 +377,10 @@ const displayRows = computed<ProgramRow[]>(() => {
   return rows
 })
 const videos = ref<(VideoInfo & { selected?: boolean })[]>([])
+// 'column' = browsing a column's monthly episodes; 'single' = the persisted
+// standalone-video collection. Middle (video list) + right (preview) are shared.
+const viewMode = ref<'column' | 'single'>('column')
+const singleVideos = ref<VideoInfo[]>([])
 const selectedProgram = ref<ProgramInfo | null>(null)
 const selectedVideo = ref<VideoInfo | null>(null)
 const selectedMonth = ref('')
@@ -357,10 +389,10 @@ const importing = ref(false)
 const importSuccess = ref(false)
 
 const IMPORT_PLACEHOLDERS = [
-  '粘贴节目链接导入…',
+  '粘贴栏目 / 单视频链接…',
   '示例：https://tv.cctv.com/lm/xwlb/',
-  '示例：https://tv.cctv.com/lm/sjzs/',
-  '支持栏目页 / 具体视频页链接',
+  '单视频也支持：直接粘贴影片链接',
+  '支持栏目页 / 单视频页链接',
 ]
 
 const importPlaceholder = ref(IMPORT_PLACEHOLDERS[0])
@@ -392,6 +424,10 @@ function onSearchInput(val: string) {
 const downloadedSet = ref<Set<string>>(new Set())
 
 const filteredVideos = computed(() => filterVideos(videos.value, debouncedSearch.value))
+const emptyHint = computed(() => {
+  if (viewMode.value === 'single') return videos.value.length ? '没有匹配的视频' : '粘贴单个视频链接添加'
+  return videos.value.length ? '没有匹配的视频' : '该月份暂无视频'
+})
 const allSelected = computed(() => filteredVideos.value.length > 0 && filteredVideos.value.every(v => v.selected))
 const selectedVideos = computed(() => videos.value.filter(v => v.selected))
 const downloadedCount = computed(() => videos.value.filter(v => downloadedSet.value.has(v.guid)).length)
@@ -447,6 +483,7 @@ function onKeydown(e: KeyboardEvent) {
 
 onMounted(async () => {
   programs.value = await window.cctvdlApi.getPrograms()
+  singleVideos.value = await window.cctvdlApi.getSingleVideos()
   refreshDownloadedSet()
   const now = new Date()
   selectedMonth.value = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -491,7 +528,20 @@ function handleDropImport(url: string) { importUrl.value = url; doImport(url) }
 async function doImport(url: string) {
   importing.value = true
   try {
-    const info = await window.cctvdlApi.browseProgram(url)
+    let info: ProgramInfo
+    try {
+      info = await window.cctvdlApi.browseProgram(url)
+    } catch (columnErr) {
+      // Not a column page (e.g. a standalone movie with no column) — fall back to
+      // resolving it as a single video and add it to the persisted collection.
+      try {
+        const video = await window.cctvdlApi.resolveSingleVideo(url)
+        await addAndShowSingleVideo(video)
+        return
+      } catch {
+        throw columnErr
+      }
+    }
     const success = await window.cctvdlApi.importProgram(info)
     if (success) {
       programs.value = await window.cctvdlApi.getPrograms()
@@ -502,6 +552,7 @@ async function doImport(url: string) {
       // 自动选中并加载该栏目
       const newProgram = programs.value.find(p => p.columnId === info.columnId)
       if (newProgram) {
+        viewMode.value = 'column'
         selectedProgram.value = newProgram
         loadVideos()
       }
@@ -514,7 +565,40 @@ async function doImport(url: string) {
 
 defineExpose({ handleDropImport })
 
-function onProgramClick(row: ProgramInfo) { selectedProgram.value = row; loadVideos() }
+function onProgramClick(row: ProgramInfo) { viewMode.value = 'column'; selectedProgram.value = row; loadVideos() }
+
+// ─── Single-video collection ────────────────────────────────────────────────
+function selectSingleMode() {
+  viewMode.value = 'single'
+  selectedProgram.value = null
+  selectedVideo.value = null
+  searchQuery.value = ''
+  debouncedSearch.value = ''
+  refreshDownloadedSet()
+  videos.value = singleVideos.value.map(v => ({ ...v, selected: false }))
+}
+
+// Resolved on paste → persisted (dedup by guid) → switch to the collection and
+// preview the new video. The download button then reuses the normal pipeline.
+async function addAndShowSingleVideo(video: VideoInfo) {
+  const added = await window.cctvdlApi.addSingleVideo(video)
+  singleVideos.value = await window.cctvdlApi.getSingleVideos()
+  importUrl.value = ''
+  importSuccess.value = true
+  setTimeout(() => { importSuccess.value = false }, 800)
+  selectSingleMode()
+  selectedVideo.value = video
+  coverError.value = false
+  coverLoading.value = true
+  ElMessage.success(added ? `已识别单个视频：${video.title}` : `已在单个视频列表：${video.title}`)
+}
+
+async function removeSingleVideo(v: VideoInfo) {
+  await window.cctvdlApi.deleteSingleVideo(v.guid)
+  singleVideos.value = await window.cctvdlApi.getSingleVideos()
+  videos.value = videos.value.filter(x => x.guid !== v.guid)
+  if (selectedVideo.value?.guid === v.guid) selectedVideo.value = null
+}
 
 async function deleteProgram(row: ProgramInfo) {
   try {
@@ -816,6 +900,42 @@ async function downloadVideos(videoList: VideoInfo[]) {
 .prog-action-btn:hover { background: var(--el-fill-color); }
 .prog-action-btn.del:hover { color: var(--el-color-danger); }
 
+/* 单个视频：常驻特殊条目 */
+.single-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  margin-bottom: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--app-border-subtle);
+  transition: background .12s;
+}
+.single-entry:hover { background: var(--el-fill-color-light); }
+.single-entry.active { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
+.single-entry-icon { font-size: 13px; flex-shrink: 0; }
+.single-entry-label { flex: 1; min-width: 0; font-size: 13px; font-weight: var(--app-font-weight-medium); }
+.single-entry-count {
+  flex-shrink: 0;
+  font-size: 11px;
+  min-width: 18px;
+  text-align: center;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--el-fill-color);
+  color: var(--el-text-color-secondary);
+}
+.single-entry.active .single-entry-count { background: var(--el-color-primary-light-7); color: var(--el-color-primary); }
+
+.single-mode-label {
+  flex: 1;
+  font-size: 12px;
+  font-weight: var(--app-font-weight-medium);
+  color: var(--el-text-color-secondary);
+}
+
 /* 视频搜索 */
 .video-search { margin-bottom: 0; }
 
@@ -883,6 +1003,23 @@ async function downloadVideos(videoList: VideoInfo[]) {
   font-size: 11px;
   color: var(--el-text-color-secondary);
 }
+
+/* 单视频集合：行内移除按钮（悬停显示） */
+.video-del-btn {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .12s, color .12s;
+}
+.video-item:hover .video-del-btn { opacity: 1; }
+.video-del-btn:hover { color: var(--el-color-danger); }
 
 .video-item.downloaded {
   border-left: 2px solid var(--el-color-success);
@@ -1084,6 +1221,19 @@ async function downloadVideos(videoList: VideoInfo[]) {
   background: var(--el-fill-color-light);
   color: var(--el-text-color-primary);
   border-color: var(--el-border-color-darker);
+}
+
+/* 单个视频徽章 */
+.preview-single-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: var(--app-font-weight-medium);
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  border: 1px solid var(--el-color-primary-light-5);
 }
 
 /* 已下载徽章 */

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ProgramInfo, Settings, DownloadJob, DownloadProgress, BatchResult, BatchStartInfo, CctvdlApi } from '../shared/types'
+import type { ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult, BatchStartInfo, CctvdlApi } from '../shared/types'
 
 const api: CctvdlApi = {
   browseProgram: (url: string) => ipcRenderer.invoke('browse-program', url),
@@ -11,6 +11,11 @@ const api: CctvdlApi = {
   setProgramFavorite: (columnId: string, favorite: boolean) =>
     ipcRenderer.invoke('set-program-favorite', columnId, favorite),
   getPrograms: () => ipcRenderer.invoke('get-programs'),
+  resolveSingleVideo: (url: string) => ipcRenderer.invoke('resolve-single-video', url),
+  getSingleVideos: () => ipcRenderer.invoke('get-single-videos'),
+  addSingleVideo: (v: VideoInfo) => ipcRenderer.invoke('add-single-video', v),
+  deleteSingleVideo: (guid: string) => ipcRenderer.invoke('delete-single-video', guid),
+  clearSingleVideos: () => ipcRenderer.invoke('clear-single-videos'),
   exportPrograms: () => ipcRenderer.invoke('export-programs'),
   startDownload: (jobs: DownloadJob[]) => ipcRenderer.invoke('start-download', jobs),
   retryJob: (job: DownloadJob) => ipcRenderer.invoke('retry-job', job),

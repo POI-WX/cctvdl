@@ -80,7 +80,7 @@ test.describe('cctvdl GUI 测试', () => {
     await navTab(page, '首页').click()
     await page.waitForTimeout(500)
 
-    const importInput = page.locator('input[placeholder*="粘贴节目链接"]')
+    const importInput = page.locator('.import-row input')
     await expect(importInput).toBeVisible()
 
     const importBtn = page.locator('button', { hasText: '导入' })
@@ -220,7 +220,7 @@ test.describe('cctvdl GUI 测试', () => {
     await navTab(page, '首页').click()
     await page.waitForTimeout(500)
 
-    const importInput = page.locator('input[placeholder*="粘贴节目链接"]')
+    const importInput = page.locator('.import-row input')
     await importInput.fill('https://tv.cctv.com/lm/xwlb/index.shtml')
     const val = await importInput.inputValue()
     expect(val).toBe('https://tv.cctv.com/lm/xwlb/index.shtml')

@@ -1,6 +1,6 @@
 import Store from 'electron-store'
 import { app } from 'electron'
-import type { Settings, ProgramInfo } from '../shared/types'
+import type { Settings, ProgramInfo, VideoInfo } from '../shared/types'
 import { normalizeSettings } from '../shared/settings'
 import type { WindowBounds } from '../shared/window-bounds'
 
@@ -9,6 +9,7 @@ const MAX_HISTORY_SIZE = 1000
 interface StoreSchema {
   settings: Settings
   programs: ProgramInfo[]
+  singleVideos: VideoInfo[]
   downloadHistory: string[]
   windowBounds?: WindowBounds
 }
@@ -24,6 +25,7 @@ const defaults: StoreSchema = {
     logPath: app?.getPath?.('userData') || ''
   },
   programs: [],
+  singleVideos: [],
   downloadHistory: []
 }
 
@@ -83,6 +85,27 @@ export class ConfigStore {
     if (favorite) program.favoritedAt = Date.now()
     else delete program.favoritedAt
     this.store.set('programs', programs)
+  }
+
+  getSingleVideos(): VideoInfo[] {
+    return this.store.get('singleVideos')
+  }
+
+  // Add a standalone video to the persisted collection (newest first); dedupe by guid.
+  addSingleVideo(v: VideoInfo): boolean {
+    const list = this.getSingleVideos()
+    if (list.some((x) => x.guid === v.guid)) return false
+    list.unshift(v)
+    this.store.set('singleVideos', list)
+    return true
+  }
+
+  deleteSingleVideo(guid: string): void {
+    this.store.set('singleVideos', this.getSingleVideos().filter((v) => v.guid !== guid))
+  }
+
+  clearSingleVideos(): void {
+    this.store.set('singleVideos', [])
   }
 
   getDownloadHistory(): string[] {
