@@ -51,7 +51,8 @@ describe('ConfigStore', () => {
         logLevel: 'debug',
         darkMode: true,
         logPath: '/custom/log',
-        autoOpenFolder: true
+        autoOpenFolder: true,
+        clipboardWatch: true
       }
       store.saveSettings(newSettings)
       const retrieved = store.getSettings()
@@ -62,6 +63,7 @@ describe('ConfigStore', () => {
       expect(retrieved.logLevel).toBe('debug')
       expect(retrieved.darkMode).toBe(true)
       expect(retrieved.autoOpenFolder).toBe(true)
+      expect(retrieved.clipboardWatch).toBe(true)
     })
   })
 

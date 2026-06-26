@@ -464,6 +464,22 @@ async function refreshDownloadedSet() {
 }
 
 let cleanupSkipped: (() => void) | null = null
+let cleanupClipboard: (() => void) | null = null
+let lastClipboardUrl = ''
+
+// Clipboard auto-import (opt-in): the main process only sends a link while the
+// user enabled the feature; here we confirm before importing, deduping repeats.
+async function onClipboardLink(url: string) {
+  if (url === lastClipboardUrl) return
+  lastClipboardUrl = url
+  try {
+    await ElMessageBox.confirm(`检测到央视链接，是否导入？\n${url}`, '剪贴板导入', {
+      confirmButtonText: '导入', cancelButtonText: '忽略', type: 'info'
+    })
+    importUrl.value = url
+    await doImport(url)
+  } catch { /* user ignored */ }
+}
 
 // True when focus is in a text-entry field, so global shortcuts don't hijack
 // typing (e.g. forward-delete while editing the search box must not delete a
@@ -504,6 +520,7 @@ onMounted(async () => {
   cleanupSkipped = window.cctvdlApi.onDownloadSkipped((info) => {
     ElMessage.info(`跳过：${info.title}（${info.reason}）`)
   })
+  cleanupClipboard = window.cctvdlApi.onClipboardLink(onClipboardLink)
 
   // 设置页清除历史后刷新已下载标记
   window.addEventListener('cctvdl:history-cleared', refreshDownloadedSet)
@@ -511,6 +528,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   cleanupSkipped?.()
+  cleanupClipboard?.()
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('cctvdl:history-cleared', refreshDownloadedSet)
   if (placeholderTimer) clearInterval(placeholderTimer)

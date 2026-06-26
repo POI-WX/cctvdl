@@ -10,7 +10,8 @@ const fallback: Settings = {
   logLevel: 'info',
   darkMode: false,
   logPath: '/logs',
-  autoOpenFolder: false
+  autoOpenFolder: false,
+  clipboardWatch: false
 }
 
 describe('normalizeSettings', () => {

@@ -23,7 +23,8 @@ const defaults: StoreSchema = {
     logLevel: 'info',
     darkMode: false,
     logPath: app?.getPath?.('userData') || '',
-    autoOpenFolder: false
+    autoOpenFolder: false,
+    clipboardWatch: false
   },
   programs: [],
   singleVideos: [],

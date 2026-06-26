@@ -55,6 +55,11 @@ const api: CctvdlApi = {
     ipcRenderer.on('download-skipped', handler)
     return () => ipcRenderer.removeListener('download-skipped', handler)
   },
+  onClipboardLink: (cb: (url: string) => void) => {
+    const handler = (_: unknown, url: string) => cb(url)
+    ipcRenderer.on('clipboard-link', handler)
+    return () => ipcRenderer.removeListener('clipboard-link', handler)
+  },
   isMac: process.platform === 'darwin'
 }
 

@@ -40,6 +40,7 @@ export function normalizeSettings(raw: unknown, fallback: Settings): Settings {
     logLevel: pickEnum(r.logLevel, LOG_LEVELS, fallback.logLevel),
     darkMode: asBool(r.darkMode, fallback.darkMode ?? false),
     logPath: asString(r.logPath, fallback.logPath ?? ''),
-    autoOpenFolder: asBool(r.autoOpenFolder, fallback.autoOpenFolder ?? false)
+    autoOpenFolder: asBool(r.autoOpenFolder, fallback.autoOpenFolder ?? false),
+    clipboardWatch: asBool(r.clipboardWatch, fallback.clipboardWatch ?? false)
   }
 }

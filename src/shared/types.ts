@@ -94,6 +94,8 @@ export interface Settings {
   logPath?: string
   // When true, open the save folder automatically after a batch finishes.
   autoOpenFolder?: boolean
+  // When true, watch the clipboard and offer to import copied CCTV links (opt-in).
+  clipboardWatch?: boolean
 }
 
 export interface CctvdlApi {
@@ -126,6 +128,7 @@ export interface CctvdlApi {
   onBatchFinished(cb: (result: BatchResult) => void): () => void
   onBatchStarted(cb: (info: BatchStartInfo) => void): () => void
   onDownloadSkipped(cb: (info: { guid: string; title: string; reason: string }) => void): () => void
+  onClipboardLink(cb: (url: string) => void): () => void
   getDownloadHistory(): Promise<string[]>
   clearDownloadHistory(): Promise<void>
   // Static platform flag (from preload) — lets the renderer adapt shortcuts, e.g.

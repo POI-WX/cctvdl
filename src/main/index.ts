@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Tray, Notification, nativeImage, screen } fro
 import path from 'path'
 import fs from 'fs'
 import { registerIpcHandlers } from './ipc'
+import { ClipboardWatcher } from './clipboard-watch'
 import { CctvApiService } from './api/cctv'
 import { BrowseService } from './api/browse'
 import { SegmentDecryptor, createDefaultDecrypt } from './download/decryptor'
@@ -41,6 +42,7 @@ let mainWindow: BrowserWindow
 let tray: Tray | null = null
 let coordinatorRef: DownloadCoordinator | null = null
 let configRef: ConfigStore | null = null
+let clipboardWatcherRef: ClipboardWatcher | null = null
 
 function createMainWindow(): BrowserWindow {
   // Restore saved bounds, clamped to the current screen so we never open off-screen.
@@ -184,12 +186,21 @@ app.whenReady().then(() => {
     }
   })
 
+  // Clipboard watcher: only reads the clipboard while the user opted in (default
+  // off), then offers to import a copied CCTV link.
+  clipboardWatcherRef = new ClipboardWatcher(
+    () => config.getSettings().clipboardWatch === true,
+    (url) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('clipboard-link', url) }
+  )
+  clipboardWatcherRef.start()
+
   logger.info('cctvdl ready')
 })
 
 // Flush in-progress resume state and stop child processes before the app exits.
 app.on('before-quit', () => {
   coordinatorRef?.shutdown()
+  clipboardWatcherRef?.stop()
 })
 
 // macOS: keep the app alive in the Dock when all windows are closed

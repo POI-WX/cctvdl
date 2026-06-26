@@ -150,6 +150,17 @@
           <span class="settings-card-title">高级</span>
         </div>
 
+        <!-- clipboard auto-import -->
+        <div class="settings-item">
+          <div class="settings-item-label">
+            <span class="settings-item-name">剪贴板自动导入</span>
+            <span class="settings-item-desc">开启后，复制央视链接时弹窗提示导入。开启即允许应用读取剪贴板以检测链接；关闭时不会读取。默认关闭。</span>
+          </div>
+          <div class="settings-item-control">
+            <el-switch v-model="form.clipboardWatch" />
+          </div>
+        </div>
+
         <!-- log level -->
         <div class="settings-item">
           <div class="settings-item-label">
@@ -237,7 +248,7 @@ import { displayPath } from '../../shared/path-display'
 
 const form = ref<Settings>({
   savePath: '', threadCount: 8, quality: 'auto',
-  reencode: false, logLevel: 'info', darkMode: false, logPath: '', autoOpenFolder: false
+  reencode: false, logLevel: 'info', darkMode: false, logPath: '', autoOpenFolder: false, clipboardWatch: false
 })
 
 const historyCount = ref(0)
