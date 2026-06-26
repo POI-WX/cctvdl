@@ -15,7 +15,7 @@
         <button v-if="!running && failedCount > 0" class="dl-action-btn primary" @click="retryAllFailed">
           ↺ 重试失败 ({{ failedCount }})
         </button>
-        <button v-if="!running && finishedCount > 0" class="dl-action-btn" @click="clearFinished">清除完成</button>
+        <button v-if="!running && finishedCount > 0" class="dl-action-btn" @click="dlStore.clearFinished()">清除完成</button>
         <button class="dl-action-btn" @click="openFolder">📂 打开文件夹</button>
       </div>
     </div>
@@ -190,21 +190,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { storeToRefs } from 'pinia'
+import { useDownloadStore } from '../stores/download'
 const emit = defineEmits<{ 'go-home': [] }>()
-import type { DownloadProgress, DownloadJob, BatchResult, BatchStartInfo, JobState, JobStage } from '../../shared/types'
+import type { DownloadProgress, DownloadJob, BatchStartInfo, JobState } from '../../shared/types'
 import { formatSpeed, formatTime } from '../../shared/format'
 import { humanizeError } from '../../shared/errors'
 import { buildOutputPath } from '../../shared/filename'
 
-interface JobCard {
-  id: string; title: string; guid: string
-  state: JobState; stage: JobStage
-  percent: number; segmentsDone: number; segmentsTotal: number
-  speed: number; eta: number; errorMessage: string
-  sourceJob?: DownloadJob
-}
+const dlStore = useDownloadStore()
+const { jobs, running, stats, doneCount, finishedCount, failedCount, batchPercent,
+        activeJobs, completedJobs, failedCancelledJobs } = storeToRefs(dlStore)
 
 const STATE_TEXT: Record<string, string> = {
   None: '就绪', Created: '已创建', Queued: '排队中', ResolvingM3u8: '解析中',
@@ -221,51 +219,26 @@ const STAGE_TEXT: Record<string, string> = {
   PublishingOutput: '写入文件'
 }
 
-const ACTIVE_STATES: JobState[] = ['Queued', 'ResolvingM3u8', 'Downloading', 'Merging']
-
-const jobs = ref<JobCard[]>([])
-const running = ref(false)
-const stats = ref({ completed: 0, failed: 0, cancelled: 0 })
-
-// Group collapse state
 const groupCollapsed = ref({ active: false, completed: false, failed: false })
 function toggleGroup(key: 'active' | 'completed' | 'failed') {
   groupCollapsed.value[key] = !groupCollapsed.value[key]
 }
 
-// Error expand state
 const expandedErrors = ref(new Set<string>())
 function toggleError(jobId: string) {
-  if (expandedErrors.value.has(jobId)) {
-    expandedErrors.value.delete(jobId)
-  } else {
-    expandedErrors.value.add(jobId)
-  }
+  if (expandedErrors.value.has(jobId)) expandedErrors.value.delete(jobId)
+  else expandedErrors.value.add(jobId)
 }
-
-// Grouped computed lists
-const activeJobs = computed(() => jobs.value.filter(j => isActive(j.state)))
-const completedJobs = computed(() => jobs.value.filter(j => j.state === 'Completed'))
-const failedCancelledJobs = computed(() => jobs.value.filter(j => j.state === 'Failed' || j.state === 'Cancelled'))
-
-const doneCount = computed(() => jobs.value.filter(j => j.state === 'Completed').length)
-const finishedCount = computed(() => jobs.value.filter(j => ['Completed', 'Failed', 'Cancelled'].includes(j.state)).length)
-const failedCount = computed(() => jobs.value.filter(j => j.state === 'Failed').length)
-const batchPercent = computed(() => {
-  if (!jobs.value.length) return 0
-  return Math.round(jobs.value.reduce((a, j) => a + (j.state === 'Completed' ? 100 : j.percent), 0) / jobs.value.length)
-})
 
 const stateText = (s: string) => STATE_TEXT[s] ?? s
 const stageText = (s: string) => STAGE_TEXT[s] ?? ''
 const stateIcon = (s: JobState) => STATE_ICON[s] ?? '·'
-const isActive = (s: JobState) => ACTIVE_STATES.includes(s)
 
 function indicatorClass(s: JobState) {
   if (s === 'Completed') return 'ind-success'
   if (s === 'Failed') return 'ind-error'
   if (s === 'Cancelled') return 'ind-muted'
-  if (isActive(s)) return 'ind-active'
+  if (dlStore.isActive(s)) return 'ind-active'
   return 'ind-muted'
 }
 
@@ -278,52 +251,33 @@ function badgeClass(s: JobState) {
 
 onMounted(() => {
   window.cctvdlApi.onBatchStarted((info: BatchStartInfo) => {
-    running.value = true
-    stats.value = { completed: 0, failed: 0, cancelled: 0 }
-    jobs.value = info.jobs.map(j => ({
-      id: j.id, title: j.title, guid: j.guid,
-      state: 'Queued', stage: 'None', percent: 0,
-      segmentsDone: 0, segmentsTotal: 0, speed: 0, eta: 0, errorMessage: ''
-    }))
+    dlStore.applyBatchStarted(info)
   })
 
   window.cctvdlApi.onDownloadProgress((p: DownloadProgress) => {
-    const job = jobs.value.find(j => j.id === p.jobId)
-    if (!job) return
-    job.percent = p.percent; job.state = p.state; job.stage = p.stage
-    if (p.speed !== undefined) job.speed = p.speed
-    if (p.eta !== undefined) job.eta = p.eta
-    if (p.segmentsDone !== undefined) job.segmentsDone = p.segmentsDone
-    if (p.segmentsTotal !== undefined) job.segmentsTotal = p.segmentsTotal
+    dlStore.applyProgress(p)
   })
 
   window.cctvdlApi.onJobFinished((finished: DownloadJob) => {
-    const job = jobs.value.find(j => j.id === finished.id)
-    if (!job) return
-    job.state = finished.state; job.sourceJob = finished; job.speed = 0; job.eta = 0
-    if (finished.state === 'Completed') {
-      job.percent = 100
-    }
-    if (finished.state === 'Failed') job.errorMessage = finished.errorMessage || '未知错误'
+    dlStore.applyJobFinished(finished)
   })
 
-  window.cctvdlApi.onBatchFinished((result: BatchResult) => {
-    running.value = false
-    stats.value = { completed: result.completed, failed: result.failed, cancelled: result.cancelled }
+  window.cctvdlApi.onBatchFinished((result) => {
+    dlStore.applyBatchFinished(result)
   })
 })
 
 function cancel(id: string) { window.cctvdlApi.cancelDownload(id) }
 function cancelAll() { window.cctvdlApi.cancelAllDownloads() }
 
-async function retry(job: JobCard) {
+async function retry(job: typeof jobs.value[0]) {
   const sourceJob = job.sourceJob ?? await rebuildJob(job)
   if (!sourceJob) return
   job.state = 'Queued'; job.stage = 'None'; job.percent = 0; job.errorMessage = ''
   window.cctvdlApi.retryJob({ ...sourceJob, state: 'Created', stage: 'None', progressPercent: 0 })
 }
 
-async function rebuildJob(job: JobCard): Promise<DownloadJob | null> {
+async function rebuildJob(job: typeof jobs.value[0]): Promise<DownloadJob | null> {
   const settings = await window.cctvdlApi.getSettings()
   if (!settings.savePath) { ElMessage.warning('请先在设置中配置保存位置'); return null }
   return {
@@ -333,10 +287,6 @@ async function rebuildJob(job: JobCard): Promise<DownloadJob | null> {
     reencode: settings.reencode ?? false,
     state: 'Created', stage: 'None', progressPercent: 0
   }
-}
-
-function clearFinished() {
-  jobs.value = jobs.value.filter(j => !['Completed', 'Failed', 'Cancelled'].includes(j.state))
 }
 
 async function retryAllFailed() {
@@ -354,12 +304,12 @@ async function openFolder() {
   if (s.savePath) window.cctvdlApi.openPath(s.savePath)
 }
 
-async function playFile(job: JobCard) {
+async function playFile(job: typeof jobs.value[0]) {
   const out = job.sourceJob?.outputPath
   if (out) window.cctvdlApi.openPath(out); else openFolder()
 }
 
-async function revealFile(job: JobCard) {
+async function revealFile(job: typeof jobs.value[0]) {
   const out = job.sourceJob?.outputPath
   if (out) window.cctvdlApi.revealFile(out); else openFolder()
 }

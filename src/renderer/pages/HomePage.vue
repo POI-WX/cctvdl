@@ -351,62 +351,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { storeToRefs } from 'pinia'
 import { Search } from '@element-plus/icons-vue'
 import type { ProgramInfo, VideoInfo, DownloadJob } from '../../shared/types'
-import { filterVideos } from '../../shared/video-filter'
-import { sortPrograms, isProgramDeleteKey } from '../../shared/programs'
+import { isProgramDeleteKey } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
 import { buildOutputPath } from '../../shared/filename'
-import { recordMonthResult } from '../../shared/month-tracker'
+import { useContentStore } from '../stores/content'
+
+const contentStore = useContentStore()
+const {
+  programs, singleVideos, videos, viewMode, selectedProgram, selectedVideo,
+  selectedMonth, downloadedSet, newContentMap, emptyMonths,
+  programQuery, searchQuery, debouncedSearch,
+  filteredPrograms, displayRows,
+  filteredVideos, allSelected, selectedVideos, downloadedCount, allSelectedDownloaded,
+  emptyHint, groupedVideos
+} = storeToRefs(contentStore)
+
+const isFav = contentStore.isFav
 
 const isMac = window.cctvdlApi.isMac
 
-const programs = ref<ProgramInfo[]>([])
-const programQuery = ref('')
-
-const isFav = (p: ProgramInfo): boolean => p.favoritedAt != null
-
-// Favorites first (most-recently-favorited on top), then import order; then the
-// optional name filter on top of that order.
-const sortedPrograms = computed(() => sortPrograms(programs.value))
-const filteredPrograms = computed(() => {
-  const q = programQuery.value.trim().toLowerCase()
-  if (!q) return sortedPrograms.value
-  return sortedPrograms.value.filter(p => p.name.toLowerCase().includes(q))
-})
-
-// Flatten into a render list of group headers + items. When searching we drop the
-// headers (flat results); otherwise we show 收藏 / 全部 groups, but only once
-// something is actually favorited (avoids extra chrome on a fresh list).
-type ProgramRow =
-  | { type: 'header'; label: string; key: string; program?: undefined }
-  | { type: 'item'; label?: undefined; key: string; program: ProgramInfo }
-const displayRows = computed<ProgramRow[]>(() => {
-  const list = filteredPrograms.value
-  if (programQuery.value.trim()) {
-    return list.map(p => ({ type: 'item', program: p, key: p.columnId }))
-  }
-  const favs = list.filter(isFav)
-  const others = list.filter(p => !isFav(p))
-  if (!favs.length) {
-    return others.map(p => ({ type: 'item', program: p, key: p.columnId }))
-  }
-  const rows: ProgramRow[] = [{ type: 'header', label: '⭐ 收藏', key: '__hdr_fav' }]
-  for (const p of favs) rows.push({ type: 'item', program: p, key: p.columnId })
-  rows.push({ type: 'header', label: '全部栏目', key: '__hdr_all' })
-  for (const p of others) rows.push({ type: 'item', program: p, key: p.columnId })
-  return rows
-})
-const videos = ref<(VideoInfo & { selected?: boolean })[]>([])
-// 'column' = browsing a column's monthly episodes; 'single' = the persisted
-// standalone-video collection. Middle (video list) + right (preview) are shared.
-const viewMode = ref<'column' | 'single'>('column')
-const singleVideos = ref<VideoInfo[]>([])
-const selectedProgram = ref<ProgramInfo | null>(null)
-const selectedVideo = ref<VideoInfo | null>(null)
-const selectedMonth = ref('')
+// Local-only UI state (not shared across components)
 const importUrl = ref('')
 const importing = ref(false)
 const importSuccess = ref(false)
@@ -426,7 +395,6 @@ const coverError = ref(false)
 const coverLoading = ref(false)
 const lightboxOpen = ref(false)
 const previewCollapsed = ref(false)
-const emptyMonths = ref<Set<string>>(new Set())
 
 function openLightbox() {
   if (selectedVideo.value?.coverUrl && !coverError.value) {
@@ -438,54 +406,19 @@ function closeLightbox() {
   lightboxOpen.value = false
   document.body.style.overflow = ''
 }
-const searchQuery = ref('')
-const debouncedSearch = ref('')
+
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 function onSearchInput(val: string) {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => { debouncedSearch.value = val }, 200)
 }
-const downloadedSet = ref<Set<string>>(new Set())
-
-const filteredVideos = computed(() => filterVideos(videos.value, debouncedSearch.value))
-const emptyHint = computed(() => {
-  if (viewMode.value === 'single') return videos.value.length ? '没有匹配的视频' : '粘贴单个视频链接添加'
-  return videos.value.length ? '没有匹配的视频' : '该月份暂无视频'
-})
-const allSelected = computed(() => filteredVideos.value.length > 0 && filteredVideos.value.every(v => v.selected))
-const selectedVideos = computed(() => videos.value.filter(v => v.selected))
-const downloadedCount = computed(() => videos.value.filter(v => downloadedSet.value.has(v.guid)).length)
-const allSelectedDownloaded = computed(() =>
-  selectedVideos.value.length > 0 && selectedVideos.value.every(v => downloadedSet.value.has(v.guid))
-)
-
-const groupedVideos = computed(() => {
-  const groups: Array<{ date: string; items: typeof filteredVideos.value }> = []
-  for (const v of filteredVideos.value) {
-    const date = v.time || ''
-    const last = groups[groups.length - 1]
-    if (last && last.date === date) {
-      last.items.push(v)
-    } else {
-      groups.push({ date, items: [v] })
-    }
-  }
-  return groups
-})
-
-async function refreshDownloadedSet() {
-  try {
-    const history = await window.cctvdlApi.getDownloadHistory()
-    downloadedSet.value = new Set(history)
-  } catch { /* best-effort */ }
-}
 
 let cleanupSkipped: (() => void) | null = null
 let cleanupClipboard: (() => void) | null = null
 let cleanupNewContent: (() => void) | null = null
-const newContentMap = ref<Map<string, number>>(new Map())
 let lastClipboardUrl = ''
+function onHistoryCleared() { contentStore.refreshDownloadedSet() }
 
 // Clipboard auto-import (opt-in): the main process only sends a link while the
 // user enabled the feature; here we confirm before importing, deduping repeats.
@@ -527,7 +460,7 @@ function onKeydown(e: KeyboardEvent) {
 onMounted(async () => {
   programs.value = await window.cctvdlApi.getPrograms()
   singleVideos.value = await window.cctvdlApi.getSingleVideos()
-  refreshDownloadedSet()
+  contentStore.refreshDownloadedSet()
   const now = new Date()
   selectedMonth.value = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
   window.addEventListener('keydown', onKeydown)
@@ -542,13 +475,11 @@ onMounted(async () => {
   })
   cleanupClipboard = window.cctvdlApi.onClipboardLink(onClipboardLink)
   cleanupNewContent = window.cctvdlApi.onNewContent(({ columnId, count }) => {
-    const next = new Map(newContentMap.value)
-    next.set(columnId, count)
-    newContentMap.value = next
+    contentStore.applyNewContent(columnId, count)
   })
 
   // 设置页清除历史后刷新已下载标记
-  window.addEventListener('cctvdl:history-cleared', refreshDownloadedSet)
+  window.addEventListener('cctvdl:history-cleared', onHistoryCleared)
 })
 
 onUnmounted(() => {
@@ -556,7 +487,7 @@ onUnmounted(() => {
   cleanupClipboard?.()
   cleanupNewContent?.()
   window.removeEventListener('keydown', onKeydown)
-  window.removeEventListener('cctvdl:history-cleared', refreshDownloadedSet)
+  window.removeEventListener('cctvdl:history-cleared', onHistoryCleared)
   if (placeholderTimer) clearInterval(placeholderTimer)
   document.body.style.overflow = ''
 })
@@ -625,7 +556,7 @@ async function doImport(url: string) {
 
 defineExpose({ handleDropImport })
 
-function onProgramClick(row: ProgramInfo) { viewMode.value = 'column'; selectedProgram.value = row; emptyMonths.value = new Set(); loadVideos() }
+function onProgramClick(row: ProgramInfo) { viewMode.value = 'column'; selectedProgram.value = row; contentStore.clearEmptyMonths(); loadVideos() }
 
 // ─── Single-video collection ────────────────────────────────────────────────
 function selectSingleMode() {
@@ -634,7 +565,7 @@ function selectSingleMode() {
   selectedVideo.value = null
   searchQuery.value = ''
   debouncedSearch.value = ''
-  refreshDownloadedSet()
+  contentStore.refreshDownloadedSet()
   videos.value = singleVideos.value.map(v => ({ ...v, selected: false }))
 }
 
@@ -705,18 +636,14 @@ async function clearAllPrograms() {
 async function loadVideos() {
   if (!selectedProgram.value) return
   loadingVideos.value = true
-  refreshDownloadedSet()
+  contentStore.refreshDownloadedSet()
   try {
     const list = await window.cctvdlApi.listVideos(selectedProgram.value.columnId, selectedProgram.value.itemId, selectedMonth.value)
     videos.value = list.map(v => ({ ...v, selected: false }))
     searchQuery.value = ''
     debouncedSearch.value = ''
     selectedVideo.value = null
-    if (list.length === 0) {
-      emptyMonths.value = recordMonthResult(emptyMonths.value, selectedMonth.value, true)
-    } else {
-      emptyMonths.value = recordMonthResult(emptyMonths.value, selectedMonth.value, false)
-    }
+    contentStore.recordVideosLoaded(selectedMonth.value, list)
   } catch (err) { ElMessage.error(`加载失败：${humanizeError(String(err))}`) }
   finally { loadingVideos.value = false }
 }
@@ -808,7 +735,7 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
 
 /* ── 左侧面板 ───────────────────────────────────── */
 .home-sidebar {
-  width: 300px;
+  width: 360px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;

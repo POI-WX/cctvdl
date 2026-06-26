@@ -46,7 +46,7 @@
       <button
         class="sidebar-toggle"
         :title="sidebarExpanded ? '收起导航' : '展开导航'"
-        @click="toggleSidebar"
+        @click="appStore.toggleSidebar()"
       >{{ sidebarExpanded ? '◀' : '▶' }}</button>
     </aside>
 
@@ -94,35 +94,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
+import { storeToRefs } from 'pinia'
 import HomePage from './pages/HomePage.vue'
 import DownloadPage from './pages/DownloadPage.vue'
 import SettingsPage from './pages/SettingsPage.vue'
+import { useAppStore } from './stores/app'
+import { useDownloadStore } from './stores/download'
 import type { BatchResult, DownloadProgress } from '../shared/types'
 
-const activeTab = ref('home')
-const statusMessage = ref('')
-const statusType = ref<'success' | 'error' | ''>('')
+const appStore = useAppStore()
+const { activeTab, sidebarExpanded, aboutOpen, isDragging, statusMessage, statusType } = storeToRefs(appStore)
+
+const dlStore = useDownloadStore()
+const { downloadBadge, downloadBadgeType, updateVersion } = storeToRefs(dlStore)
+
 const homePageRef = ref<InstanceType<typeof HomePage> | null>(null)
-const isDragging = ref(false)
-const aboutOpen = ref(false)
-const sidebarExpanded = ref(localStorage.getItem('cctvdl-sidebar-expanded') === 'true')
 const appVersion = __APP_VERSION__ // replaced by vite define at build/dev time
-const updateVersion = ref('')
 
 function openReleasePage() {
   window.cctvdlApi.openUrl('https://github.com/POI-WX/cctvdl/releases/latest')
 }
-
-function toggleSidebar() {
-  sidebarExpanded.value = !sidebarExpanded.value
-  localStorage.setItem('cctvdl-sidebar-expanded', String(sidebarExpanded.value))
-}
-
-const activeDownloads = ref(0)
-const downloadBadge = computed(() => activeDownloads.value > 0 ? String(activeDownloads.value) : '')
-const downloadBadgeType = computed(() => activeDownloads.value > 0 ? 'active' : '')
 
 const tabs = [
   { name: 'home', label: '首页', icon: '🏠', shortcut: '1' },
@@ -133,9 +126,7 @@ const tabs = [
 let cleanups: Array<() => void> = []
 
 function onKeydown(e: KeyboardEvent) {
-  // Escape closes the about modal
   if (e.key === 'Escape' && aboutOpen.value) { aboutOpen.value = false; return }
-  // 1/2/3 switch tabs when no input is focused
   if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return
   if (e.ctrlKey || e.metaKey || e.altKey) return
   if (e.key === '1') activeTab.value = 'home'
@@ -146,7 +137,7 @@ function onKeydown(e: KeyboardEvent) {
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
   cleanups.push(window.cctvdlApi.onBatchFinished((result: BatchResult) => {
-    activeDownloads.value = 0
+    dlStore.applyBatchFinished(result)
     if (result.failed > 0) {
       statusMessage.value = `完成 ${result.completed}，失败 ${result.failed}`
       statusType.value = 'error'
@@ -158,10 +149,7 @@ onMounted(() => {
   }))
 
   cleanups.push(window.cctvdlApi.onDownloadProgress((p: DownloadProgress) => {
-    if (p.batchTotal != null && p.batchCompleted != null) {
-      const remaining = p.batchTotal - p.batchCompleted
-      activeDownloads.value = remaining > 0 ? remaining : 0
-    }
+    dlStore.applyProgress(p)
   }))
 
   cleanups.push(window.cctvdlApi.onUpdateAvailable(({ version }) => {

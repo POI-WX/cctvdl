@@ -23,7 +23,19 @@ export function registerIpcHandlers(
   // Set per launch so partial downloads (下载选中 / 下载此集) and retries don't pop
   // the folder — only 下载本月（全部）and single-video downloads do.
   let currentBatchAutoOpen = false
-  ipcMain.handle('browse-program', (_, url: string) => browse.resolveColumnInfo(url))
+  ipcMain.handle('browse-program', async (_, url: string) => {
+    const info = await browse.resolveColumnInfo(url)
+    // Guard against zombie columns: pages that carry a column_id but whose
+    // video list is permanently empty (e.g. standalone movie pages on CCTV).
+    // A single no-month query (d='') returns all-time content — real columns
+    // always have historical videos; zombie columns return empty regardless of
+    // time range. One request is enough; no month-loop needed.
+    const anyVideos = await browse.getColumnVideoList(info.columnId, 1, '').catch(() => [])
+    if (!anyVideos.length) {
+      throw new Error('无法解析节目信息')
+    }
+    return info
+  })
 
   ipcMain.handle('list-videos', async (_, columnId: string, itemId: string, month: string) => {
     const result = await browse.getColumnVideoList(columnId, 1, month)

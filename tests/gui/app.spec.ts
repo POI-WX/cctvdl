@@ -383,13 +383,13 @@ test.describe('cctvdl GUI 测试', () => {
     // 点击折叠
     await toggleBtn.click()
     await page.waitForTimeout(200)
-    const panel = page.locator('.preview-panel')
-    await expect(panel).toBeHidden()
+    const panel = page.locator('.home-preview')
+    await expect(panel).toHaveClass(/collapsed/)
 
     // 再次展开
     await toggleBtn.click()
     await page.waitForTimeout(200)
-    await expect(panel).toBeVisible()
+    await expect(panel).not.toHaveClass(/collapsed/)
   })
 
   // ── U1 · 视频行缩略图 ──────────────────────────────────────

@@ -35,4 +35,26 @@ describe('CCTV API smoke', () => {
     const r = await api.resolveSegmentUrls(videos[0].guid, 'liuchang')
     expect(r.segmentUrls.length).toBeGreaterThan(0)
   }, 60_000)
+
+  it('resolveSingleVideo: extracts guid, title, coverUrl and brief from real movie page', async () => {
+    const url = 'https://tv.cctv.com/2026/06/12/VIDEfgJBdxtUMoAkH5c89ZYZ260612.shtml'
+    const v = await browse.resolveSingleVideo(url)
+
+    // HTML var guid takes precedence over URL VIDE token
+    expect(v.guid).toBe('73dfb7e8070247d7acb90016a365c9e6')
+    expect(v.title).toBeTruthy()
+    expect(v.title).not.toBe('未命名视频')
+    // coverUrl is the real episode thumbnail from getHttpVideoInfo (fmspic), not the
+    // generic og:image placeholder (/photoAlbum/page/performance/...)
+    expect(v.coverUrl).toMatch(/^https:\/\//)
+    expect(v.coverUrl).not.toContain('photoAlbum/page/performance')
+    // brief extracted from og:description or name=description
+    expect(v.brief.length).toBeGreaterThan(10)
+    // date from URL path
+    expect(v.time).toBe('2026-06-12')
+
+    // Confirm the resolved guid is downloadable
+    const r = await new CctvApiService().resolveSegmentUrls(v.guid, 'liuchang')
+    expect(r.segmentUrls.length).toBeGreaterThan(0)
+  }, 60_000)
 })

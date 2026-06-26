@@ -84,10 +84,18 @@ describe('IPC Handlers', () => {
   })
 
   describe('browse-program', () => {
-    it('delegates to browseService.resolveColumnInfo', async () => {
+    it('resolves column info and probes for all-time content', async () => {
+      // mockBrowse.getColumnVideoList returns 1 video by default
       const result = await handlers['browse-program']({}, 'https://tv.cctv.com/lm/test/')
       expect(mockBrowse.resolveColumnInfo).toHaveBeenCalledWith('https://tv.cctv.com/lm/test/')
+      // probe uses empty month string to get all-time content
+      expect(mockBrowse.getColumnVideoList).toHaveBeenCalledWith('TOPC1', 1, '')
       expect(result).toEqual({ name: 'Test', columnId: 'TOPC1', itemId: '' })
+    })
+
+    it('throws when all-time list is empty (zombie column)', async () => {
+      vi.mocked(mockBrowse.getColumnVideoList).mockResolvedValueOnce([])
+      await expect(handlers['browse-program']({}, 'https://tv.cctv.com/lm/test/')).rejects.toThrow('无法解析节目信息')
     })
   })
 

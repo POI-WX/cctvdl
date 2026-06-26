@@ -119,12 +119,15 @@ export class BrowseService {
     if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching page`)
     const html = await resp.text()
 
+    // Prefer var guid from HTML (actual playable guid for download API).
+    // URL's VIDE token is a CMS content ID, not the video guid — fall back to it
+    // only when the page has no var guid declaration.
     let guid = ''
-    const urlGuidMatch = pageUrl.match(/(VIDE[A-Za-z0-9]+)\.s?html/i)
-    if (urlGuidMatch) guid = urlGuidMatch[1]
+    const htmlGuidMatch = html.match(/var\s+guid\s*=\s*["']([^"']+)["']/)
+    if (htmlGuidMatch) guid = htmlGuidMatch[1]
     if (!guid) {
-      const htmlGuidMatch = html.match(/var\s+guid\s*=\s*["']([^"']+)["']/)
-      if (htmlGuidMatch) guid = htmlGuidMatch[1]
+      const urlGuidMatch = pageUrl.match(/(VIDE[A-Za-z0-9]+)\.s?html/i)
+      if (urlGuidMatch) guid = urlGuidMatch[1]
     }
     if (!guid) throw new Error('无法解析视频信息')
 
@@ -134,11 +137,36 @@ export class BrowseService {
     const dateMatch = pageUrl.match(/\/(\d{4})\/(\d{2})\/(\d{2})\//)
     const time = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : ''
 
-    // Cover from the og:image meta tag, if present.
-    const coverMatch = html.match(/<meta[^>]+og:image["'][^>]+content=["']([^"']+)["']/i)
-    const coverUrl = coverMatch ? coverMatch[1] : ''
+    // Fetch the real cover and brief from getHttpVideoInfo (best-effort, non-blocking).
+    // This gives the actual episode thumbnail (fmspic) instead of the generic og:image
+    // placeholder that many CCTV pages use.
+    let apiCoverUrl = ''
+    let apiBrief = ''
+    try {
+      const infoResp = await this.fetch(
+        `https://vdn.apps.cntv.cn/api/getHttpVideoInfo.do?pid=${guid}&type=json&ltype=html5`,
+        uaInit()
+      )
+      if (infoResp.ok) {
+        const info = await infoResp.json() as Record<string, unknown>
+        apiCoverUrl = String(info['image'] || '')
+        apiBrief = cleanBrief(String(info['brief'] || ''))
+      }
+    } catch { /* silent — og:image fallback below */ }
 
-    return { guid, title, brief: '', coverUrl, time }
+    // Cover: prefer API image, fall back to og:image from page HTML.
+    const coverMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+      ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
+    const coverRaw = apiCoverUrl || (coverMatch ? coverMatch[1] : '')
+    const coverUrl = coverRaw.startsWith('//') ? `https:${coverRaw}` : coverRaw
+
+    // Brief: prefer API value, fall back to og:description / name=description.
+    const briefMatch = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']{10,}?)["']/i)
+      ?? html.match(/<meta[^>]+name=["']?description["']?[^>]+content=["']([^"']{10,}?)["']/i)
+      ?? html.match(/<meta[^>]+content=["']([^"']{10,}?)["'][^>]+property=["']og:description["']/i)
+    const brief = apiBrief || (briefMatch ? cleanBrief(briefMatch[1]) : '')
+
+    return { guid, title, brief, coverUrl, time }
   }
 }
 

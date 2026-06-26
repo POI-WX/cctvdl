@@ -112,4 +112,9 @@ describe('end-to-end pipeline', () => {
     const resolved = await api.resolveSegmentUrls('354d096689104a5fbf1b62398be502c6', 'liuchang')
     expect(resolved.segmentUrls.length).toBeGreaterThan(0)
   }, 60_000)
+
+  it('单视频直链: resolveSingleVideo guid 可解密合并（浪浪山小妖怪）', async () => {
+    // guid 73dfb7e8... is the playable guid extracted from the movie page HTML var guid
+    await runDecryptMergeTest('73dfb7e8070247d7acb90016a365c9e6', 'liuchang', 'single-video-movie')
+  }, 180_000)
 })
