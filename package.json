@@ -1,6 +1,6 @@
 {
   "name": "cctvdl",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "跨平台央视视频下载器",
   "main": "./out/main/index.js",
   "author": "POI-WX",
@@ -52,7 +52,8 @@
     "electron-store": "^8.2.0",
     "element-plus": "^2.9.0",
     "ffmpeg-static": "^5.2.0",
-    "p-queue": "^6.6.2"
+    "p-queue": "^6.6.2",
+    "pinia": "^3.0.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

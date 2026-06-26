@@ -4,6 +4,19 @@
 
 ---
 
+## 0.2.5
+
+### 新增 / 优化
+
+- **Pinia 状态管理**：`useAppStore` / `useDownloadStore` / `useContentStore` 统一组件状态，IPC 事件监听集中在 store action 中
+- **结构化错误码**：`errors.ts` 新增 `ErrorCode` 枚举与 `AppError` 类型，`humanizeError` 签名向后兼容
+- **单视频封面与简介修复**：优先从 `getHttpVideoInfo` API 获取真实封面（fmspic 截帧）和简介，不再显示 CCTV 官网通用占位图
+- **单视频 guid 修复**：优先取页面 HTML 中的 `var guid`（实际可下载 guid），而非 URL 中的 VIDE token（CMS 内容 ID）
+- **僵尸栏目检测**：导入栏目时自动检测是否有历史内容，无内容则回退到单视频下载（修复停播节目与独立电影被误导入为空栏目的问题）
+- **首页视频区加宽**：左侧内容面板从 300px 加宽至 360px，视频行标题不再截断
+
+---
+
 ## 0.2.4
 
 ### 新增

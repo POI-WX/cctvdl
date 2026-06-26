@@ -30,7 +30,7 @@ body:
     id: version
     attributes:
       label: cctvdl 版本
-      placeholder: 例如 0.2.4（关于弹窗可查看）
+      placeholder: 例如 0.2.5（关于弹窗可查看）
     validations:
       required: true
   - type: dropdown
