@@ -12,6 +12,7 @@ import { ConfigStore } from './config'
 import { setLogLevel, setLogPath, logger } from './logger'
 import { taskbarFraction } from '../shared/progress'
 import { sanitizeBounds } from '../shared/window-bounds'
+import { checkForUpdate } from '../shared/update-check'
 import type { BatchResult, DownloadProgress } from '../shared/types'
 
 const isMac   = process.platform === 'darwin'
@@ -193,6 +194,40 @@ app.whenReady().then(() => {
     (url) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('clipboard-link', url) }
   )
   clipboardWatcherRef.start()
+
+  // Background checks: fire once the renderer has loaded so send() is safe.
+  mainWindow.webContents.once('did-finish-load', () => {
+    // Version update check — env override for testing (no real fetch needed in GUI tests)
+    const mockVersion = process.env['MOCK_UPDATE_VERSION']
+    if (mockVersion) {
+      mainWindow.webContents.send('update-available', { version: mockVersion })
+    } else {
+      checkForUpdate(app.getVersion()).then(result => {
+        if (result.available && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('update-available', { version: result.version })
+        }
+      }).catch(() => { /* silent */ })
+    }
+
+    // New-content check: compare latest video guid of each favorited program against download history
+    const programs = config.getPrograms().filter(p => p.favoritedAt != null)
+    if (programs.length === 0) return
+    const history = new Set(config.getDownloadHistory())
+    programs.forEach(async (program) => {
+      try {
+        const now = new Date()
+        const month = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
+        let list = await browse.getColumnVideoList(program.columnId, 1, month)
+        if (!list.length && program.itemId) {
+          list = await browse.getAlbumVideoList(program.itemId, 1, month)
+        }
+        const newCount = list.filter(v => !history.has(v.guid)).length
+        if (newCount > 0 && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('new-content', { columnId: program.columnId, count: newCount })
+        }
+      } catch { /* silent — network may be unavailable */ }
+    })
+  })
 
   logger.info('cctvdl ready')
 })

@@ -144,6 +144,8 @@ export function registerIpcHandlers(
 
   ipcMain.handle('open-path', (_, p: string) => shell.openPath(p))
 
+  ipcMain.handle('open-url', (_, url: string) => shell.openExternal(url))
+
   // Reveal a specific file in the OS file manager (selects it).
   ipcMain.handle('reveal-file', (_, p: string) => shell.showItemInFolder(p))
 

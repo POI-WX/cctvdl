@@ -122,6 +122,7 @@ export interface CctvdlApi {
   saveSettings(s: Settings): Promise<void>
   selectDirectory(defaultPath?: string): Promise<string | null>
   openPath(p: string): Promise<void>
+  openUrl(url: string): Promise<void>
   revealFile(p: string): Promise<void>
   onDownloadProgress(cb: (p: DownloadProgress) => void): () => void
   onJobFinished(cb: (job: DownloadJob) => void): () => void
@@ -129,6 +130,8 @@ export interface CctvdlApi {
   onBatchStarted(cb: (info: BatchStartInfo) => void): () => void
   onDownloadSkipped(cb: (info: { guid: string; title: string; reason: string }) => void): () => void
   onClipboardLink(cb: (url: string) => void): () => void
+  onUpdateAvailable(cb: (payload: { version: string }) => void): () => void
+  onNewContent(cb: (payload: { columnId: string; count: number }) => void): () => void
   getDownloadHistory(): Promise<string[]>
   clearDownloadHistory(): Promise<void>
   // Static platform flag (from preload) — lets the renderer adapt shortcuts, e.g.

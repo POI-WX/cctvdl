@@ -27,6 +27,7 @@ const api: CctvdlApi = {
   saveSettings: (s: Settings) => ipcRenderer.invoke('save-settings', s),
   selectDirectory: (defaultPath?: string) => ipcRenderer.invoke('select-directory', defaultPath),
   openPath: (p: string) => ipcRenderer.invoke('open-path', p),
+  openUrl: (url: string) => ipcRenderer.invoke('open-url', url),
   revealFile: (p: string) => ipcRenderer.invoke('reveal-file', p),
   onDownloadProgress: (cb: (p: DownloadProgress) => void) => {
     const handler = (_: unknown, p: DownloadProgress) => cb(p)
@@ -59,6 +60,16 @@ const api: CctvdlApi = {
     const handler = (_: unknown, url: string) => cb(url)
     ipcRenderer.on('clipboard-link', handler)
     return () => ipcRenderer.removeListener('clipboard-link', handler)
+  },
+  onUpdateAvailable: (cb: (payload: { version: string }) => void) => {
+    const handler = (_: unknown, payload: { version: string }) => cb(payload)
+    ipcRenderer.on('update-available', handler)
+    return () => ipcRenderer.removeListener('update-available', handler)
+  },
+  onNewContent: (cb: (payload: { columnId: string; count: number }) => void) => {
+    const handler = (_: unknown, payload: { columnId: string; count: number }) => cb(payload)
+    ipcRenderer.on('new-content', handler)
+    return () => ipcRenderer.removeListener('new-content', handler)
   },
   isMac: process.platform === 'darwin'
 }
