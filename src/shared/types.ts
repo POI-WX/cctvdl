@@ -2,6 +2,8 @@ export interface ProgramInfo {
   name: string
   columnId: string
   itemId: string
+  // Epoch ms when favorited (pinned to top); undefined = not favorited.
+  favoritedAt?: number
 }
 
 export interface VideoInfo {
@@ -97,6 +99,8 @@ export interface CctvdlApi {
   listVideos(columnId: string, itemId: string, month: string): Promise<VideoInfo[]>
   importProgram(p: ProgramInfo): Promise<boolean>
   deleteProgram(columnId: string): Promise<void>
+  clearPrograms(): Promise<void>
+  setProgramFavorite(columnId: string, favorite: boolean): Promise<void>
   getPrograms(): Promise<ProgramInfo[]>
   exportPrograms(): Promise<boolean>
   startDownload(jobs: DownloadJob[]): Promise<void>
@@ -116,6 +120,9 @@ export interface CctvdlApi {
   onDownloadSkipped(cb: (info: { guid: string; title: string; reason: string }) => void): () => void
   getDownloadHistory(): Promise<string[]>
   clearDownloadHistory(): Promise<void>
+  // Static platform flag (from preload) — lets the renderer adapt shortcuts, e.g.
+  // accepting Backspace as the delete key on macOS.
+  isMac: boolean
 }
 
 declare global {

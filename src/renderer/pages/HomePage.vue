@@ -9,6 +9,7 @@
           <span class="section-title">我的栏目</span>
           <div class="section-actions">
             <button class="icon-btn" title="导出栏目" :disabled="!programs.length" @click="exportPrograms">↑</button>
+            <button class="icon-btn" title="清空全部栏目" :disabled="!programs.length" @click="clearAllPrograms">🧹</button>
           </div>
         </div>
         <!-- import input -->
@@ -49,17 +50,32 @@
           <div v-else-if="filteredPrograms.length === 0" class="program-empty">
             <span style="font-size:12px; color: var(--el-text-color-placeholder)">无匹配栏目</span>
           </div>
-          <TransitionGroup name="prog-list" tag="div">
-            <div
-              v-for="p in filteredPrograms"
-              :key="p.columnId"
-              class="program-item"
-              :class="{ active: selectedProgram?.columnId === p.columnId }"
-              @click="onProgramClick(p)"
-              @contextmenu.prevent="onProgramContext(p, $event)"
-            >
-              <span class="program-dot" />
-              <span class="program-name" :title="p.name">{{ p.name }}</span>
+          <TransitionGroup v-else name="prog-list" tag="div">
+            <div v-for="row in displayRows" :key="row.key" class="program-row">
+              <div v-if="row.type === 'header'" class="program-group-header">{{ row.label }}</div>
+              <div
+                v-else
+                class="program-item"
+                :class="{ active: selectedProgram?.columnId === row.program.columnId }"
+                @click="onProgramClick(row.program)"
+                @contextmenu.prevent="onProgramContext(row.program, $event)"
+              >
+                <span class="program-dot" />
+                <span class="program-name" :title="row.program.name">{{ row.program.name }}</span>
+                <span class="program-actions">
+                  <button
+                    class="prog-action-btn star"
+                    :class="{ faved: isFav(row.program) }"
+                    :title="isFav(row.program) ? '取消收藏' : '收藏'"
+                    @click.stop="toggleFavorite(row.program)"
+                  >⭐</button>
+                  <button
+                    class="prog-action-btn del"
+                    title="删除栏目"
+                    @click.stop="deleteProgram(row.program)"
+                  >🗑</button>
+                </span>
+              </div>
             </div>
           </TransitionGroup>
         </div>
@@ -290,15 +306,47 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import type { ProgramInfo, VideoInfo, DownloadJob } from '../../shared/types'
 import { filterVideos } from '../../shared/video-filter'
+import { sortPrograms, isProgramDeleteKey } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
 import { buildOutputPath } from '../../shared/filename'
 
+const isMac = window.cctvdlApi.isMac
+
 const programs = ref<ProgramInfo[]>([])
 const programQuery = ref('')
+
+const isFav = (p: ProgramInfo): boolean => p.favoritedAt != null
+
+// Favorites first (most-recently-favorited on top), then import order; then the
+// optional name filter on top of that order.
+const sortedPrograms = computed(() => sortPrograms(programs.value))
 const filteredPrograms = computed(() => {
   const q = programQuery.value.trim().toLowerCase()
-  if (!q) return programs.value
-  return programs.value.filter(p => p.name.toLowerCase().includes(q))
+  if (!q) return sortedPrograms.value
+  return sortedPrograms.value.filter(p => p.name.toLowerCase().includes(q))
+})
+
+// Flatten into a render list of group headers + items. When searching we drop the
+// headers (flat results); otherwise we show 收藏 / 全部 groups, but only once
+// something is actually favorited (avoids extra chrome on a fresh list).
+type ProgramRow =
+  | { type: 'header'; label: string; key: string; program?: undefined }
+  | { type: 'item'; label?: undefined; key: string; program: ProgramInfo }
+const displayRows = computed<ProgramRow[]>(() => {
+  const list = filteredPrograms.value
+  if (programQuery.value.trim()) {
+    return list.map(p => ({ type: 'item', program: p, key: p.columnId }))
+  }
+  const favs = list.filter(isFav)
+  const others = list.filter(p => !isFav(p))
+  if (!favs.length) {
+    return others.map(p => ({ type: 'item', program: p, key: p.columnId }))
+  }
+  const rows: ProgramRow[] = [{ type: 'header', label: '⭐ 收藏', key: '__hdr_fav' }]
+  for (const p of favs) rows.push({ type: 'item', program: p, key: p.columnId })
+  rows.push({ type: 'header', label: '全部栏目', key: '__hdr_all' })
+  for (const p of others) rows.push({ type: 'item', program: p, key: p.columnId })
+  return rows
 })
 const videos = ref<(VideoInfo & { selected?: boolean })[]>([])
 const selectedProgram = ref<ProgramInfo | null>(null)
@@ -374,11 +422,27 @@ async function refreshDownloadedSet() {
 
 let cleanupSkipped: (() => void) | null = null
 
+// True when focus is in a text-entry field, so global shortcuts don't hijack
+// typing (e.g. forward-delete while editing the search box must not delete a
+// program). Excludes non-text inputs like the video checkboxes, so Ctrl+A still
+// works after toggling a selection.
+function isEditingTarget(): boolean {
+  const el = document.activeElement as HTMLElement | null
+  if (!el) return false
+  if (el.isContentEditable || el.tagName === 'TEXTAREA') return true
+  if (el.tagName === 'INPUT') {
+    const type = (el as HTMLInputElement).type
+    return type !== 'checkbox' && type !== 'radio' && type !== 'button' && type !== 'submit'
+  }
+  return false
+}
+
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && lightboxOpen.value) { e.preventDefault(); closeLightbox(); return }
+  if (isEditingTarget()) return
   if (e.key === 'F5') { e.preventDefault(); if (selectedProgram.value) loadVideos(); return }
   if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); if (videos.value.length > 0) toggleSelectAll(); return }
-  if (e.key === 'Delete' && selectedProgram.value) { e.preventDefault(); deleteProgram(selectedProgram.value) }
+  if (isProgramDeleteKey(e.key, isMac) && selectedProgram.value) { e.preventDefault(); deleteProgram(selectedProgram.value) }
 }
 
 onMounted(async () => {
@@ -465,6 +529,34 @@ async function deleteProgram(row: ProgramInfo) {
 }
 
 function onProgramContext(row: ProgramInfo, _event: MouseEvent) { deleteProgram(row) }
+
+// Optimistic toggle: update the local flag (the list re-sorts reactively and the
+// row animates to/from the 收藏 group), then persist. Re-sync from store on error.
+async function toggleFavorite(row: ProgramInfo) {
+  const favorite = !isFav(row)
+  if (favorite) row.favoritedAt = Date.now()
+  else delete row.favoritedAt
+  try {
+    await window.cctvdlApi.setProgramFavorite(row.columnId, favorite)
+  } catch (err) {
+    programs.value = await window.cctvdlApi.getPrograms()
+    ElMessage.error(`操作失败：${err}`)
+  }
+}
+
+async function clearAllPrograms() {
+  if (!programs.value.length) return
+  try {
+    await ElMessageBox.confirm(`确定清空全部 ${programs.value.length} 个栏目吗？`, '确认清空', {
+      confirmButtonText: '清空', cancelButtonText: '取消', type: 'warning'
+    })
+    await window.cctvdlApi.clearPrograms()
+    programs.value = []
+    selectedProgram.value = null
+    videos.value = []
+    ElMessage.success('已清空')
+  } catch { /* cancelled */ }
+}
 
 async function loadVideos() {
   if (!selectedProgram.value) return
@@ -674,11 +766,55 @@ async function downloadVideos(videoList: VideoInfo[]) {
 .program-item.active .program-dot { background: var(--el-color-primary); }
 
 .program-name {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 收藏 / 全部 分组头（复用视频列表日期头的视觉语言） */
+.program-group-header {
+  padding: 6px 8px 3px;
+  font-size: 11px;
+  font-weight: var(--app-font-weight-semibold);
+  letter-spacing: 0.3px;
+  color: var(--el-text-color-secondary);
+  user-select: none;
+}
+
+/* 行内悬停操作：固定占位避免名字截断点抖动；收藏星标常驻显示 */
+.program-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.prog-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .12s, background .12s, color .12s;
+}
+
+.program-item:hover .prog-action-btn { opacity: 1; }
+/* 未收藏：悬停时暗显（点亮即收藏）；已收藏：⭐ 常驻显示 */
+.program-item:hover .prog-action-btn.star:not(.faved) { opacity: 0.4; }
+.prog-action-btn.star.faved { opacity: 1; }
+.prog-action-btn:hover { background: var(--el-fill-color); }
+.prog-action-btn.del:hover { color: var(--el-color-danger); }
 
 /* 视频搜索 */
 .video-search { margin-bottom: 0; }
@@ -1234,7 +1370,8 @@ html.dark :deep(.hl) {
 .preview-fade-enter-from,
 .preview-fade-leave-to { opacity: 0; }
 
-/* 栏目列表入场动画 */
+/* 栏目列表入场 + 收藏重排时的平滑移动动画 */
 .prog-list-enter-active { transition: opacity .15s ease, transform .15s ease; }
 .prog-list-enter-from { opacity: 0; transform: translateX(-6px); }
+.prog-list-move { transition: transform .25s ease; }
 </style>

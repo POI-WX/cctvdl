@@ -70,6 +70,21 @@ export class ConfigStore {
     this.store.set('programs', filtered)
   }
 
+  clearPrograms(): void {
+    this.store.set('programs', [])
+  }
+
+  // Favorite/unfavorite a program. favoritedAt (epoch ms) doubles as the sort key
+  // so the most-recently-favorited shows on top; clearing it un-favorites.
+  setProgramFavorite(columnId: string, favorite: boolean): void {
+    const programs = this.getPrograms()
+    const program = programs.find(p => p.columnId === columnId)
+    if (!program) return
+    if (favorite) program.favoritedAt = Date.now()
+    else delete program.favoritedAt
+    this.store.set('programs', programs)
+  }
+
   getDownloadHistory(): string[] {
     return this.store.get('downloadHistory')
   }

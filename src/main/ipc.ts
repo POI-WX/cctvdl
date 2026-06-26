@@ -34,6 +34,11 @@ export function registerIpcHandlers(
   // Delete by columnId (safe against index drift)
   ipcMain.handle('delete-program', (_, columnId: string) => config.deleteProgram(columnId))
 
+  ipcMain.handle('clear-programs', () => config.clearPrograms())
+
+  ipcMain.handle('set-program-favorite', (_, columnId: string, favorite: boolean) =>
+    config.setProgramFavorite(columnId, favorite))
+
   ipcMain.handle('get-programs', () => config.getPrograms())
 
   ipcMain.handle('export-programs', async () => {

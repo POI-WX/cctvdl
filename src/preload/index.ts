@@ -7,6 +7,9 @@ const api: CctvdlApi = {
     ipcRenderer.invoke('list-videos', columnId, itemId, month),
   importProgram: (p: ProgramInfo) => ipcRenderer.invoke('import-program', p),
   deleteProgram: (columnId: string) => ipcRenderer.invoke('delete-program', columnId),
+  clearPrograms: () => ipcRenderer.invoke('clear-programs'),
+  setProgramFavorite: (columnId: string, favorite: boolean) =>
+    ipcRenderer.invoke('set-program-favorite', columnId, favorite),
   getPrograms: () => ipcRenderer.invoke('get-programs'),
   exportPrograms: () => ipcRenderer.invoke('export-programs'),
   startDownload: (jobs: DownloadJob[]) => ipcRenderer.invoke('start-download', jobs),
@@ -45,7 +48,8 @@ const api: CctvdlApi = {
     const handler = (_: unknown, info: { guid: string; title: string; reason: string }) => cb(info)
     ipcRenderer.on('download-skipped', handler)
     return () => ipcRenderer.removeListener('download-skipped', handler)
-  }
+  },
+  isMac: process.platform === 'darwin'
 }
 
 contextBridge.exposeInMainWorld('cctvdlApi', api)

@@ -106,6 +106,31 @@ describe('ConfigStore', () => {
       store.deleteProgram('TOPC999')
       expect(store.getPrograms()).toHaveLength(1)
     })
+
+    it('clearPrograms removes all programs', () => {
+      store.addProgram({ name: 'A', columnId: 'TOPC001', itemId: '' })
+      store.addProgram({ name: 'B', columnId: 'TOPC002', itemId: '' })
+      store.clearPrograms()
+      expect(store.getPrograms()).toEqual([])
+    })
+
+    it('setProgramFavorite stamps favoritedAt, then clears it', () => {
+      store.addProgram({ name: 'A', columnId: 'TOPC001', itemId: '' })
+      const before = Date.now()
+      store.setProgramFavorite('TOPC001', true)
+      const fav = store.getPrograms()[0].favoritedAt
+      expect(typeof fav).toBe('number')
+      expect(fav!).toBeGreaterThanOrEqual(before)
+
+      store.setProgramFavorite('TOPC001', false)
+      expect(store.getPrograms()[0].favoritedAt).toBeUndefined()
+    })
+
+    it('setProgramFavorite on non-existent columnId does nothing', () => {
+      store.addProgram({ name: 'A', columnId: 'TOPC001', itemId: '' })
+      store.setProgramFavorite('TOPC999', true)
+      expect(store.getPrograms()[0].favoritedAt).toBeUndefined()
+    })
   })
 
   describe('Download History', () => {

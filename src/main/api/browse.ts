@@ -65,10 +65,10 @@ export class BrowseService {
       const topicIdMatch = html.match(/var\s+topicID\s*=\s*["']([^"']+)["']/)
       if (topicIdMatch) columnId = topicIdMatch[1]
     }
-    if (!columnId) {
-      const lmMatch = pageUrl.match(/\/lm\/([^/]+)/)
-      if (lmMatch) columnId = lmMatch[1]
-    }
+    // No URL-slug fallback: the video API needs a real column id (TOPC…). Special
+    // columns (e.g. 等着我) are standalone microsites with no column_id/topicID —
+    // a slug like "dzw" only yields a zombie column whose list never resolves, so
+    // we let columnId stay empty and reject below with a clear error.
 
     // 2. Extract column name (priority: commentTitle → <title> tag)
     let name = ''

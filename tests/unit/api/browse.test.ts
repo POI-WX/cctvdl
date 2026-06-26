@@ -262,5 +262,18 @@ describe('BrowseService', () => {
       const info = await service.resolveColumnInfo('https://tv.cctv.com/test')
       expect(info.itemId).toBe('VIDE123456')
     })
+
+    it('rejects special columns with a name but no column_id/topicID (no URL-slug fallback)', async () => {
+      // 等着我-style microsite: a messy <title> resolves a name, but none of the
+      // standard column vars exist. Without the old slug fallback, columnId stays
+      // empty so we reject instead of importing a zombie column.
+      const html = `<title>等着我官网_CCTV等着我栏目唯一官方平台 寻亲报名_CCTV节目官网-CCTV</title>`
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true, text: () => Promise.resolve(html)
+      })
+      const service = new BrowseService(mockFetch)
+      await expect(service.resolveColumnInfo('https://tv.cctv.com/lm/dzw/index.shtml'))
+        .rejects.toThrow('无法解析节目信息')
+    })
   })
 })

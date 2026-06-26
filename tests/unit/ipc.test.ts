@@ -66,6 +66,8 @@ describe('IPC Handlers', () => {
       getPrograms: vi.fn().mockReturnValue([]),
       addProgram: vi.fn().mockReturnValue(true),
       deleteProgram: vi.fn(),
+      clearPrograms: vi.fn(),
+      setProgramFavorite: vi.fn(),
       getDownloadHistory: vi.fn().mockReturnValue([]),
       addToDownloadHistory: vi.fn(),
       isInDownloadHistory: vi.fn().mockReturnValue(false),
@@ -115,6 +117,20 @@ describe('IPC Handlers', () => {
     it('delegates to config.deleteProgram with columnId', async () => {
       await handlers['delete-program']({}, 'TOPC1')
       expect(mockConfig.deleteProgram).toHaveBeenCalledWith('TOPC1')
+    })
+  })
+
+  describe('clear-programs', () => {
+    it('delegates to config.clearPrograms', async () => {
+      await handlers['clear-programs']({})
+      expect(mockConfig.clearPrograms).toHaveBeenCalled()
+    })
+  })
+
+  describe('set-program-favorite', () => {
+    it('delegates to config.setProgramFavorite with columnId and flag', async () => {
+      await handlers['set-program-favorite']({}, 'TOPC1', true)
+      expect(mockConfig.setProgramFavorite).toHaveBeenCalledWith('TOPC1', true)
     })
   })
 
