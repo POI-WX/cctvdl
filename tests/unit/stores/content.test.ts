@@ -81,6 +81,22 @@ describe('useContentStore', () => {
     })
   })
 
+  describe('clearNewContent', () => {
+    it('点击栏目后清除对应红点', () => {
+      const store = useContentStore()
+      store.applyNewContent('COL001', 3)
+      store.applyNewContent('COL002', 1)
+      store.clearNewContent('COL001')
+      expect(store.newContentMap.has('COL001')).toBe(false)
+      expect(store.newContentMap.get('COL002')).toBe(1)
+    })
+    it('对不存在的 columnId 是 no-op', () => {
+      const store = useContentStore()
+      store.clearNewContent('NON_EXIST')
+      expect(store.newContentMap.size).toBe(0)
+    })
+  })
+
   describe('refreshDownloadedSet', () => {
     it('从 API 更新 downloadedSet', async () => {
       const store = useContentStore()

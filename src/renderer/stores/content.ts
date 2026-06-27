@@ -90,6 +90,13 @@ export const useContentStore = defineStore('content', () => {
     newContentMap.value = next
   }
 
+  function clearNewContent(columnId: string) {
+    if (!newContentMap.value.has(columnId)) return
+    const next = new Map(newContentMap.value)
+    next.delete(columnId)
+    newContentMap.value = next
+  }
+
   return {
     programs, singleVideos, videos, viewMode, selectedProgram, selectedVideo,
     selectedMonth, downloadedSet, newContentMap, emptyMonths,
@@ -97,6 +104,6 @@ export const useContentStore = defineStore('content', () => {
     isFav, sortedPrograms, filteredPrograms, displayRows,
     filteredVideos, allSelected, selectedVideos, downloadedCount, allSelectedDownloaded,
     emptyHint, groupedVideos,
-    refreshDownloadedSet, recordVideosLoaded, clearEmptyMonths, applyNewContent
+    refreshDownloadedSet, recordVideosLoaded, clearEmptyMonths, applyNewContent, clearNewContent
   }
 })

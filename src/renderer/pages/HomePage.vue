@@ -671,7 +671,7 @@ async function doImport(url: string) {
 
 defineExpose({ handleDropImport })
 
-function onProgramClick(row: ProgramInfo) { viewMode.value = 'column'; selectedProgram.value = row; contentStore.clearEmptyMonths(); loadVideos() }
+function onProgramClick(row: ProgramInfo) { viewMode.value = 'column'; selectedProgram.value = row; contentStore.clearEmptyMonths(); contentStore.clearNewContent(row.columnId); loadVideos() }
 
 // ─── Single-video collection ────────────────────────────────────────────────
 function selectSingleMode() {
