@@ -88,6 +88,28 @@ export function registerIpcHandlers(
     return true
   })
 
+  ipcMain.handle('import-single-videos', async () => {
+    const result = await dialog.showOpenDialog(getWindow(), {
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (result.canceled || !result.filePaths[0]) return -1
+    const raw = fs.readFileSync(result.filePaths[0], 'utf-8')
+    return config.importSingleVideos(JSON.parse(raw))
+  })
+
+  ipcMain.handle('export-single-videos', async () => {
+    const videos = config.exportSingleVideos()
+    if (!videos.length) return false
+    const result = await dialog.showSaveDialog(getWindow(), {
+      defaultPath: 'single-videos.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (result.canceled || !result.filePath) return false
+    fs.writeFileSync(result.filePath, JSON.stringify(videos, null, 2), 'utf-8')
+    return true
+  })
+
   const launchBatch = (jobs: DownloadJob[], skipHistory: boolean, autoOpen = false): void => {
     currentBatchAutoOpen = autoOpen
     // Pre-flight: make sure the target directory exists and is writable before

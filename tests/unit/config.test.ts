@@ -181,26 +181,72 @@ describe('ConfigStore', () => {
       store.clearSingleVideos()
       expect(store.getSingleVideos()).toEqual([])
     })
+
+    it('exportSingleVideos returns a copy of the current list', () => {
+      store.addSingleVideo(mk('A'))
+      store.addSingleVideo(mk('B'))
+      const exported = store.exportSingleVideos()
+      expect(exported.map(v => v.guid)).toEqual(['B', 'A'])
+      // Mutation of returned array must not affect store
+      exported.pop()
+      expect(store.getSingleVideos()).toHaveLength(2)
+    })
+
+    it('importSingleVideos adds valid entries and dedupes by guid', () => {
+      store.addSingleVideo(mk('A'))
+      const added = store.importSingleVideos([mk('B'), mk('A'), mk('C')])
+      expect(added).toBe(2) // A already exists
+      expect(store.getSingleVideos().map(v => v.guid)).toContain('B')
+      expect(store.getSingleVideos().map(v => v.guid)).toContain('C')
+    })
+
+    it('importSingleVideos skips entries with missing or invalid guid', () => {
+      const added = store.importSingleVideos([
+        { title: 'no guid' },
+        { guid: '', title: 'empty guid' },
+        { guid: 123, title: 'non-string guid' },
+        mk('valid-1')
+      ])
+      expect(added).toBe(1)
+    })
+
+    it('importSingleVideos throws on non-array input', () => {
+      expect(() => store.importSingleVideos({ not: 'array' })).toThrow()
+    })
+
+    it('importSingleVideos returns 0 for empty array', () => {
+      expect(store.importSingleVideos([])).toBe(0)
+    })
   })
 
   describe('Download History', () => {
+    const mkEntry = (guid: string): import('../../src/shared/types').HistoryEntry =>
+      ({ guid, title: `t-${guid}`, outputPath: `/tmp/${guid}.mp4`, fileSize: 1024, completedAt: Date.now() })
+
     it('getDownloadHistory returns empty initially', () => {
       expect(store.getDownloadHistory()).toEqual([])
     })
 
-    it('addToDownloadHistory adds guid', () => {
-      store.addToDownloadHistory('guid-001')
-      expect(store.getDownloadHistory()).toContain('guid-001')
+    it('addToDownloadHistory adds entry', () => {
+      store.addToDownloadHistory(mkEntry('guid-001'))
+      expect(store.getDownloadHistory().map(e => e.guid)).toContain('guid-001')
     })
 
-    it('addToDownloadHistory deduplicates', () => {
-      store.addToDownloadHistory('guid-001')
-      store.addToDownloadHistory('guid-001')
+    it('addToDownloadHistory stores title and outputPath', () => {
+      store.addToDownloadHistory(mkEntry('guid-001'))
+      const entry = store.getDownloadHistory().find(e => e.guid === 'guid-001')
+      expect(entry?.title).toBe('t-guid-001')
+      expect(entry?.outputPath).toBe('/tmp/guid-001.mp4')
+    })
+
+    it('addToDownloadHistory deduplicates by guid', () => {
+      store.addToDownloadHistory(mkEntry('guid-001'))
+      store.addToDownloadHistory(mkEntry('guid-001'))
       expect(store.getDownloadHistory()).toHaveLength(1)
     })
 
     it('isInDownloadHistory returns true for existing', () => {
-      store.addToDownloadHistory('guid-001')
+      store.addToDownloadHistory(mkEntry('guid-001'))
       expect(store.isInDownloadHistory('guid-001')).toBe(true)
     })
 
@@ -209,25 +255,67 @@ describe('ConfigStore', () => {
     })
 
     it('clearDownloadHistory empties the list', () => {
-      store.addToDownloadHistory('guid-001')
-      store.addToDownloadHistory('guid-002')
+      store.addToDownloadHistory(mkEntry('guid-001'))
+      store.addToDownloadHistory(mkEntry('guid-002'))
       store.clearDownloadHistory()
       expect(store.getDownloadHistory()).toEqual([])
     })
 
     it('caps history at 1000 entries, keeping most recent', () => {
-      // Add 1002 items
       for (let i = 0; i < 1002; i++) {
-        store.addToDownloadHistory(`guid-${i}`)
+        store.addToDownloadHistory(mkEntry(`guid-${i}`))
       }
       const history = store.getDownloadHistory()
       expect(history.length).toBeLessThanOrEqual(1000)
-      // Most recent items should be kept
-      expect(history).toContain('guid-1001')
-      expect(history).toContain('guid-1000')
-      // Oldest items should be dropped
-      expect(history).not.toContain('guid-0')
-      expect(history).not.toContain('guid-1')
+      expect(history.map(e => e.guid)).toContain('guid-1001')
+      expect(history.map(e => e.guid)).toContain('guid-1000')
+      expect(history.map(e => e.guid)).not.toContain('guid-0')
+      expect(history.map(e => e.guid)).not.toContain('guid-1')
+    })
+
+    it('migrates legacy string[] format to HistoryEntry[]', () => {
+      // Simulate old format: write raw strings directly into store
+      ;(store as any).store.set('downloadHistory', ['legacy-guid-a', 'legacy-guid-b'])
+      const history = store.getDownloadHistory()
+      expect(history).toHaveLength(2)
+      expect(history[0].guid).toBe('legacy-guid-a')
+      expect(history[0].title).toBe('')
+      expect(history[0].fileSize).toBe(0)
+      expect(store.isInDownloadHistory('legacy-guid-a')).toBe(true)
+    })
+  })
+
+  describe('Pending Jobs', () => {
+    const mkJob = (id: string): import('../../src/shared/types').DownloadJob => ({
+      id, guid: `guid-${id}`, sourceUrl: '', title: `Job ${id}`,
+      savePath: `/tmp/${id}.mp4`, quality: 'auto', threadCount: 8, reencode: false,
+      state: 'Queued', stage: 'None', progressPercent: 0
+    })
+
+    it('getPendingJobs returns empty initially', () => {
+      expect(store.getPendingJobs()).toEqual([])
+    })
+
+    it('savePendingJobs persists jobs', () => {
+      store.savePendingJobs([mkJob('a'), mkJob('b')])
+      const jobs = store.getPendingJobs()
+      expect(jobs).toHaveLength(2)
+      expect(jobs[0].id).toBe('a')
+      expect(jobs[1].id).toBe('b')
+    })
+
+    it('clearPendingJobs empties the list', () => {
+      store.savePendingJobs([mkJob('a')])
+      store.clearPendingJobs()
+      expect(store.getPendingJobs()).toEqual([])
+    })
+
+    it('savePendingJobs overwrites previous state', () => {
+      store.savePendingJobs([mkJob('a')])
+      store.savePendingJobs([mkJob('b'), mkJob('c')])
+      const jobs = store.getPendingJobs()
+      expect(jobs).toHaveLength(2)
+      expect(jobs[0].id).toBe('b')
     })
   })
 })

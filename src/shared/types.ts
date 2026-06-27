@@ -98,6 +98,14 @@ export interface Settings {
   clipboardWatch?: boolean
 }
 
+export interface HistoryEntry {
+  guid: string
+  title: string
+  outputPath: string  // actual written file path
+  fileSize: number    // bytes, 0 = unknown
+  completedAt: number // epoch ms
+}
+
 export interface CctvdlApi {
   browseProgram(url: string): Promise<ProgramInfo>
   listVideos(columnId: string, itemId: string, month: string): Promise<VideoInfo[]>
@@ -112,6 +120,8 @@ export interface CctvdlApi {
   addSingleVideo(v: VideoInfo): Promise<boolean>
   deleteSingleVideo(guid: string): Promise<void>
   clearSingleVideos(): Promise<void>
+  importSingleVideos(): Promise<number>
+  exportSingleVideos(): Promise<boolean>
   exportPrograms(): Promise<boolean>
   startDownload(jobs: DownloadJob[], autoOpen?: boolean): Promise<void>
   retryJob(job: DownloadJob): Promise<void>
@@ -132,7 +142,7 @@ export interface CctvdlApi {
   onClipboardLink(cb: (url: string) => void): () => void
   onUpdateAvailable(cb: (payload: { version: string }) => void): () => void
   onNewContent(cb: (payload: { columnId: string; count: number }) => void): () => void
-  getDownloadHistory(): Promise<string[]>
+  getDownloadHistory(): Promise<HistoryEntry[]>
   clearDownloadHistory(): Promise<void>
   // Static platform flag (from preload) — lets the renderer adapt shortcuts, e.g.
   // accepting Backspace as the delete key on macOS.

@@ -287,7 +287,7 @@ describe('DownloadCoordinator', () => {
     })
 
     it('adds CCTV-4K job to download history on completion', async () => {
-      const mockConfig = { addToDownloadHistory: vi.fn() }
+      const mockConfig = { addToDownloadHistory: vi.fn(), savePendingJobs: vi.fn(), clearPendingJobs: vi.fn() }
       coordinator = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer, mockConfig)
 
       // 4K content goes through normal path, resolveSegmentUrls returns segmentUrls only
@@ -305,7 +305,7 @@ describe('DownloadCoordinator', () => {
       coordinator.startBatch([job])
       await new Promise((resolve) => setTimeout(resolve, 200))
 
-      expect(mockConfig.addToDownloadHistory).toHaveBeenCalledWith('guid-4k-h')
+      expect(mockConfig.addToDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ guid: 'guid-4k-h' }))
     })
   })
 
@@ -459,7 +459,7 @@ describe('DownloadCoordinator', () => {
 
   describe('download history', () => {
     it('adds normal job to download history on success', async () => {
-      const mockConfig = { addToDownloadHistory: vi.fn() }
+      const mockConfig = { addToDownloadHistory: vi.fn(), savePendingJobs: vi.fn(), clearPendingJobs: vi.fn() }
       coordinator = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer, mockConfig)
 
       const job: DownloadJob = {
@@ -472,11 +472,11 @@ describe('DownloadCoordinator', () => {
       coordinator.startBatch([job])
       await new Promise(r => setTimeout(r, 200))
 
-      expect(mockConfig.addToDownloadHistory).toHaveBeenCalledWith('guid-history')
+      expect(mockConfig.addToDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ guid: 'guid-history' }))
     })
 
     it('does not add to history on failure', async () => {
-      const mockConfig = { addToDownloadHistory: vi.fn() }
+      const mockConfig = { addToDownloadHistory: vi.fn(), savePendingJobs: vi.fn(), clearPendingJobs: vi.fn() }
       coordinator = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer, mockConfig)
 
       ;(mockDecryptor.decryptAll as any).mockResolvedValue({

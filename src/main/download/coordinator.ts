@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events'
 import fs from 'fs'
 import path from 'path'
-import type { DownloadJob, JobState, JobStage, DownloadProgress, BatchResult } from '../../shared/types'
+import type { DownloadJob, JobState, JobStage, DownloadProgress, BatchResult, HistoryEntry } from '../../shared/types'
 import type { CctvApiService } from '../api/cctv'
 import type { SegmentDecryptor, ProgressInfo } from './decryptor'
 import { segmentFileName } from './decryptor'
@@ -29,7 +29,9 @@ interface StateFile {
 }
 
 interface HistoryStore {
-  addToDownloadHistory(guid: string): void
+  addToDownloadHistory(entry: HistoryEntry): void
+  savePendingJobs(jobs: DownloadJob[]): void
+  clearPendingJobs(): void
 }
 
 export class DownloadCoordinator extends EventEmitter {
@@ -78,6 +80,16 @@ export class DownloadCoordinator extends EventEmitter {
     this.queue = []  // clear any stale entries from the previous batch
     this.batchStats = { completed: 0, failed: 0, cancelled: 0, total: 0 }
     this.failedJobs = []
+    this.isCancellingAll = false
+    for (const job of jobs) this.addJob(job)
+    this.config?.savePendingJobs(jobs)
+    this.startNext()
+  }
+
+  // Resume a previously persisted batch (e.g. after app restart). Unlike startBatch,
+  // does not reset stats so partial progress is preserved.
+  resumePending(jobs: DownloadJob[]): void {
+    this.queue = []
     this.isCancellingAll = false
     for (const job of jobs) this.addJob(job)
     this.startNext()
@@ -299,7 +311,14 @@ export class DownloadCoordinator extends EventEmitter {
       this.batchStats.completed++
 
       if (job.guid && this.config) {
-        this.config.addToDownloadHistory(job.guid)
+        const fileSize = (() => { try { return fs.statSync(finalPath).size } catch { return 0 } })()
+        this.config.addToDownloadHistory({
+          guid: job.guid,
+          title: job.title,
+          outputPath: finalPath,
+          fileSize,
+          completedAt: Date.now()
+        })
       }
 
       this.emit('jobFinished', job)
@@ -412,6 +431,7 @@ export class DownloadCoordinator extends EventEmitter {
   }
 
   private emitBatchFinished(): void {
+    this.config?.clearPendingJobs()
     const result: BatchResult = {
       ...this.batchStats,
       failedJobs: this.failedJobs

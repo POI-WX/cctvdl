@@ -72,7 +72,7 @@ export const useContentStore = defineStore('content', () => {
   async function refreshDownloadedSet() {
     try {
       const history = await window.cctvdlApi.getDownloadHistory()
-      downloadedSet.value = new Set(history)
+      downloadedSet.value = new Set(history.map(e => e.guid))
     } catch { /* best-effort */ }
   }
 

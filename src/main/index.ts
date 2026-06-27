@@ -197,6 +197,17 @@ app.whenReady().then(() => {
 
   // Background checks: fire once the renderer has loaded so send() is safe.
   mainWindow.webContents.once('did-finish-load', () => {
+    // Resume any queued jobs that were persisted before the last app exit.
+    const pending = config.getPendingJobs()
+    if (pending.length > 0) {
+      logger.info(`Resuming ${pending.length} pending job(s) from previous session`)
+      coordinator.resumePending(pending)
+      mainWindow.webContents.send('batch-started', {
+        total: pending.length,
+        jobs: pending.map(j => ({ id: j.id, title: j.title, guid: j.guid }))
+      })
+    }
+
     // Version update check — env override for testing (no real fetch needed in GUI tests)
     const mockVersion = process.env['MOCK_UPDATE_VERSION']
     if (mockVersion) {
@@ -213,7 +224,7 @@ app.whenReady().then(() => {
     // Run concurrently — each fetch is independent.
     const programs = config.getPrograms().filter(p => p.favoritedAt != null)
     if (programs.length === 0) return
-    const history = new Set(config.getDownloadHistory())
+    const history = new Set(config.getDownloadHistory().map(e => e.guid))
     const now = new Date()
     const month = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
     Promise.allSettled(programs.map(async (program) => {

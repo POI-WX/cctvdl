@@ -303,10 +303,14 @@ describe('IPC Handlers', () => {
   })
 
   describe('download history', () => {
-    it('get-download-history returns history', async () => {
-      vi.mocked(mockConfig.getDownloadHistory).mockReturnValue(['guid-1', 'guid-2'])
+    it('get-download-history returns HistoryEntry[]', async () => {
+      const entries = [
+        { guid: 'guid-1', title: '测试视频一', outputPath: '/tmp/a.mp4', fileSize: 1024, completedAt: 1000 },
+        { guid: 'guid-2', title: '测试视频二', outputPath: '/tmp/b.mp4', fileSize: 2048, completedAt: 2000 }
+      ]
+      vi.mocked(mockConfig.getDownloadHistory).mockReturnValue(entries)
       const result = await handlers['get-download-history']({})
-      expect(result).toEqual(['guid-1', 'guid-2'])
+      expect(result).toEqual(entries)
     })
 
     it('clear-download-history delegates to config', async () => {

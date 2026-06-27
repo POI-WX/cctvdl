@@ -1,6 +1,6 @@
 import Store from 'electron-store'
 import { app } from 'electron'
-import type { Settings, ProgramInfo, VideoInfo } from '../shared/types'
+import type { Settings, ProgramInfo, VideoInfo, HistoryEntry, DownloadJob } from '../shared/types'
 import { normalizeSettings } from '../shared/settings'
 import type { WindowBounds } from '../shared/window-bounds'
 
@@ -10,7 +10,8 @@ interface StoreSchema {
   settings: Settings
   programs: ProgramInfo[]
   singleVideos: VideoInfo[]
-  downloadHistory: string[]
+  downloadHistory: HistoryEntry[]
+  pendingJobs: DownloadJob[]
   windowBounds?: WindowBounds
 }
 
@@ -28,7 +29,8 @@ const defaults: StoreSchema = {
   },
   programs: [],
   singleVideos: [],
-  downloadHistory: []
+  downloadHistory: [],
+  pendingJobs: []
 }
 
 export class ConfigStore {
@@ -130,27 +132,60 @@ export class ConfigStore {
     this.store.set('singleVideos', [])
   }
 
-  getDownloadHistory(): string[] {
-    return this.store.get('downloadHistory')
+  exportSingleVideos(): VideoInfo[] {
+    return [...this.getSingleVideos()]
   }
 
-  addToDownloadHistory(guid: string): void {
+  importSingleVideos(data: unknown): number {
+    if (!Array.isArray(data)) throw new Error('JSON 格式不正确（应为单视频数组）')
+    let added = 0
+    for (const item of data) {
+      if (item && typeof item.guid === 'string' && item.guid) {
+        if (this.addSingleVideo(item as VideoInfo)) added++
+      }
+    }
+    return added
+  }
+
+  getDownloadHistory(): HistoryEntry[] {
+    const raw = this.store.get('downloadHistory') as unknown
+    if (!Array.isArray(raw)) return []
+    // Migrate legacy format: string[] → HistoryEntry[]
+    return (raw as Array<string | HistoryEntry>).map(item =>
+      typeof item === 'string'
+        ? { guid: item, title: '', outputPath: '', fileSize: 0, completedAt: 0 }
+        : item
+    )
+  }
+
+  addToDownloadHistory(entry: HistoryEntry): void {
     const history = this.getDownloadHistory()
-    if (!history.includes(guid)) {
-      history.push(guid)
-      // Cap at MAX_HISTORY_SIZE, removing oldest entries first
+    if (!history.some(e => e.guid === entry.guid)) {
+      history.push(entry)
       const trimmed = history.length > MAX_HISTORY_SIZE
         ? history.slice(history.length - MAX_HISTORY_SIZE)
         : history
-      this.store.set('downloadHistory', trimmed)
+      this.store.set('downloadHistory', trimmed as unknown as HistoryEntry[])
     }
   }
 
   isInDownloadHistory(guid: string): boolean {
-    return this.getDownloadHistory().includes(guid)
+    return this.getDownloadHistory().some(e => e.guid === guid)
   }
 
   clearDownloadHistory(): void {
     this.store.set('downloadHistory', [])
+  }
+
+  getPendingJobs(): DownloadJob[] {
+    return this.store.get('pendingJobs')
+  }
+
+  savePendingJobs(jobs: DownloadJob[]): void {
+    this.store.set('pendingJobs', jobs)
+  }
+
+  clearPendingJobs(): void {
+    this.store.set('pendingJobs', [])
   }
 }

@@ -112,7 +112,13 @@
             <button class="month-quick-btn" title="本月" @click="jumpMonth(0)">今</button>
             <button class="month-quick-btn" title="下个月" @click="jumpMonth(1)">›</button>
           </div>
-          <div v-else class="single-mode-label">📌 单个视频 · {{ singleVideos.length }}</div>
+          <div v-else class="single-mode-label">
+            <span>📌 单个视频 · {{ singleVideos.length }}</span>
+            <span class="single-mode-actions">
+              <button class="icon-btn" title="从 JSON 导入单视频" @click="importSingleVideos">↓</button>
+              <button class="icon-btn" title="导出单视频备份" :disabled="!singleVideos.length" @click="exportSingleVideos">↑</button>
+            </span>
+          </div>
           <div class="section-actions">
             <button
               class="icon-btn"
@@ -505,6 +511,23 @@ async function importPrograms() {
     if (count < 0) return // cancelled
     programs.value = await window.cctvdlApi.getPrograms()
     ElMessage.success(`已导入 ${count} 个栏目`)
+  } catch (err) { ElMessage.error(`导入失败：${humanizeError(String(err))}`) }
+}
+
+async function exportSingleVideos() {
+  try {
+    const result = await window.cctvdlApi.exportSingleVideos()
+    if (result) ElMessage.success(`已导出 ${singleVideos.value.length} 个单视频`)
+  } catch (err) { ElMessage.error(`导出失败：${err}`) }
+}
+
+async function importSingleVideos() {
+  try {
+    const count = await window.cctvdlApi.importSingleVideos()
+    if (count < 0) return // cancelled
+    singleVideos.value = await window.cctvdlApi.getSingleVideos()
+    videos.value = singleVideos.value.map(v => ({ ...v, selected: false }))
+    ElMessage.success(`已导入 ${count} 个单视频`)
   } catch (err) { ElMessage.error(`导入失败：${humanizeError(String(err))}`) }
 }
 
@@ -940,9 +963,17 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
 
 .single-mode-label {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 12px;
   font-weight: var(--app-font-weight-medium);
   color: var(--el-text-color-secondary);
+}
+
+.single-mode-actions {
+  display: flex;
+  gap: 2px;
 }
 
 /* 视频搜索 */

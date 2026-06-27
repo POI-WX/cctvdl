@@ -3,7 +3,10 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useContentStore } from '../../../src/renderer/stores/content'
 
 // Mock window.cctvdlApi for refreshDownloadedSet
-const mockGetDownloadHistory = vi.fn().mockResolvedValue(['GUID001', 'GUID002'])
+const mockGetDownloadHistory = vi.fn().mockResolvedValue([
+  { guid: 'GUID001', title: '', outputPath: '', fileSize: 0, completedAt: 0 },
+  { guid: 'GUID002', title: '', outputPath: '', fileSize: 0, completedAt: 0 }
+])
 vi.stubGlobal('window', {
   cctvdlApi: { getDownloadHistory: mockGetDownloadHistory }
 })
@@ -12,7 +15,10 @@ describe('useContentStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    mockGetDownloadHistory.mockResolvedValue(['GUID001', 'GUID002'])
+    mockGetDownloadHistory.mockResolvedValue([
+      { guid: 'GUID001', title: '', outputPath: '', fileSize: 0, completedAt: 0 },
+      { guid: 'GUID002', title: '', outputPath: '', fileSize: 0, completedAt: 0 }
+    ])
   })
 
   it('初始状态', () => {
