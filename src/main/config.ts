@@ -26,7 +26,8 @@ const defaults: StoreSchema = {
     logPath: app?.getPath?.('userData') || '',
     autoOpenFolder: false,
     clipboardWatch: false,
-    concurrentVideos: 1
+    concurrentVideos: 1,
+    coverSavePath: app?.getPath?.('pictures') || ''
   },
   programs: [],
   singleVideos: [],

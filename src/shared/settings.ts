@@ -44,6 +44,7 @@ export function normalizeSettings(raw: unknown, fallback: Settings): Settings {
     logPath: asString(r.logPath, fallback.logPath ?? ''),
     autoOpenFolder: asBool(r.autoOpenFolder, fallback.autoOpenFolder ?? false),
     clipboardWatch: asBool(r.clipboardWatch, fallback.clipboardWatch ?? false),
-    concurrentVideos: clampInt(r.concurrentVideos, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS, fallback.concurrentVideos ?? 1)
+    concurrentVideos: clampInt(r.concurrentVideos, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS, fallback.concurrentVideos ?? 1),
+    coverSavePath: asString(r.coverSavePath, fallback.coverSavePath ?? '')
   }
 }

@@ -12,7 +12,8 @@ const fallback: Settings = {
   logPath: '/logs',
   autoOpenFolder: false,
   clipboardWatch: false,
-  concurrentVideos: 1
+  concurrentVideos: 1,
+  coverSavePath: '/pictures'
 }
 
 describe('normalizeSettings', () => {
@@ -83,7 +84,16 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ concurrentVideos: 2 }, fallback).concurrentVideos).toBe(2)
   })
 
-  it('falls back concurrentVideos when not a number', () => {
+  it('falls back coverSavePath when not a string', () => {
+    expect(normalizeSettings({ coverSavePath: 123 }, fallback).coverSavePath).toBe('/pictures')
+    expect(normalizeSettings({ coverSavePath: '' }, fallback).coverSavePath).toBe('')
+  })
+
+  it('accepts valid coverSavePath string', () => {
+    expect(normalizeSettings({ coverSavePath: '/my/pics' }, fallback).coverSavePath).toBe('/my/pics')
+  })
+
+    it('falls back concurrentVideos when not a number', () => {
     expect(normalizeSettings({ concurrentVideos: 'two' }, fallback).concurrentVideos).toBe(1)
     expect(normalizeSettings({ concurrentVideos: NaN }, fallback).concurrentVideos).toBe(1)
   })

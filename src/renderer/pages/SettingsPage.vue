@@ -17,7 +17,7 @@
         <!-- save path -->
         <div class="settings-item">
           <div class="settings-item-label">
-            <span class="settings-item-name">文件保存位置</span>
+            <span class="settings-item-name">视频保存目录</span>
             <span class="settings-item-desc">下载的视频文件将保存到此目录</span>
           </div>
           <div class="settings-item-control path-control">
@@ -27,6 +27,22 @@
               :title="form.savePath"
             />
             <button class="browse-btn" @click="selectDir">浏览…</button>
+          </div>
+        </div>
+
+        <!-- cover save path -->
+        <div class="settings-item">
+          <div class="settings-item-label">
+            <span class="settings-item-name">图片保存目录</span>
+            <span class="settings-item-desc">下载的封面图片将保存到此目录</span>
+          </div>
+          <div class="settings-item-control path-control">
+            <el-input
+              :model-value="displayPath(form.coverSavePath || '')"
+              readonly size="small" class="path-input"
+              :title="form.coverSavePath"
+            />
+            <button class="browse-btn" @click="selectCoverDir">浏览…</button>
           </div>
         </div>
 
@@ -320,7 +336,8 @@ import { relativeTime, formatFileSize } from '../../shared/format'
 const form = ref<Settings>({
   savePath: '', threadCount: 8, quality: 'auto',
   reencode: false, logLevel: 'info', darkMode: false, logPath: '', autoOpenFolder: false, clipboardWatch: false,
-  concurrentVideos: 1
+  concurrentVideos: 1,
+  coverSavePath: ''
 })
 
 const history = ref<import('../../shared/types').HistoryEntry[]>([])
@@ -384,6 +401,11 @@ function onDarkModeChange(isDark: boolean) { applyDarkMode(isDark) }
 async function selectDir() {
   const dir = await window.cctvdlApi.selectDirectory(form.value.savePath || undefined)
   if (dir) form.value.savePath = dir
+}
+
+async function selectCoverDir() {
+  const dir = await window.cctvdlApi.selectDirectory(form.value.coverSavePath || undefined)
+  if (dir) form.value.coverSavePath = dir
 }
 
 async function selectLogDir() {

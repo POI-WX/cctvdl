@@ -98,6 +98,8 @@ export interface Settings {
   clipboardWatch?: boolean
   // Maximum number of videos to download simultaneously (1–3, default 1).
   concurrentVideos?: number
+  // Directory for saving cover images (separate from video savePath).
+  coverSavePath?: string
 }
 
 export interface HistoryEntry {
@@ -137,6 +139,7 @@ export interface CctvdlApi {
   openPath(p: string): Promise<void>
   openUrl(url: string): Promise<void>
   revealFile(p: string): Promise<void>
+  downloadCover(url: string, saveDir: string, baseName: string): Promise<{ savedPath: string }>
   onDownloadProgress(cb: (p: DownloadProgress) => void): () => void
   onJobFinished(cb: (job: DownloadJob) => void): () => void
   onBatchFinished(cb: (result: BatchResult) => void): () => void

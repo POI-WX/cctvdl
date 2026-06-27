@@ -32,6 +32,7 @@ const api: CctvdlApi = {
   openPath: (p: string) => ipcRenderer.invoke('open-path', p),
   openUrl: (url: string) => ipcRenderer.invoke('open-url', url),
   revealFile: (p: string) => ipcRenderer.invoke('reveal-file', p),
+  downloadCover: (url: string, saveDir: string, baseName: string) => ipcRenderer.invoke('download-cover', url, saveDir, baseName),
   onDownloadProgress: (cb: (p: DownloadProgress) => void) => {
     const handler = (_: unknown, p: DownloadProgress) => cb(p)
     ipcRenderer.on('download-progress', handler)

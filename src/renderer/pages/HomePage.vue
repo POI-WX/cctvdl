@@ -330,6 +330,13 @@
               <button class="preview-action-btn" title="复制节目简介" @click="copyBrief">
                 📄 复制简介
               </button>
+              <button
+                v-if="selectedVideo.coverUrl && !coverError"
+                class="preview-action-btn"
+                :disabled="coverDownloading"
+                title="保存封面图片"
+                @click="downloadCoverImage"
+              >{{ coverDownloading ? '…' : '🖼 保存封面' }}</button>
             </div>
             <h2 class="preview-title">{{ selectedVideo.title }}</h2>
             <div class="preview-meta">
@@ -454,6 +461,7 @@ let placeholderIdx = 0
 const loadingVideos = ref(false)
 const coverError = ref(false)
 const coverLoading = ref(false)
+const coverDownloading = ref(false)
 const lightboxOpen = ref(false)
 const previewCollapsed = ref(false)
 
@@ -810,6 +818,25 @@ async function copyBrief() {
   const text = selectedVideo.value.brief || selectedVideo.value.title
   await navigator.clipboard.writeText(text)
   ElMessage.success('简介已复制')
+}
+async function downloadCoverImage() {
+  if (!selectedVideo.value?.coverUrl || coverError.value) return
+  const settings = await window.cctvdlApi.getSettings()
+  if (!settings.coverSavePath) { ElMessage.warning('请先在设置中配置图片保存目录'); return }
+  coverDownloading.value = true
+  try {
+    const { safeFilename } = await import('../../shared/filename')
+    const { savedPath } = await window.cctvdlApi.downloadCover(
+      selectedVideo.value.coverUrl,
+      settings.coverSavePath,
+      safeFilename(selectedVideo.value.title)
+    )
+    ElMessage.success('封面已保存：' + savedPath.split(/[\/]/).pop())
+  } catch (err) {
+    ElMessage.error('封面下载失败：' + err)
+  } finally {
+    coverDownloading.value = false
+  }
 }
 
 // Selected items: auto-open only for single videos (column partial selections don't).
