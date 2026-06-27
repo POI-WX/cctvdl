@@ -603,4 +603,54 @@ describe('DownloadCoordinator', () => {
       await new Promise((r) => setTimeout(r, 30))
     })
   })
+
+  describe('reorderQueue', () => {
+    it('reorders queued jobs by new id sequence', () => {
+      const mkJob = (id: string): DownloadJob => ({
+        id, guid: `guid-${id}`, sourceUrl: '', title: id,
+        savePath: `/tmp/${id}.mp4`, quality: 'auto', threadCount: 2, reencode: false,
+        state: 'Created', stage: 'None', progressPercent: 0
+      })
+      const j1 = mkJob('rq-1')
+      const j2 = mkJob('rq-2')
+      const j3 = mkJob('rq-3')
+      coordinator.addJob(j1)
+      coordinator.addJob(j2)
+      coordinator.addJob(j3)
+      coordinator.reorderQueue(['rq-3', 'rq-1', 'rq-2'])
+      // queue order should now be rq-3, rq-1, rq-2
+      const ids = (coordinator as any).queue.map((j: DownloadJob) => j.id)
+      expect(ids).toEqual(['rq-3', 'rq-1', 'rq-2'])
+    })
+
+    it('empty newOrder is a no-op', () => {
+      const j = {
+        id: 'rq-noop', guid: 'g', sourceUrl: '', title: 'N',
+        savePath: '/tmp/n.mp4', quality: 'auto' as const, threadCount: 2, reencode: false,
+        state: 'Created' as const, stage: 'None' as const, progressPercent: 0
+      }
+      coordinator.addJob(j)
+      const before = [...(coordinator as any).queue]
+      coordinator.reorderQueue([])
+      expect((coordinator as any).queue).toEqual(before)
+    })
+
+    it('ids not in queue are silently ignored', () => {
+      const j1 = {
+        id: 'rq-a', guid: 'ga', sourceUrl: '', title: 'A',
+        savePath: '/tmp/a.mp4', quality: 'auto' as const, threadCount: 2, reencode: false,
+        state: 'Created' as const, stage: 'None' as const, progressPercent: 0
+      }
+      const j2 = {
+        id: 'rq-b', guid: 'gb', sourceUrl: '', title: 'B',
+        savePath: '/tmp/b.mp4', quality: 'auto' as const, threadCount: 2, reencode: false,
+        state: 'Created' as const, stage: 'None' as const, progressPercent: 0
+      }
+      coordinator.addJob(j1)
+      coordinator.addJob(j2)
+      coordinator.reorderQueue(['rq-b', 'rq-nonexistent', 'rq-a'])
+      const ids = (coordinator as any).queue.map((j: DownloadJob) => j.id)
+      expect(ids).toEqual(['rq-b', 'rq-a'])
+    })
+  })
 })

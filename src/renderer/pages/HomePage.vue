@@ -147,49 +147,94 @@
           @input="onSearchInput"
         />
         <!-- video items -->
-        <div class="video-list">
+        <div class="video-list" ref="videoListEl" @scroll="onVideoListScroll">
           <div v-if="viewMode === 'column' && !selectedProgram" class="video-hint">← 先选择一个栏目</div>
           <el-skeleton v-else-if="loadingVideos" :rows="6" animated class="video-skeleton" />
           <div v-else-if="!filteredVideos.length" class="video-hint">{{ emptyHint }}</div>
           <template v-else>
-            <!-- 单视频集合：扁平列表 + 行内移除 -->
+            <!-- 单视频集合：扁平列表 + 行内移除（> 100 条用虚拟滚动） -->
             <template v-if="viewMode === 'single'">
-              <div
-                v-for="v in filteredVideos"
-                :key="v.guid"
-                class="video-item"
-                :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
-                @click="onVideoClick(v)"
-              >
-                <el-checkbox v-model="v.selected" @click.stop size="small" />
-                <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
-                     @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
-                <div class="video-item-info">
-                  <span class="video-item-title" :title="v.title">{{ v.title }}</span>
-                  <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
+              <template v-if="filteredVideos.length > 100">
+                <div :style="{ height: vPadTop + 'px' }" />
+                <div
+                  v-for="v in vVisibleItems"
+                  :key="v.guid"
+                  class="video-item"
+                  :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
+                  @click="onVideoClick(v)"
+                >
+                  <el-checkbox v-model="v.selected" @click.stop size="small" />
+                  <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
+                       @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
+                  <div class="video-item-info">
+                    <span class="video-item-title" :title="v.title">{{ v.title }}</span>
+                    <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
+                  </div>
+                  <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
+                  <button class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)">🗑</button>
                 </div>
-                <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
-                <button class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)">🗑</button>
-              </div>
+                <div :style="{ height: vPadBot + 'px' }" />
+              </template>
+              <template v-else>
+                <div
+                  v-for="v in filteredVideos"
+                  :key="v.guid"
+                  class="video-item"
+                  :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
+                  @click="onVideoClick(v)"
+                >
+                  <el-checkbox v-model="v.selected" @click.stop size="small" />
+                  <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
+                       @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
+                  <div class="video-item-info">
+                    <span class="video-item-title" :title="v.title">{{ v.title }}</span>
+                    <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
+                  </div>
+                  <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
+                  <button class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)">🗑</button>
+                </div>
+              </template>
             </template>
-            <!-- 栏目·搜索：扁平高亮 -->
+            <!-- 栏目·搜索：扁平高亮（> 100 条用虚拟滚动） -->
             <template v-else-if="debouncedSearch.trim()">
-              <div
-                v-for="v in filteredVideos"
-                :key="v.guid"
-                class="video-item"
-                :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
-                @click="onVideoClick(v)"
-              >
-                <el-checkbox v-model="v.selected" @click.stop size="small" />
-                <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
-                     @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
-                <div class="video-item-info">
-                  <span class="video-item-title" :title="v.title" v-html="highlightText(v.title, debouncedSearch)" />
-                  <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
+              <template v-if="filteredVideos.length > 100">
+                <div :style="{ height: vPadTop + 'px' }" />
+                <div
+                  v-for="v in vVisibleItems"
+                  :key="v.guid"
+                  class="video-item"
+                  :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
+                  @click="onVideoClick(v)"
+                >
+                  <el-checkbox v-model="v.selected" @click.stop size="small" />
+                  <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
+                       @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
+                  <div class="video-item-info">
+                    <span class="video-item-title" :title="v.title" v-html="highlightText(v.title, debouncedSearch)" />
+                    <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
+                  </div>
+                  <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
                 </div>
-                <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
-              </div>
+                <div :style="{ height: vPadBot + 'px' }" />
+              </template>
+              <template v-else>
+                <div
+                  v-for="v in filteredVideos"
+                  :key="v.guid"
+                  class="video-item"
+                  :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
+                  @click="onVideoClick(v)"
+                >
+                  <el-checkbox v-model="v.selected" @click.stop size="small" />
+                  <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
+                       @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
+                  <div class="video-item-info">
+                    <span class="video-item-title" :title="v.title" v-html="highlightText(v.title, debouncedSearch)" />
+                    <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
+                  </div>
+                  <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
+                </div>
+              </template>
             </template>
             <!-- grouped by date -->
             <template v-else>
@@ -366,7 +411,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { storeToRefs } from 'pinia'
 import { Search } from '@element-plus/icons-vue'
@@ -410,6 +455,38 @@ const coverError = ref(false)
 const coverLoading = ref(false)
 const lightboxOpen = ref(false)
 const previewCollapsed = ref(false)
+
+// ─── 虚拟滚动（> 100 条时启用）─────────────────────────────────────────────
+const VITEM_H = 46  // approximate row height (px) — checkbox + thumb + text
+const VBUFFER = 8   // extra rows above/below viewport
+const videoListEl = ref<HTMLElement | null>(null)
+const vScrollTop = ref(0)
+
+const vVisibleItems = computed(() => {
+  if (filteredVideos.value.length <= 100) return filteredVideos.value
+  const containerH = videoListEl.value?.clientHeight ?? 400
+  const start = Math.max(0, Math.floor(vScrollTop.value / VITEM_H) - VBUFFER)
+  const end = Math.min(filteredVideos.value.length, start + Math.ceil(containerH / VITEM_H) + VBUFFER * 2)
+  return filteredVideos.value.slice(start, end)
+})
+
+const vPadTop = computed(() => {
+  if (filteredVideos.value.length <= 100) return 0
+  const start = Math.max(0, Math.floor(vScrollTop.value / VITEM_H) - VBUFFER)
+  return start * VITEM_H
+})
+
+const vPadBot = computed(() => {
+  if (filteredVideos.value.length <= 100) return 0
+  const containerH = videoListEl.value?.clientHeight ?? 400
+  const start = Math.max(0, Math.floor(vScrollTop.value / VITEM_H) - VBUFFER)
+  const end = Math.min(filteredVideos.value.length, start + Math.ceil(containerH / VITEM_H) + VBUFFER * 2)
+  return Math.max(0, (filteredVideos.value.length - end) * VITEM_H)
+})
+
+function onVideoListScroll(e: Event) {
+  vScrollTop.value = (e.target as HTMLElement).scrollTop
+}
 
 function openLightbox() {
   if (selectedVideo.value?.coverUrl && !coverError.value) {

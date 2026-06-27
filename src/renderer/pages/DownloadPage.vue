@@ -57,10 +57,18 @@
           <span class="dl-group-count">{{ activeJobs.length }}</span>
           <span class="dl-group-chevron" :class="{ collapsed: groupCollapsed.active }">›</span>
         </button>
-        <TransitionGroup v-if="!groupCollapsed.active" name="card-list" tag="div" class="dl-group-body">
+        <div v-if="!groupCollapsed.active" class="dl-group-body"
+             @dragover.prevent @drop.prevent="onDrop($event)">
           <div v-for="(job, idx) in activeJobs" :key="job.id" class="dl-card active"
+               :class="{ 'drag-over': dragOverId === job.id }"
+               :draggable="job.state === 'Queued'"
+               @dragstart="job.state === 'Queued' && onDragStart($event, job.id)"
+               @dragend="onDragEnd"
+               @dragover.prevent="job.state === 'Queued' && (dragOverId = job.id)"
+               @dragleave="dragOverId = null"
                @contextmenu.prevent="openContextMenu($event, job)">
               <div class="dl-card-head">
+                <span v-if="job.state === 'Queued'" class="dl-drag-handle" title="拖拽排序">⠿</span>
                 <div class="dl-card-indicator" :class="indicatorClass(job.state)">
                   <span class="dl-card-indicator-icon">{{ stateIcon(job.state) }}</span>
                 </div>
@@ -84,7 +92,13 @@
                   </div>
                 </div>
                 <div class="dl-card-right">
-                  <span class="dl-card-pct">{{ job.percent }}%</span>
+                  <button
+                    v-if="job.state === 'Queued' && idx > 0"
+                    class="dl-card-btn dl-pin-btn"
+                    title="置顶"
+                    @click.stop="pinToTop(job.id)"
+                  >↑ 置顶</button>
+                  <span v-else class="dl-card-pct">{{ job.percent }}%</span>
                 </div>
               </div>
               <div class="dl-card-progress">
@@ -101,7 +115,7 @@
                 <button class="dl-card-btn" @click="cancel(job.id)">取消</button>
               </div>
           </div>
-        </TransitionGroup>
+        </div>
       </div>
 
       <!-- group: completed -->
@@ -225,6 +239,43 @@ import { buildOutputPath } from '../../shared/filename'
 const dlStore = useDownloadStore()
 const { jobs, running, stats, doneCount, finishedCount, failedCount, batchPercent,
         activeJobs, completedJobs, failedCancelledJobs } = storeToRefs(dlStore)
+
+// ─── 拖拽排序 ──────────────────────────────────────────────────────────────
+const dragOverId = ref<string | null>(null)
+let dragSrcId: string | null = null
+
+function onDragStart(e: DragEvent, id: string) {
+  dragSrcId = id
+  e.dataTransfer?.setData('text/plain', id)
+}
+
+function onDragEnd() {
+  dragSrcId = null
+  dragOverId.value = null
+}
+
+function onDrop(e: DragEvent) {
+  const targetId = dragOverId.value
+  dragOverId.value = null
+  if (!dragSrcId || !targetId || dragSrcId === targetId) return
+  const queued = activeJobs.value.filter(j => j.state === 'Queued').map(j => j.id)
+  const srcIdx = queued.indexOf(dragSrcId)
+  const dstIdx = queued.indexOf(targetId)
+  if (srcIdx === -1 || dstIdx === -1) return
+  queued.splice(srcIdx, 1)
+  queued.splice(dstIdx, 0, dragSrcId)
+  dlStore.reorderJobs(queued)
+  dragSrcId = null
+}
+
+function pinToTop(id: string) {
+  const queued = activeJobs.value.filter(j => j.state === 'Queued').map(j => j.id)
+  const idx = queued.indexOf(id)
+  if (idx <= 0) return
+  queued.splice(idx, 1)
+  queued.unshift(id)
+  dlStore.reorderJobs(queued)
+}
 
 const STATE_TEXT: Record<JobState | 'None', string> = {
   None: '就绪', Created: '已创建', Queued: '排队中', ResolvingM3u8: '解析中',
@@ -743,6 +794,31 @@ html.dark .badge-error   { background: #2d0a0a; }
 .dl-card-btn:hover { background: var(--el-fill-color-light); }
 .dl-card-btn.primary { color: var(--el-color-primary); border-color: var(--el-color-primary-light-5); }
 .dl-card-btn.primary:hover { background: var(--el-color-primary-light-9); }
+
+.dl-drag-handle {
+  flex-shrink: 0;
+  cursor: grab;
+  color: var(--el-text-color-placeholder);
+  font-size: 14px;
+  padding: 0 4px 0 0;
+  user-select: none;
+  line-height: 1;
+}
+.dl-drag-handle:active { cursor: grabbing; }
+
+.dl-pin-btn {
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary-light-5);
+  font-size: 11px;
+  padding: 3px 8px;
+}
+.dl-pin-btn:hover { background: var(--el-color-primary-light-9); }
+
+.dl-card.drag-over {
+  outline: 2px dashed var(--el-color-primary-light-5);
+  outline-offset: -2px;
+  background: var(--el-color-primary-light-9);
+}
 
 /* 卡片列表动画 */
 .card-list-enter-active,

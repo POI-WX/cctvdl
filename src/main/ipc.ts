@@ -155,6 +155,8 @@ export function registerIpcHandlers(
 
   ipcMain.handle('cancel-all-downloads', () => coordinator.cancelAll())
 
+  ipcMain.handle('reorder-queue', (_, ids: string[]) => coordinator.reorderQueue(ids))
+
   ipcMain.handle('get-settings', () => {
     const settings = config.getSettings()
     logger.info(`get-settings: savePath=${settings.savePath}, threadCount=${settings.threadCount}`)

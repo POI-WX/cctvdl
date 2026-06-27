@@ -8,9 +8,12 @@ import App from './App.vue'
 import { applyAccentColor } from './utils/accent'
 
 const app = createApp(App)
-app.use(createPinia())
+const pinia = createPinia()
+app.use(pinia)
 app.use(ElementPlus, { locale: zhCn })
 app.mount('#app')
+
+;(window as any).__pinia = pinia
 
 // Design token system — overrides Element Plus defaults for a unified visual language
 const designTokens = document.createElement('style')

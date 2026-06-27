@@ -130,6 +130,7 @@ export interface CctvdlApi {
   retryJobs(jobs: DownloadJob[]): Promise<void>
   cancelDownload(id: string): Promise<void>
   cancelAllDownloads(): Promise<void>
+  reorderQueue(ids: string[]): Promise<void>
   getSettings(): Promise<Settings>
   saveSettings(s: Settings): Promise<void>
   selectDirectory(defaultPath?: string): Promise<string | null>

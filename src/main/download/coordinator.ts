@@ -124,6 +124,22 @@ export class DownloadCoordinator extends EventEmitter {
     this.emitBatchFinished()
   }
 
+  // Reorder queued (not yet running) jobs. newOrder is an array of job ids in the
+  // desired sequence; ids not present in the queue are silently ignored.
+  reorderQueue(newOrder: string[]): void {
+    if (!newOrder.length) return
+    const running = this.queue.filter(j => j.state !== 'Queued')
+    const queued = this.queue.filter(j => j.state === 'Queued')
+    const ordered = newOrder
+      .map(id => queued.find(j => j.id === id))
+      .filter((j): j is DownloadJob => j !== undefined)
+    // append any queued jobs not mentioned in newOrder at the end
+    const mentioned = new Set(newOrder)
+    const remainder = queued.filter(j => !mentioned.has(j.id))
+    this.queue = [...running, ...ordered, ...remainder]
+    this.config?.savePendingJobs(this.queue)
+  }
+
   private startNext(): void {
     if (this.isCancellingAll) return
     // Launch up to concurrentVideos jobs simultaneously

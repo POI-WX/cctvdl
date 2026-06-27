@@ -174,8 +174,19 @@ app.whenReady().then(() => {
   coordinator.on('batchFinished', (result: BatchResult) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setProgressBar(-1)
     if (tray) {
-      if (isMac) tray.setTitle('')
-      else tray.setToolTip('cctvdl')
+      if (result.failed > 0) {
+        if (isMac) tray.setTitle(' ⚠')
+        else tray.setToolTip(`cctvdl — ${result.failed} 个任务失败`)
+        setTimeout(() => {
+          if (tray) {
+            if (isMac) tray.setTitle('')
+            else tray.setToolTip('cctvdl')
+          }
+        }, 5000)
+      } else {
+        if (isMac) tray.setTitle('')
+        else tray.setToolTip('cctvdl')
+      }
     }
     if (!mainWindow || !mainWindow.isVisible() || mainWindow.isMinimized()) {
       if (Notification.isSupported()) {

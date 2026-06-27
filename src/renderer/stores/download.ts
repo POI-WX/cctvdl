@@ -81,11 +81,21 @@ export const useDownloadStore = defineStore('download', () => {
     jobs.value = jobs.value.filter(j => isActive(j.state))
   }
 
+  function reorderJobs(ids: string[]) {
+    const idxMap = new Map(ids.map((id, i) => [id, i]))
+    const queued = jobs.value.filter(j => j.state === 'Queued')
+    const rest = jobs.value.filter(j => j.state !== 'Queued')
+    queued.sort((a, b) => (idxMap.get(a.id) ?? Infinity) - (idxMap.get(b.id) ?? Infinity))
+    jobs.value = [...rest, ...queued]
+    window.cctvdlApi.reorderQueue(ids)
+  }
+
   return {
     jobs, running, stats, activeDownloads, updateVersion,
     activeJobs, completedJobs, failedCancelledJobs,
     doneCount, finishedCount, failedCount, batchPercent, totalSpeed,
     downloadBadge,
-    isActive, applyProgress, applyJobFinished, applyBatchFinished, applyBatchStarted, clearFinished
+    isActive, applyProgress, applyJobFinished, applyBatchFinished, applyBatchStarted,
+    clearFinished, reorderJobs
   }
 })

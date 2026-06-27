@@ -25,6 +25,7 @@ const api: CctvdlApi = {
   retryJobs: (jobs: DownloadJob[]) => ipcRenderer.invoke('retry-jobs', jobs),
   cancelDownload: (id: string) => ipcRenderer.invoke('cancel-download', id),
   cancelAllDownloads: () => ipcRenderer.invoke('cancel-all-downloads'),
+  reorderQueue: (ids: string[]) => ipcRenderer.invoke('reorder-queue', ids),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (s: Settings) => ipcRenderer.invoke('save-settings', s),
   selectDirectory: (defaultPath?: string) => ipcRenderer.invoke('select-directory', defaultPath),

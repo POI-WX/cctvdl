@@ -221,8 +221,18 @@
           </div>
         </div>
 
+        <div v-if="history.length" class="history-search">
+          <el-input
+            v-model="historyQuery"
+            placeholder="搜索标题…"
+            size="small"
+            clearable
+          />
+        </div>
+
         <div v-if="history.length" class="history-list">
-          <div v-for="entry in history" :key="entry.guid" class="history-item">
+          <div v-if="!filteredHistory.length" class="history-empty">无匹配记录</div>
+          <div v-for="entry in filteredHistory" :key="entry.guid" class="history-item">
             <div class="history-item-info">
               <span class="history-item-title" :title="entry.title || entry.guid">
                 {{ entry.title || entry.guid }}
@@ -238,6 +248,11 @@
               </span>
             </div>
             <div class="history-item-actions">
+              <button
+                class="history-action-btn"
+                title="重新下载"
+                @click="redownload(entry)"
+              >↺</button>
               <button
                 v-if="entry.outputPath"
                 class="history-action-btn"
@@ -309,6 +324,12 @@ const form = ref<Settings>({
 })
 
 const history = ref<import('../../shared/types').HistoryEntry[]>([])
+const historyQuery = ref('')
+const filteredHistory = computed(() => {
+  const q = historyQuery.value.trim().toLowerCase()
+  if (!q) return history.value
+  return history.value.filter(e => (e.title || e.guid).toLowerCase().includes(q))
+})
 const appVersion = __APP_VERSION__ // replaced by vite define at build/dev time
 const lastSaved = ref('')
 
@@ -392,6 +413,27 @@ async function removeHistoryEntry(guid: string) {
 
 function revealHistoryFile(outputPath: string) {
   window.cctvdlApi.revealFile(outputPath)
+}
+
+async function redownload(entry: import('../../shared/types').HistoryEntry) {
+  const settings = await window.cctvdlApi.getSettings()
+  if (!settings.savePath) { ElMessage.warning('请先在设置中配置保存位置'); return }
+  const { buildOutputPath } = await import('../../shared/filename')
+  const job: import('../../shared/types').DownloadJob = {
+    id: crypto.randomUUID(),
+    guid: entry.guid,
+    sourceUrl: entry.guid,
+    title: entry.title || entry.guid,
+    savePath: buildOutputPath(settings.savePath, entry.title || entry.guid),
+    quality: settings.quality,
+    threadCount: settings.threadCount,
+    reencode: settings.reencode ?? false,
+    state: 'Created',
+    stage: 'None',
+    progressPercent: 0
+  }
+  await window.cctvdlApi.startDownload([job])
+  ElMessage.success(`已添加重新下载：${job.title}`)
 }
 
 async function save() {
@@ -705,6 +747,18 @@ async function save() {
   background: var(--el-fill-color);
   padding: 1px 6px;
   border-radius: 10px;
+}
+
+.history-search {
+  padding: var(--app-spacing-sm) var(--app-spacing-lg);
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+
+.history-empty {
+  padding: 16px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  text-align: center;
 }
 
 .history-list {

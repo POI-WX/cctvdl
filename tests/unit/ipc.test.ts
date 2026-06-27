@@ -51,6 +51,7 @@ describe('IPC Handlers', () => {
       cancel: vi.fn(),
       cancelAll: vi.fn(),
       setConcurrentVideos: vi.fn(),
+      reorderQueue: vi.fn(),
       on: vi.fn()
     } as unknown as DownloadCoordinator
 
