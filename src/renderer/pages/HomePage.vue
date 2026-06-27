@@ -831,7 +831,7 @@ async function downloadCoverImage() {
       settings.coverSavePath,
       safeFilename(selectedVideo.value.title)
     )
-    ElMessage.success('封面已保存：' + savedPath.split(/[\/]/).pop())
+    ElMessage.success('封面已保存：' + savedPath.split(/[/\\]/).pop())
   } catch (err) {
     ElMessage.error('封面下载失败：' + err)
   } finally {

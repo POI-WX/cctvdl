@@ -254,7 +254,7 @@ function onDragEnd() {
   dragOverId.value = null
 }
 
-function onDrop(e: DragEvent) {
+function onDrop(_e: DragEvent) {
   const targetId = dragOverId.value
   dragOverId.value = null
   if (!dragSrcId || !targetId || dragSrcId === targetId) return
