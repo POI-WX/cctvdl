@@ -139,7 +139,7 @@
         <!-- search -->
         <el-input
           v-model="searchQuery"
-          placeholder="搜索标题 / 日期…"
+          placeholder="搜索标题 / 简介 / 日期…"
           size="small"
           clearable
           :prefix-icon="Search"
