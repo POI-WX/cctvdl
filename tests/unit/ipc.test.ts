@@ -50,6 +50,7 @@ describe('IPC Handlers', () => {
       startBatch: vi.fn(),
       cancel: vi.fn(),
       cancelAll: vi.fn(),
+      setConcurrentVideos: vi.fn(),
       on: vi.fn()
     } as unknown as DownloadCoordinator
 
@@ -62,7 +63,7 @@ describe('IPC Handlers', () => {
     } as unknown as BrowseService
 
     mockConfig = {
-      getSettings: vi.fn().mockReturnValue({ savePath: '/tmp', threadCount: 8, quality: 'auto', logLevel: 'info' }),
+      getSettings: vi.fn().mockReturnValue({ savePath: '/tmp', threadCount: 8, quality: 'auto', logLevel: 'info', concurrentVideos: 1 }),
       saveSettings: vi.fn(),
       getPrograms: vi.fn().mockReturnValue([]),
       addProgram: vi.fn().mockReturnValue(true),

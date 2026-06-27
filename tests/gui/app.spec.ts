@@ -106,7 +106,7 @@ test.describe('cctvdl GUI 测试', () => {
     // Card layout — labels use .settings-item-name
     await expect(page.locator('.settings-item-name', { hasText: '文件保存位置' })).toBeVisible()
     await expect(page.locator('.settings-item-name', { hasText: '并发下载数' })).toBeVisible()
-    await expect(page.locator('.el-slider')).toBeVisible()
+    await expect(page.locator('.settings-item', { hasText: '并发下载数' }).locator('.el-slider')).toBeVisible()
     await expect(page.locator('.settings-item-name', { hasText: '视频清晰度' })).toBeVisible()
     await expect(page.locator('.settings-item-name', { hasText: '深色模式' })).toBeVisible()
     await expect(page.locator('.settings-save-btn')).toBeVisible()
@@ -203,8 +203,8 @@ test.describe('cctvdl GUI 测试', () => {
     await navTab(page, '设置').click()
     await page.waitForTimeout(500)
 
-    // Thread count is displayed in .thread-value
-    const concurrencyValue = page.locator('.thread-value')
+    // Thread count is displayed in .thread-value within the 并发下载数 settings-item
+    const concurrencyValue = page.locator('.settings-item', { hasText: '并发下载数' }).locator('.thread-value')
     const text = await concurrencyValue.textContent()
     expect(text?.trim()).toBe('8')
   })
@@ -297,7 +297,7 @@ test.describe('cctvdl GUI 测试', () => {
     await page.waitForTimeout(500)
 
     // Custom settings page, labels use .settings-item-name
-    const expectedLabels = ['文件保存位置', '并发下载数', '视频清晰度', '合并方式', '下载完成后打开文件夹', '剪贴板自动导入', '日志级别', '深色模式', '日志目录']
+    const expectedLabels = ['文件保存位置', '并发下载数', '并行下载视频数', '视频清晰度', '合并方式', '下载完成后打开文件夹', '剪贴板自动导入', '日志级别', '深色模式', '日志目录']
     for (const label of expectedLabels) {
       const el = page.locator('.settings-item-name', { hasText: label })
       await expect(el).toBeVisible()

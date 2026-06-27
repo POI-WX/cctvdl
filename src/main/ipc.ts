@@ -133,6 +133,9 @@ export function registerIpcHandlers(
         total: newJobs.length,
         jobs: newJobs.map(j => ({ id: j.id, title: j.title, guid: j.guid }))
       })
+      // Apply current concurrentVideos setting before starting
+      const settings = config.getSettings()
+      coordinator.setConcurrentVideos(settings.concurrentVideos ?? 1)
       coordinator.startBatch(newJobs)
     } else {
       // All jobs were already downloaded - send empty batch-finished to reset UI

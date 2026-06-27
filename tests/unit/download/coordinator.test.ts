@@ -550,4 +550,40 @@ describe('DownloadCoordinator', () => {
       expect(job2.state).toBe('Cancelled')
     })
   })
+
+  describe('parallel download (concurrentVideos)', () => {
+    it('setConcurrentVideos clamps to 1–3', () => {
+      const c = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer)
+      c.setConcurrentVideos(0)
+      expect((c as any).concurrentVideos).toBe(1)
+      c.setConcurrentVideos(5)
+      expect((c as any).concurrentVideos).toBe(3)
+      c.setConcurrentVideos(2)
+      expect((c as any).concurrentVideos).toBe(2)
+    })
+
+    it('with concurrentVideos=2, starts two jobs simultaneously', async () => {
+      coordinator.setConcurrentVideos(2)
+      // decryptAll hangs indefinitely until aborted
+      ;(mockDecryptor.decryptAll as any).mockImplementation(
+        (_tasks: any, _dir: any, _cb: any, signal: AbortSignal) =>
+          new Promise<{ completed: number[]; failed: any[] }>((resolve) => {
+            signal?.addEventListener('abort', () => resolve({ completed: [], failed: [] }))
+          })
+      )
+      const jobA: DownloadJob = { id: 'par-a', guid: 'guid-par-a', sourceUrl: '', title: 'A', savePath: '/tmp/a.mp4', quality: 'auto', threadCount: 2, reencode: false, state: 'Created', stage: 'None', progressPercent: 0 }
+      const jobB: DownloadJob = { id: 'par-b', guid: 'guid-par-b', sourceUrl: '', title: 'B', savePath: '/tmp/b.mp4', quality: 'auto', threadCount: 2, reencode: false, state: 'Created', stage: 'None', progressPercent: 0 }
+      const jobC: DownloadJob = { id: 'par-c', guid: 'guid-par-c', sourceUrl: '', title: 'C', savePath: '/tmp/c.mp4', quality: 'auto', threadCount: 2, reencode: false, state: 'Created', stage: 'None', progressPercent: 0 }
+      coordinator.startBatch([jobA, jobB, jobC])
+      await new Promise((r) => setTimeout(r, 30))
+
+      // At least 2 active (resolving/downloading) and 1 still queued
+      const active = [jobA, jobB, jobC].filter(j => !['Queued', 'Created'].includes(j.state))
+      expect(active.length).toBeGreaterThanOrEqual(2)
+      expect([jobA, jobB, jobC].some(j => j.state === 'Queued')).toBe(true)
+
+      coordinator.cancelAll()
+      await new Promise((r) => setTimeout(r, 30))
+    })
+  })
 })

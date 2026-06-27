@@ -5,6 +5,8 @@ export const LOG_LEVELS: Settings['logLevel'][] = ['info', 'debug']
 
 export const MIN_THREADS = 1
 export const MAX_THREADS = 16
+export const MIN_CONCURRENT_VIDEOS = 1
+export const MAX_CONCURRENT_VIDEOS = 3
 
 function clampInt(n: unknown, min: number, max: number, fallback: number): number {
   const v = Math.floor(Number(n))
@@ -41,6 +43,7 @@ export function normalizeSettings(raw: unknown, fallback: Settings): Settings {
     darkMode: asBool(r.darkMode, fallback.darkMode ?? false),
     logPath: asString(r.logPath, fallback.logPath ?? ''),
     autoOpenFolder: asBool(r.autoOpenFolder, fallback.autoOpenFolder ?? false),
-    clipboardWatch: asBool(r.clipboardWatch, fallback.clipboardWatch ?? false)
+    clipboardWatch: asBool(r.clipboardWatch, fallback.clipboardWatch ?? false),
+    concurrentVideos: clampInt(r.concurrentVideos, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS, fallback.concurrentVideos ?? 1)
   }
 }

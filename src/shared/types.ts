@@ -96,6 +96,8 @@ export interface Settings {
   autoOpenFolder?: boolean
   // When true, watch the clipboard and offer to import copied CCTV links (opt-in).
   clipboardWatch?: boolean
+  // Maximum number of videos to download simultaneously (1–3, default 1).
+  concurrentVideos?: number
 }
 
 export interface HistoryEntry {

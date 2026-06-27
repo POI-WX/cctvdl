@@ -49,6 +49,24 @@
           </div>
         </div>
 
+        <!-- concurrent videos -->
+        <div class="settings-item">
+          <div class="settings-item-label">
+            <span class="settings-item-name">并行下载视频数</span>
+            <span class="settings-item-desc">同时下载的视频数（1–3）。调高可缩短批量下载总时间；受 CDN 带宽限制，建议不超过 2。</span>
+          </div>
+          <div class="settings-item-control thread-control">
+            <el-slider
+              v-model="form.concurrentVideos"
+              :min="MIN_CONCURRENT_VIDEOS"
+              :max="MAX_CONCURRENT_VIDEOS"
+              :step="1"
+              class="thread-slider"
+            />
+            <span class="thread-value">{{ form.concurrentVideos ?? 1 }}</span>
+          </div>
+        </div>
+
         <!-- quality -->
         <div class="settings-item">
           <div class="settings-item-label">
@@ -279,14 +297,15 @@
 import { ref, computed, onMounted, toRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Settings } from '../../shared/types'
-import { MIN_THREADS, MAX_THREADS } from '../../shared/settings'
+import { MIN_THREADS, MAX_THREADS, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS } from '../../shared/settings'
 import { applyAccentColor } from '../utils/accent'
 import { displayPath } from '../../shared/path-display'
 import { relativeTime, formatFileSize } from '../../shared/format'
 
 const form = ref<Settings>({
   savePath: '', threadCount: 8, quality: 'auto',
-  reencode: false, logLevel: 'info', darkMode: false, logPath: '', autoOpenFolder: false, clipboardWatch: false
+  reencode: false, logLevel: 'info', darkMode: false, logPath: '', autoOpenFolder: false, clipboardWatch: false,
+  concurrentVideos: 1
 })
 
 const history = ref<import('../../shared/types').HistoryEntry[]>([])

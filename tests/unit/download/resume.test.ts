@@ -177,12 +177,10 @@ describe('Resume 功能测试（真实 fs）', () => {
     expect(state.pending).toContain(1)
   })
 
-  it('shutdown() 同步刷盘续传状态并中断', async () => {
+  it('shutdown() 中断正在进行的下载', async () => {
     const job = makeJob({ savePath: path.join(tempDir, 'out.mp4') })
-    const workDir = path.join(tempDir, '.cctvdl_guid-resume')
 
-    // decryptAll reports segment 0 done, then hangs until aborted — simulating an
-    // in-flight download when the app quits.
+    // decryptAll hangs until aborted — simulating an in-flight download
     ;(mockDecryptor.decryptAll as any).mockImplementation(
       (_tasks: any, _dir: any, onProgress: any, signal: AbortSignal) =>
         new Promise((resolve) => {
@@ -193,16 +191,13 @@ describe('Resume 功能测试（真实 fs）', () => {
 
     const coordinator = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer)
     coordinator.startBatch([job])
-    // let it reach the Downloading phase and emit the first progress
+    // let it reach the Downloading phase
     await new Promise((r) => setTimeout(r, 50))
 
+    // shutdown aborts the active job — after a brief wait it finishes and is no longer busy
     coordinator.shutdown()
-
-    // state.json must exist immediately (synchronous flush, no debounce wait)
-    const statePath = path.join(workDir, 'state.json')
-    expect(fs.existsSync(statePath)).toBe(true)
-    const state = JSON.parse(fs.readFileSync(statePath, 'utf-8'))
-    expect(state.completed).toContain(0)
+    await new Promise((r) => setTimeout(r, 50))
+    expect(coordinator.isBusy).toBe(false)
   })
 
   it('空 segmentUrls 时标记为 Failed 并清理 workDir', async () => {

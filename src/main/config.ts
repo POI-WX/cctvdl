@@ -25,7 +25,8 @@ const defaults: StoreSchema = {
     darkMode: false,
     logPath: app?.getPath?.('userData') || '',
     autoOpenFolder: false,
-    clipboardWatch: false
+    clipboardWatch: false,
+    concurrentVideos: 1
   },
   programs: [],
   singleVideos: [],

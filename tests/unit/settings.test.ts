@@ -11,7 +11,8 @@ const fallback: Settings = {
   darkMode: false,
   logPath: '/logs',
   autoOpenFolder: false,
-  clipboardWatch: false
+  clipboardWatch: false,
+  concurrentVideos: 1
 }
 
 describe('normalizeSettings', () => {

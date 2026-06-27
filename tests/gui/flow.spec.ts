@@ -107,7 +107,7 @@ test.describe('真实用户流程', () => {
     await page.waitForTimeout(500)
 
     // Verify current slider value
-    const concurrencySpan = page.locator('.thread-value')
+    const concurrencySpan = page.locator('.settings-item', { hasText: '并发下载数' }).locator('.thread-value')
     const currentVal = await concurrencySpan.textContent()
     expect(['8', '4', '2', '1', '3', '5', '6', '7', '9', '10', '11', '12', '13', '14', '15', '16']).toContain(currentVal?.trim())
 
