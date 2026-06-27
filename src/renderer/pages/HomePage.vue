@@ -106,6 +106,7 @@
               format="YYYY年M月"
               value-format="YYYYMM"
               style="width: 118px"
+              @change="selectedProgram && loadVideos()"
             />
             <span v-if="emptyMonths.has(selectedMonth)" class="month-empty-dot" title="本月暂无视频" />
             <button class="month-quick-btn" title="上个月" @click="jumpMonth(-1)">‹</button>
@@ -709,7 +710,7 @@ async function removeSingleVideo(v: VideoInfo) {
 
 async function deleteProgram(row: ProgramInfo) {
   try {
-    await ElMessageBox.confirm(`确定删除节目「${row.name}」吗？`, '确认删除', {
+    await ElMessageBox.confirm(`确定删除栏目「${row.name}」吗？`, '确认删除', {
       confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning'
     })
     await window.cctvdlApi.deleteProgram(row.columnId)

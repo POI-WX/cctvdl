@@ -82,7 +82,7 @@ export class BrowseService {
     if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching page`)
     const html = await resp.text()
 
-    // 1. Extract column ID (priority: column_id → topicID → URL path)
+    // 1. Extract column ID (priority: column_id → topicID → AJAX URL in page JS)
     let columnId = ''
     const colIdMatch = html.match(/var\s+column_id\s*=\s*["']([^"']+)["']/)
     if (colIdMatch) columnId = colIdMatch[1]
@@ -90,6 +90,16 @@ export class BrowseService {
     if (!columnId) {
       const topicIdMatch = html.match(/var\s+topicID\s*=\s*["']([^"']+)["']/)
       if (topicIdMatch) columnId = topicIdMatch[1]
+    }
+
+    // Some CCTV pages (e.g. /videoset/ sub-pages) don't expose a top-level var
+    // declaration, but do embed the real column id inside their own AJAX calls:
+    //   getVideoListByColumn?id=TOPC1234567890&...
+    // Extract it as a fallback. The zombie-column check in ipc.ts guards against
+    // any false positives.
+    if (!columnId) {
+      const ajaxIdMatch = html.match(/getVideoListByColumn\?[^"'<>]*\bid=(TOPC\d{10,})/)
+      if (ajaxIdMatch) columnId = ajaxIdMatch[1]
     }
     // No URL-slug fallback: the video API needs a real column id (TOPC…). Special
     // columns (e.g. 等着我) are standalone microsites with no column_id/topicID —

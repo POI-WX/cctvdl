@@ -432,8 +432,10 @@ async function redownload(entry: import('../../shared/types').HistoryEntry) {
     stage: 'None',
     progressPercent: 0
   }
-  await window.cctvdlApi.startDownload([job])
-  ElMessage.success(`已添加重新下载：${job.title}`)
+  // Use retryJob (skipHistory=true) so the history dedup filter is bypassed —
+  // startDownload would silently skip it if the guid is still in history.
+  await window.cctvdlApi.retryJob(job)
+  ElMessage.success(`已添加到下载队列：${job.title}`)
 }
 
 async function save() {
