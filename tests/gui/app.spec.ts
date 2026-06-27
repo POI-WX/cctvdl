@@ -106,8 +106,8 @@ test.describe('cctvdl GUI 测试', () => {
     // Card layout — labels use .settings-item-name
     await expect(page.locator('.settings-item-name', { hasText: '视频保存目录' })).toBeVisible()
     await expect(page.locator('.settings-item-name', { hasText: '图片保存目录' })).toBeVisible()
-    await expect(page.locator('.settings-item-name', { hasText: '并发下载数' })).toBeVisible()
-    await expect(page.locator('.settings-item', { hasText: '并发下载数' }).locator('.el-slider')).toBeVisible()
+    await expect(page.locator('.settings-item-name', { hasText: '下载线程数' })).toBeVisible()
+    await expect(page.locator('.settings-item', { hasText: '下载线程数' }).locator('.el-slider')).toBeVisible()
     await expect(page.locator('.settings-item-name', { hasText: '视频清晰度' })).toBeVisible()
     await expect(page.locator('.settings-item-name', { hasText: '深色模式' })).toBeVisible()
     await expect(page.locator('.settings-save-btn')).toBeVisible()
@@ -232,12 +232,12 @@ test.describe('cctvdl GUI 测试', () => {
     await expect(saveBtn).toBeEnabled()
   })
 
-  test('设置页并发下载数默认为8', async () => {
+  test('设置页下载线程数默认为8', async () => {
     await navTab(page, '设置').click()
     await page.waitForTimeout(500)
 
-    // Thread count is displayed in .thread-value within the 并发下载数 settings-item
-    const concurrencyValue = page.locator('.settings-item', { hasText: '并发下载数' }).locator('.thread-value')
+    // Thread count is displayed in .thread-value within the 下载线程数 settings-item
+    const concurrencyValue = page.locator('.settings-item', { hasText: '下载线程数' }).locator('.thread-value')
     const text = await concurrencyValue.textContent()
     expect(text?.trim()).toBe('8')
   })
@@ -330,7 +330,7 @@ test.describe('cctvdl GUI 测试', () => {
     await page.waitForTimeout(500)
 
     // Custom settings page, labels use .settings-item-name
-    const expectedLabels = ['视频保存目录', '图片保存目录', '并发下载数', '并行下载视频数', '视频清晰度', '合并方式', '下载完成后打开文件夹', '剪贴板自动导入', '日志级别', '深色模式', '日志目录']
+    const expectedLabels = ['视频保存目录', '图片保存目录', '下载线程数', '同时下载视频数', '视频清晰度', '合并方式', '下载完成后打开文件夹', '剪贴板自动导入', '日志级别', '深色模式', '日志目录']
     for (const label of expectedLabels) {
       const el = page.locator('.settings-item-name', { hasText: label })
       await expect(el).toBeVisible()

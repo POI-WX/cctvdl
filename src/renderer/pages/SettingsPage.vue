@@ -49,8 +49,8 @@
         <!-- thread count -->
         <div class="settings-item">
           <div class="settings-item-label">
-            <span class="settings-item-name">并发下载数</span>
-            <span class="settings-item-desc">单个视频内部的并行线程数，调高可加速下载，但会增加 CPU 占用</span>
+            <span class="settings-item-name">下载线程数</span>
+            <span class="settings-item-desc">调高可加速下载，但会增加 CPU 占用</span>
             <span class="settings-item-hint" :class="threadHintClass">{{ threadHint }}</span>
           </div>
           <div class="settings-item-control thread-control">
@@ -68,8 +68,8 @@
         <!-- concurrent videos -->
         <div class="settings-item">
           <div class="settings-item-label">
-            <span class="settings-item-name">并行下载视频数</span>
-            <span class="settings-item-desc">同时下载的视频数，每路线程数自动均分，总并发保持不变，建议不超过 2</span>
+            <span class="settings-item-name">同时下载视频数</span>
+            <span class="settings-item-desc">同时下载的视频数，推荐不超过 2</span>
           </div>
           <div class="settings-item-control thread-control">
             <el-slider
@@ -125,7 +125,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">下载完成后打开文件夹</span>
-            <span class="settings-item-desc">批量下载或单视频下载完成后，自动在文件管理器中打开保存目录</span>
+            <span class="settings-item-desc">「下载本月」或单视频下载完成后，自动打开保存目录</span>
           </div>
           <div class="settings-item-control">
             <el-switch v-model="form.autoOpenFolder" />
@@ -155,7 +155,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">主题色</span>
-            <span class="settings-item-desc">点击色块立即切换，重启后保持</span>
+            <span class="settings-item-desc">点击色块立即切换</span>
           </div>
           <div class="settings-item-control">
             <div class="accent-swatches">
@@ -439,7 +439,7 @@ function revealHistoryFile(outputPath: string) {
 
 async function redownload(entry: import('../../shared/types').HistoryEntry) {
   const settings = await window.cctvdlApi.getSettings()
-  if (!settings.savePath) { ElMessage.warning('请先在设置中配置保存位置'); return }
+  if (!settings.savePath) { ElMessage.warning('请先在设置中配置视频保存目录'); return }
   const { buildOutputPath } = await import('../../shared/filename')
   const job: import('../../shared/types').DownloadJob = {
     id: crypto.randomUUID(),
@@ -461,7 +461,7 @@ async function redownload(entry: import('../../shared/types').HistoryEntry) {
 }
 
 async function save() {
-  if (!form.value.savePath) { ElMessage.warning('请先设置文件保存位置'); return }
+  if (!form.value.savePath) { ElMessage.warning('请先在设置中配置视频保存目录'); return }
   await window.cctvdlApi.saveSettings(toRaw(form.value))
   const now = new Date()
   lastSaved.value = `已保存 ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`

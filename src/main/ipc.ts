@@ -192,16 +192,20 @@ export function registerIpcHandlers(
   // Download a remote cover image to a local directory.
   // Infers extension from Content-Type; appends _2/_3 suffix to avoid overwriting.
   ipcMain.handle('download-cover', async (_, url, saveDir, baseName) => {
-    const resp = await fetch(url, { headers: { 'User-Agent': DEFAULT_UA, 'Referer': 'https://tv.cctv.com' } })
-    if (!resp.ok) throw new Error('HTTP ' + resp.status + ' fetching cover')
-    const ct = resp.headers.get('content-type') || ''
-    const ext = ct.includes('png') ? '.png' : ct.includes('webp') ? '.webp' : '.jpg'
-    fs.mkdirSync(saveDir, { recursive: true })
-    let fullPath = path.join(saveDir, baseName + ext)
-    let n = 2
-    while (fs.existsSync(fullPath)) fullPath = path.join(saveDir, baseName + '_' + n++ + ext)
-    fs.writeFileSync(fullPath, Buffer.from(await resp.arrayBuffer()))
-    return { savedPath: fullPath }
+    try {
+      const resp = await fetch(url, { headers: { 'User-Agent': DEFAULT_UA, 'Referer': 'https://tv.cctv.com' } })
+      if (!resp.ok) throw new Error(`服务器返回 ${resp.status}`)
+      const ct = resp.headers.get('content-type') || ''
+      const ext = ct.includes('png') ? '.png' : ct.includes('webp') ? '.webp' : '.jpg'
+      fs.mkdirSync(saveDir, { recursive: true })
+      let fullPath = path.join(saveDir, baseName + ext)
+      let n = 2
+      while (fs.existsSync(fullPath)) fullPath = path.join(saveDir, baseName + '_' + n++ + ext)
+      fs.writeFileSync(fullPath, Buffer.from(await resp.arrayBuffer()))
+      return { savedPath: fullPath }
+    } catch (err) {
+      throw new Error(`封面下载失败：${err instanceof Error ? err.message : err}`)
+    }
   })
 
   coordinator.on('progress', (p: DownloadProgress) => {

@@ -852,7 +852,7 @@ async function downloadAll() {
 async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
   if (!videoList.length) return
   const validVideos = videoList.filter(v => v.guid)
-  if (!validVideos.length) { ElMessage.warning('选中的视频缺少 GUID'); return }
+  if (!validVideos.length) { ElMessage.warning('选中的视频链接无效'); return }
   try {
     const settings = await window.cctvdlApi.getSettings()
     const jobs: DownloadJob[] = validVideos.map(v => {

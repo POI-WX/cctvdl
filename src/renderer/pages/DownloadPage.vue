@@ -82,7 +82,7 @@
                       <span class="dl-card-stage">{{ stageText(job.stage) }}</span>
                       <template v-if="job.segmentsTotal">
                         <span class="dl-card-sep">·</span>
-                        <span>{{ job.segmentsDone }}/{{ job.segmentsTotal }} 分片</span>
+                        <span>{{ job.segmentsDone }}/{{ job.segmentsTotal }} 段</span>
                       </template>
                     </template>
                   </div>
@@ -287,8 +287,8 @@ const STATE_ICON: Partial<Record<JobState | 'None', string>> = {
   Completed: '✓', Failed: '✗', Cancelled: '○', Created: '·'
 }
 const STAGE_TEXT: Record<JobStage, string> = {
-  None: '等待开始', FetchingPlaylist: '获取播放列表',
-  DownloadingShards: '下载并解密分片', MergingShards: '合并封装中',
+  None: '等待开始', FetchingPlaylist: '准备中',
+  DownloadingShards: '下载视频片段', MergingShards: '合并中',
   PublishingOutput: '写入文件'
 }
 
