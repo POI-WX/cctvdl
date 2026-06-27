@@ -150,5 +150,18 @@ test.describe('单视频真实链接导入（联网）', () => {
 
     // 单个视频徽标
     await expect(page.locator('.preview-single-badge')).toBeVisible()
+
+    // 截图：单视频预览
+    await page.mouse.move(800, 500)
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: path.join(__dirname, 'screenshots/single-video.png') })
+
+    // 截图：lightbox（点击封面放大）
+    await page.locator('.preview-cover.clickable').click()
+    await page.waitForTimeout(400)
+    await expect(page.locator('.lightbox')).toBeVisible()
+    await page.screenshot({ path: path.join(__dirname, 'screenshots/lightbox.png') })
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(200)
   })
 })

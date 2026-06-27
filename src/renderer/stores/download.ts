@@ -58,6 +58,7 @@ export const useDownloadStore = defineStore('download', () => {
     if (idx === -1) return
     jobs.value[idx].state = job.state
     jobs.value[idx].errorMessage = job.errorMessage ?? ''
+    jobs.value[idx].sourceJob = job
     running.value = jobs.value.some(j => isActive(j.state))
   }
 

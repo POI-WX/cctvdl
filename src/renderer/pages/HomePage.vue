@@ -488,6 +488,11 @@ function onVideoListScroll(e: Event) {
   vScrollTop.value = (e.target as HTMLElement).scrollTop
 }
 
+function resetVideoListScroll() {
+  vScrollTop.value = 0
+  if (videoListEl.value) videoListEl.value.scrollTop = 0
+}
+
 function openLightbox() {
   if (selectedVideo.value?.coverUrl && !coverError.value) {
     lightboxOpen.value = true
@@ -613,6 +618,7 @@ async function importSingleVideos() {
     if (count < 0) return // cancelled
     singleVideos.value = await window.cctvdlApi.getSingleVideos()
     videos.value = singleVideos.value.map(v => ({ ...v, selected: false }))
+    resetVideoListScroll()
     ElMessage.success(`已导入 ${count} 个单视频`)
   } catch (err) { ElMessage.error(`导入失败：${humanizeError(String(err))}`) }
 }
@@ -676,6 +682,7 @@ function selectSingleMode() {
   debouncedSearch.value = ''
   contentStore.refreshDownloadedSet()
   videos.value = singleVideos.value.map(v => ({ ...v, selected: false }))
+  resetVideoListScroll()
 }
 
 // Resolved on paste → persisted (dedup by guid) → switch to the collection and
@@ -752,6 +759,7 @@ async function loadVideos() {
     searchQuery.value = ''
     debouncedSearch.value = ''
     selectedVideo.value = null
+    resetVideoListScroll()
     contentStore.recordVideosLoaded(selectedMonth.value, list)
   } catch (err) { ElMessage.error(`加载失败：${humanizeError(String(err))}`) }
   finally { loadingVideos.value = false }

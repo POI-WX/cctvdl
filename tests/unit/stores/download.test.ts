@@ -63,6 +63,19 @@ describe('useDownloadStore', () => {
       expect(store.jobs[0].state).toBe('Failed')
       expect(store.jobs[0].errorMessage).toBe('网络超时')
     })
+
+    it('将完整 DownloadJob（含 outputPath）存入 sourceJob', () => {
+      const store = useDownloadStore()
+      store.applyBatchStarted({ total: 1, jobs: [{ id: 'j2', title: 'V', guid: 'G2' }] })
+      const finished = {
+        id: 'j2', state: 'Completed', outputPath: '/downloads/video.mp4',
+        guid: 'G2', title: 'V', sourceUrl: '', savePath: '/downloads/video.mp4',
+        quality: 'auto', threadCount: 8, reencode: false,
+        stage: 'None', progressPercent: 100
+      } as unknown as DownloadJob
+      store.applyJobFinished(finished)
+      expect(store.jobs[0].sourceJob?.outputPath).toBe('/downloads/video.mp4')
+    })
   })
 
   describe('applyBatchFinished', () => {
