@@ -110,7 +110,7 @@
             />
             <span v-if="emptyMonths.has(selectedMonth)" class="month-empty-dot" title="本月暂无视频" />
             <button class="month-quick-btn" title="上个月" @click="jumpMonth(-1)">‹</button>
-            <button class="month-quick-btn" title="本月" @click="jumpMonth(0)">今</button>
+            <button class="month-quick-btn today" title="跳回本月" @click="jumpMonth(0)">本月</button>
             <button class="month-quick-btn" title="下个月" @click="jumpMonth(1)">›</button>
           </div>
           <div v-else class="single-mode-label">
@@ -1787,6 +1787,12 @@ html.dark .preview-downloaded-badge {
   cursor: pointer;
   transition: all .12s;
   flex-shrink: 0;
+}
+
+.month-quick-btn.today {
+  width: auto;
+  padding: 0 7px;
+  font-size: 12px;
 }
 
 .month-quick-btn:hover {

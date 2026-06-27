@@ -36,7 +36,9 @@ export function extractTitle(html: string): string {
       .replace(/_CCTV节目官网.*$/i, '')
       .replace(/-CCTV.*$/i, '')
       .replace(/_央视网.*$/i, '')
-      .replace(/_央视网\(cctv\.com\).*$/i, '')
+      .replace(/节目视频$/, '')
+      .replace(/视频$/, '')
+      .replace(/节目$/, '')
       .trim()
     const bookMatch = title.match(/《([^》]+)》/)
     return bookMatch ? bookMatch[1] : title
