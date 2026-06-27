@@ -322,7 +322,7 @@ test.describe('cctvdl GUI 测试', () => {
   })
 
   test('侧边栏展开/折叠切换', async () => {
-    const toggleBtn = page.locator('.sidebar-toggle')
+    const toggleBtn = page.locator('.sidebar-toggle-top')
     await expect(toggleBtn).toBeVisible()
     const sidebar = page.locator('.app-sidebar')
     const beforeExpanded = await sidebar.evaluate((el: Element) => el.classList.contains('expanded'))
@@ -414,6 +414,63 @@ test.describe('cctvdl GUI 测试', () => {
     // 无栏目时月份选择器不显示，验证 month-row 不报错
     // 无选中栏目时 month-row 存在但月份选择器被隐藏，不需额外断言
     await expect(page.locator('.video-list')).toBeVisible()
+  })
+  // ── 侧边栏迷你进度条 + 速度显示 ─────────────────────────────
+  test('空闲时侧边栏不显示下载进度条', async () => {
+    await navTab(page, '下载').click()
+    await page.waitForTimeout(300)
+    // 没有进行中的任务，进度条不应出现
+    await expect(page.locator('.sidebar-dl-bar')).toHaveCount(0)
+  })
+
+  test('空闲时底部状态区初始不可见', async () => {
+    // sidebar-status 在 visible 类缺席时 opacity:0
+    const status = page.locator('.sidebar-status')
+    await expect(status).toBeAttached()
+    const hasVisible = await status.evaluate((el: Element) => el.classList.contains('visible'))
+    expect(hasVisible).toBe(false)
+  })
+
+  // ── 侧边栏折叠按钮位置 + 快捷键 ─────────────────────────────
+  test('折叠按钮在侧边栏顶部（品牌区下方）', async () => {
+    await navTab(page, '首页').click()
+    await page.waitForTimeout(200)
+
+    const toggle = page.locator('.sidebar-toggle-top')
+    await expect(toggle).toBeVisible()
+
+    // 确认折叠按钮在 nav 之前（DOM 顺序）
+    const sidebar = page.locator('.app-sidebar')
+    const toggleIndex = await sidebar.evaluate((el: Element, toggleSel: string) => {
+      const children = [...el.children]
+      const toggle = el.querySelector(toggleSel)
+      return toggle ? children.indexOf(toggle) : -1
+    }, '.sidebar-toggle-top')
+    const navIndex = await sidebar.evaluate((el: Element) => {
+      const children = [...el.children]
+      const nav = el.querySelector('.sidebar-nav')
+      return nav ? children.indexOf(nav) : -1
+    })
+    expect(toggleIndex).toBeGreaterThan(-1)
+    expect(toggleIndex).toBeLessThan(navIndex)
+  })
+
+  test('Ctrl+\\ 快捷键切换侧边栏展开/折叠', async () => {
+    await navTab(page, '首页').click()
+    await page.waitForTimeout(200)
+
+    const sidebar = page.locator('.app-sidebar')
+    const before = await sidebar.evaluate((el: Element) => el.classList.contains('expanded'))
+
+    await page.keyboard.press('Control+\\')
+    await page.waitForTimeout(300)
+
+    const after = await sidebar.evaluate((el: Element) => el.classList.contains('expanded'))
+    expect(after).not.toBe(before)
+
+    // Restore
+    await page.keyboard.press('Control+\\')
+    await page.waitForTimeout(300)
   })
 })
 

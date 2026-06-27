@@ -33,6 +33,10 @@ export const useDownloadStore = defineStore('download', () => {
     return Math.round(total / jobs.value.length)
   })
   const downloadBadge = computed(() => activeDownloads.value > 0 ? String(activeDownloads.value) : '')
+  // Sum of speeds of all actively downloading jobs (bytes/sec)
+  const totalSpeed = computed(() =>
+    jobs.value.filter(j => j.state === 'Downloading').reduce((s, j) => s + (j.speed || 0), 0)
+  )
 
   function applyProgress(p: DownloadProgress) {
     const idx = jobs.value.findIndex(j => j.id === p.jobId)
@@ -80,7 +84,7 @@ export const useDownloadStore = defineStore('download', () => {
   return {
     jobs, running, stats, activeDownloads, updateVersion,
     activeJobs, completedJobs, failedCancelledJobs,
-    doneCount, finishedCount, failedCount, batchPercent,
+    doneCount, finishedCount, failedCount, batchPercent, totalSpeed,
     downloadBadge,
     isActive, applyProgress, applyJobFinished, applyBatchFinished, applyBatchStarted, clearFinished
   }

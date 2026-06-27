@@ -219,22 +219,23 @@
           <span class="video-count" v-if="videos.length">
             {{ filteredVideos.length }} 个{{ debouncedSearch ? '（过滤）' : '' }}
             <span v-if="downloadedCount" class="video-downloaded-count"> · ✓{{ downloadedCount }}</span>
-            · 选中 {{ selectedVideos.length }}
+            <span v-if="selectedVideos.length" class="video-selected-count"> · 已选 {{ selectedVideos.length }}</span>
           </span>
-          <el-button
+          <button
             v-if="viewMode === 'column' && filteredVideos.length"
-            size="small"
-            class="download-all-btn"
+            class="footer-btn footer-btn-ghost"
             @click="downloadAll"
-          >下载本月</el-button>
-          <el-button
-            :type="allSelectedDownloaded ? 'default' : 'primary'"
-            size="small"
+          >下载本月</button>
+          <button
+            v-if="viewMode === 'column'"
+            class="footer-btn"
+            :class="selectedVideos.length ? 'footer-btn-primary' : 'footer-btn-idle'"
             :disabled="!selectedVideos.length"
             @click="downloadSelected"
           >
-            {{ allSelectedDownloaded ? '重新下载' : '下载选中' }}{{ selectedVideos.length ? ` (${selectedVideos.length})` : '' }}
-          </el-button>
+            {{ allSelectedDownloaded ? '重新下载' : '下载选中' }}
+            <span v-if="selectedVideos.length" class="footer-btn-count">{{ selectedVideos.length }}</span>
+          </button>
         </div>
       </div>
     </div>
@@ -298,14 +299,22 @@
               <p class="preview-brief">{{ selectedVideo.brief }}</p>
             </div>
             <!-- download button -->
-            <button
-              class="preview-download-btn"
-              :class="{ downloaded: downloadedSet.has(selectedVideo.guid) }"
-              @click="downloadVideos([selectedVideo], viewMode === 'single')"
-            >
-              <span>⬇</span>
-              {{ downloadedSet.has(selectedVideo.guid) ? '重新下载' : (viewMode === 'single' ? '下载此视频' : '下载此集') }}
-            </button>
+            <div class="preview-download-wrap">
+              <button
+                class="preview-download-btn"
+                :class="{
+                  downloaded: downloadedSet.has(selectedVideo.guid),
+                  dimmed: selectedVideos.length > 0 && !downloadedSet.has(selectedVideo.guid)
+                }"
+                @click="downloadVideos([selectedVideo], viewMode === 'single')"
+              >
+                <span>⬇</span>
+                {{ downloadedSet.has(selectedVideo.guid) ? '重新下载' : (viewMode === 'single' ? '下载此视频' : '下载此集') }}
+              </button>
+              <span v-if="selectedVideos.length > 0" class="preview-download-hint">
+                已选 {{ selectedVideos.length }} 个，可在下方批量下载
+              </span>
+            </div>
           </div>
         </div>
         <div v-else class="preview-empty" key="empty">
@@ -778,10 +787,15 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
 .sidebar-section.program-section {
   background: var(--el-fill-color-blank);
   border-bottom: 2px solid var(--app-border-subtle);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-section.video-section {
-  flex: 1;
+  flex: 1.5;
+  min-height: 0;
   overflow: hidden;
   padding-bottom: 0;
   background: var(--app-bg-sidebar);
@@ -833,7 +847,8 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
 
 /* 栏目列表 */
 .program-list {
-  max-height: 180px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   border-radius: var(--el-border-radius-base);
 }
@@ -1098,9 +1113,8 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
 .video-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--app-spacing-sm) 0 var(--app-spacing-md);
   gap: var(--app-spacing-sm);
+  padding: var(--app-spacing-sm) 0 var(--app-spacing-md);
   border-top: 1px solid var(--app-border-subtle);
   margin-top: var(--app-spacing-sm);
 }
@@ -1115,6 +1129,68 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
 }
 
 .video-downloaded-count { color: var(--el-color-success); font-weight: var(--app-font-weight-medium); }
+.video-selected-count   { color: var(--el-color-primary);  font-weight: var(--app-font-weight-medium); }
+
+/* 底部操作按钮基础样式 */
+.footer-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--el-border-radius-base);
+  font-size: 12px;
+  font-weight: var(--app-font-weight-medium);
+  font-family: var(--el-font-family);
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+  white-space: nowrap;
+}
+
+/* 幽灵/次要：下载本月 */
+.footer-btn-ghost {
+  border: 1px solid var(--el-border-color);
+  background: transparent;
+  color: var(--el-text-color-regular);
+}
+.footer-btn-ghost:hover {
+  border-color: var(--el-color-primary-light-5);
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+
+/* 主操作：有选中时 */
+.footer-btn-primary {
+  border: 1px solid var(--el-color-primary);
+  background: var(--el-color-primary);
+  color: #fff;
+}
+.footer-btn-primary:hover { background: var(--el-color-primary-dark-2); border-color: var(--el-color-primary-dark-2); }
+
+/* 空闲态：无选中时（视觉弱化但仍占位） */
+.footer-btn-idle {
+  border: 1px solid var(--el-border-color-light);
+  background: transparent;
+  color: var(--el-text-color-placeholder);
+  cursor: not-allowed;
+}
+
+/* 选中数量角标 */
+.footer-btn-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: rgba(255,255,255,.25);
+  font-size: 11px;
+  font-weight: var(--app-font-weight-bold);
+  line-height: 1;
+}
+.footer-btn-idle .footer-btn-count { background: var(--el-fill-color); color: var(--el-text-color-placeholder); }
 
 /* ── 右侧预览区 ─────────────────────────────────── */
 .home-preview {
@@ -1348,34 +1424,59 @@ html.dark .preview-downloaded-badge {
   border-color: #166534;
 }
 
-.preview-download-btn {
+.preview-download-wrap {
   align-self: flex-start;
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.preview-download-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 20px;
+  height: 36px;
+  padding: 0 20px;
   border: none;
   border-radius: var(--el-border-radius-base);
   background: var(--el-color-primary);
   color: #fff;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: var(--app-font-weight-semibold);
   font-family: var(--el-font-family);
   cursor: pointer;
-  transition: background .12s;
+  transition: background .12s, opacity .12s;
+  white-space: nowrap;
 }
 
 .preview-download-btn:hover { background: var(--el-color-primary-dark-2); }
+
+/* 弱化态：有批量选中时单集按钮降优先级 */
+.preview-download-btn.dimmed {
+  background: var(--el-fill-color);
+  color: var(--el-text-color-regular);
+  border: 1px solid var(--el-border-color-light);
+}
+.preview-download-btn.dimmed:hover {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary-light-5);
+}
 
 .preview-download-btn.downloaded {
   background: var(--el-fill-color);
   color: var(--el-text-color-secondary);
 }
-
 .preview-download-btn.downloaded:hover {
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
+}
+
+.preview-download-hint {
+  font-size: 11px;
+  color: var(--el-color-primary);
+  opacity: .8;
 }
 
 /* 预览空状态 / 引导 */

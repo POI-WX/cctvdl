@@ -5,10 +5,6 @@
       <!-- header -->
       <div class="settings-header">
         <h1 class="settings-title">设置</h1>
-        <div class="settings-header-right">
-          <span v-if="lastSaved" class="settings-last-saved">{{ lastSaved }}</span>
-          <button class="settings-save-btn" @click="save">保存设置</button>
-        </div>
       </div>
 
       <!-- section: download -->
@@ -267,6 +263,14 @@
         </div>
       </div>
 
+      <!-- sticky save footer -->
+      <div class="settings-save-footer">
+        <Transition name="saved-fade">
+          <span v-if="lastSaved" class="settings-last-saved">✓ {{ lastSaved }}</span>
+        </Transition>
+        <button class="settings-save-btn" @click="save">保存设置</button>
+      </div>
+
     </div>
   </div>
 </template>
@@ -412,8 +416,47 @@ async function save() {
 
 .settings-last-saved {
   font-size: 12px;
-  color: var(--el-text-color-placeholder);
+  color: var(--el-color-success);
+  font-weight: var(--app-font-weight-medium);
 }
+
+.settings-save-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--app-spacing-md);
+  padding: var(--app-spacing-sm) 0 var(--app-spacing-lg);
+  border-top: 1px solid var(--app-border-subtle);
+  margin-top: var(--app-spacing-md);
+  position: sticky;
+  bottom: 0;
+  background: var(--app-bg-page);
+}
+
+.settings-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--el-color-primary);
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-color-primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: var(--app-font-weight-semibold);
+  font-family: var(--el-font-family);
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+}
+
+.settings-save-btn:hover {
+  background: var(--el-color-primary-dark-2);
+  border-color: var(--el-color-primary-dark-2);
+}
+
+.saved-fade-enter-active, .saved-fade-leave-active { transition: opacity .3s ease; }
+.saved-fade-enter-from, .saved-fade-leave-to { opacity: 0; }
 
 .settings-item-hint {
   font-size: 12px;

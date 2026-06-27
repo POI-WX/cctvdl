@@ -114,5 +114,23 @@ describe('useDownloadStore', () => {
       store.activeDownloads = 0
       expect(store.downloadBadge).toBe('')
     })
+
+    it('totalSpeed 返回所有 Downloading 任务速度之和', () => {
+      const store = useDownloadStore()
+      store.applyBatchStarted({ total: 3, jobs: [
+        { id: 'j1', title: 'A', guid: 'G1' },
+        { id: 'j2', title: 'B', guid: 'G2' },
+        { id: 'j3', title: 'C', guid: 'G3' },
+      ]})
+      store.jobs[0].state = 'Downloading'; store.jobs[0].speed = 1024 * 1024   // 1 MB/s
+      store.jobs[1].state = 'Downloading'; store.jobs[1].speed = 512 * 1024    // 0.5 MB/s
+      store.jobs[2].state = 'Queued';      store.jobs[2].speed = 999 * 1024    // not counted
+      expect(store.totalSpeed).toBe(1024 * 1024 + 512 * 1024)
+    })
+
+    it('totalSpeed 无下载任务时为 0', () => {
+      const store = useDownloadStore()
+      expect(store.totalSpeed).toBe(0)
+    })
   })
 })

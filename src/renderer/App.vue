@@ -15,38 +15,70 @@
         <span class="sidebar-app-name">cctvdl</span>
       </button>
 
-      <nav class="sidebar-nav" role="navigation" aria-label="主导航">
+      <!-- collapse toggle — top position (standard in VS Code, Notion, Linear) -->
+      <el-tooltip
+        :content="sidebarExpanded ? `收起侧边栏 · ${isMac ? '⌘' : 'Ctrl'}+\\` : `展开侧边栏 · ${isMac ? '⌘' : 'Ctrl'}+\\`"
+        placement="right"
+        :show-after="0"
+      >
         <button
+          class="sidebar-toggle sidebar-toggle-top"
+          @click="appStore.toggleSidebar()"
+        >{{ sidebarExpanded ? '‹' : '›' }}</button>
+      </el-tooltip>
+
+      <nav class="sidebar-nav" role="navigation" aria-label="主导航">
+        <el-tooltip
           v-for="tab in tabs"
           :key="tab.name"
-          class="sidebar-nav-item"
-          :class="{ active: activeTab === tab.name }"
-          :aria-current="activeTab === tab.name ? 'page' : undefined"
-          :title="`${tab.label}  [${tab.shortcut}]`"
-          @click="activeTab = tab.name"
+          :content="`${tab.label} · 快捷键 ${tab.shortcut}`"
+          placement="right"
+          :show-after="0"
+          :disabled="sidebarExpanded"
         >
-          <span class="sidebar-nav-icon" aria-hidden="true">{{ tab.icon }}</span>
-          <span class="sidebar-nav-label">{{ tab.label }}</span>
-          <!-- download badge -->
-          <span
-            v-if="tab.name === 'download' && downloadBadge"
-            class="sidebar-nav-badge active"
-          >{{ downloadBadge }}</span>
-        </button>
+          <button
+            class="sidebar-nav-item"
+            :class="{ active: activeTab === tab.name }"
+            :aria-current="activeTab === tab.name ? 'page' : undefined"
+            @click="activeTab = tab.name"
+          >
+            <span class="sidebar-nav-icon" aria-hidden="true">{{ tab.icon }}</span>
+            <span class="sidebar-nav-label">{{ tab.label }}</span>
+            <!-- download badge -->
+            <span
+              v-if="tab.name === 'download' && downloadBadge"
+              class="sidebar-nav-badge active"
+            >{{ downloadBadge }}</span>
+            <!-- mini progress bar: only on download item while running -->
+            <span
+              v-if="tab.name === 'download' && running && jobs.length"
+              class="sidebar-dl-bar"
+            >
+              <span
+                class="sidebar-dl-bar-fill"
+                :class="{ complete: batchPercent === 100 }"
+                :style="{ width: batchPercent + '%' }"
+              />
+            </span>
+          </button>
+        </el-tooltip>
       </nav>
 
-      <!-- status footer -->
-      <div class="sidebar-status" :class="{ visible: !!statusMessage }">
-        <span class="sidebar-status-dot" :class="statusType" />
-        <span class="sidebar-status-text">{{ statusMessage }}</span>
+      <!-- status footer: speed during download, or completion message -->
+      <div class="sidebar-status" :class="{ visible: running || !!statusMessage }">
+        <template v-if="running && totalSpeed > 0">
+          <span class="sidebar-status-dot" style="background: var(--el-color-primary)" />
+          <span class="sidebar-status-text sidebar-status-speed">{{ formatSpeed(totalSpeed) }}</span>
+        </template>
+        <template v-else-if="running">
+          <span class="sidebar-status-dot" style="background: var(--el-color-primary); animation: badge-pulse 2s ease-in-out infinite" />
+          <span class="sidebar-status-text">下载中…</span>
+        </template>
+        <template v-else-if="statusMessage">
+          <span class="sidebar-status-dot" :class="statusType" />
+          <span class="sidebar-status-text">{{ statusMessage }}</span>
+        </template>
       </div>
-
-      <!-- collapse toggle -->
-      <button
-        class="sidebar-toggle"
-        :title="sidebarExpanded ? '收起导航' : '展开导航'"
-        @click="appStore.toggleSidebar()"
-      >{{ sidebarExpanded ? '◀' : '▶' }}</button>
     </aside>
 
     <!-- drag overlay -->
@@ -101,16 +133,18 @@ import DownloadPage from './pages/DownloadPage.vue'
 import SettingsPage from './pages/SettingsPage.vue'
 import { useAppStore } from './stores/app'
 import { useDownloadStore } from './stores/download'
+import { formatSpeed } from '../shared/format'
 import type { BatchResult } from '../shared/types'
 
 const appStore = useAppStore()
 const { activeTab, sidebarExpanded, aboutOpen, isDragging, statusMessage, statusType } = storeToRefs(appStore)
 
 const dlStore = useDownloadStore()
-const { downloadBadge, updateVersion } = storeToRefs(dlStore)
+const { downloadBadge, updateVersion, running, batchPercent, totalSpeed, jobs } = storeToRefs(dlStore)
 
 const homePageRef = ref<InstanceType<typeof HomePage> | null>(null)
 const appVersion = __APP_VERSION__ // replaced by vite define at build/dev time
+const isMac = window.cctvdlApi.isMac
 
 function openReleasePage() {
   window.cctvdlApi.openUrl('https://github.com/POI-WX/cctvdl/releases/latest')
@@ -127,6 +161,8 @@ let cleanups: Array<() => void> = []
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && aboutOpen.value) { aboutOpen.value = false; return }
   if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return
+  // Ctrl+\ (or Cmd+\ on Mac) toggles sidebar
+  if (e.key === '\\' && (e.ctrlKey || e.metaKey)) { appStore.toggleSidebar(); return }
   if (e.ctrlKey || e.metaKey || e.altKey) return
   if (e.key === '1') activeTab.value = 'home'
   else if (e.key === '2') activeTab.value = 'download'
@@ -381,6 +417,31 @@ function onDrop(e: DragEvent) {
   50% { opacity: .7; }
 }
 
+/* 迷你下载进度条（嵌在下载 nav item 底部） */
+.sidebar-dl-bar {
+  position: absolute;
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--el-color-primary-light-7);
+  overflow: hidden;
+}
+
+.sidebar-dl-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--el-color-primary);
+  border-radius: 1px;
+  transition: width .4s ease;
+  min-width: 4px;
+}
+
+.sidebar-dl-bar-fill.complete {
+  background: var(--el-color-success);
+}
+
 /* 状态区（底部） */
 .sidebar-status {
   display: flex;
@@ -416,6 +477,12 @@ function onDrop(e: DragEvent) {
   line-height: 1.4;
 }
 
+.sidebar-status-speed {
+  color: var(--el-color-primary);
+  font-weight: var(--app-font-weight-semibold);
+  font-size: 11px;
+}
+
 /* 展开/折叠按钮 */
 .sidebar-toggle {
   margin-top: var(--app-spacing-sm);
@@ -434,6 +501,14 @@ function onDrop(e: DragEvent) {
   transition: background .12s;
   -webkit-app-region: no-drag;
   flex-shrink: 0;
+}
+
+.sidebar-toggle.sidebar-toggle-top {
+  margin-top: 0;
+  margin-bottom: var(--app-spacing-md);
+  width: 24px;
+  height: 24px;
+  font-size: 13px;
 }
 
 .sidebar-toggle:hover {
