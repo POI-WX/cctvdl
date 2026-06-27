@@ -96,18 +96,19 @@ describe('end-to-end pipeline', () => {
     await runDecryptMergeTest(videos[0].guid, 'liuchang', 'xwlb')
   }, 180_000)
 
-  it('CCTV-16 4K奥林匹克: decrypts and merges at bluray (3Mbps 1080p)', async () => {
-    // CCTV-16 Olympic 4K content; 5 tiers up to 3072000bps
+  it('多档位流: 蓝光 3Mbps 档解密合并正常', async () => {
+    // Tests a stream with 5 quality tiers up to 3072000bps; verifies bluray tier
+    // picks correctly and decrypts/merges to a playable file.
     await runDecryptMergeTest('26777d5094fc4ca98a7ad07d9cc62ffe', 'bluray', 'cctv16-4k')
   }, 180_000)
 
-  it('CCTV-4K超高清: decrypts and merges at bluray (4Mbps 1080p)', async () => {
-    // CCTV-4K超高清 content; 2 tiers only: 2048000 and 4096000
+  it('双档位流: 蓝光 4Mbps 档解密合并正常', async () => {
+    // Tests a stream with only 2 tiers (2048000 / 4096000); verifies bluray picks 4096000.
     await runDecryptMergeTest('354d096689104a5fbf1b62398be502c6', 'bluray', 'cctv4k-uhd')
   }, 180_000)
 
-  it('CCTV-4K超高清: fallback from liuchang (460800) to lowest available (2048000)', async () => {
-    // Only 2048000/4096000 available; 460800 not present → fallback picks 2048000
+  it('双档位流: 缺流畅档时自动降级到最低可用档', async () => {
+    // Only 2048000/4096000 available; 460800 (liuchang) not present → fallback picks 2048000
     const api = new CctvApiService()
     const resolved = await api.resolveSegmentUrls('354d096689104a5fbf1b62398be502c6', 'liuchang')
     expect(resolved.segmentUrls.length).toBeGreaterThan(0)

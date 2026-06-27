@@ -324,17 +324,17 @@ describe('BrowseService', () => {
     })
 
     it('extracts brief from og:description meta', async () => {
-      const html = '<meta property="og:description" content="这是一部关于建国的史诗电影"><title>建国大业_CCTV</title>'
+      const html = '<meta property="og:description" content="这是一段测试简介文字"><title>测试片名_CCTV</title><script>var guid = "test000000000000000000000000001";</script>'
       const service = new BrowseService(fetchHtml(html))
-      const v = await service.resolveSingleVideo('https://tv.cctv.com/2026/06/12/VIDEdesc260612.shtml')
-      expect(v.brief).toBe('这是一部关于建国的史诗电影')
+      const v = await service.resolveSingleVideo('https://tv.cctv.com/2026/06/12/VIDEtest-ogdesc260612.shtml')
+      expect(v.brief).toBe('这是一段测试简介文字')
     })
 
     it('extracts brief from name=description meta', async () => {
-      const html = '<meta name="description" content="这是一部关于长津湖的战争电影"><title>长津湖_CCTV</title>'
+      const html = '<meta name="description" content="这是另一段测试简介文字"><title>测试片名乙_CCTV</title><script>var guid = "test000000000000000000000000002";</script>'
       const service = new BrowseService(fetchHtml(html))
-      const v = await service.resolveSingleVideo('https://tv.cctv.com/2026/06/12/VIDEnamedesc260612.shtml')
-      expect(v.brief).toBe('这是一部关于长津湖的战争电影')
+      const v = await service.resolveSingleVideo('https://tv.cctv.com/2026/06/12/VIDEtest-namedesc260612.shtml')
+      expect(v.brief).toBe('这是另一段测试简介文字')
     })
 
     it('prepends https: for protocol-relative og:image URL', async () => {

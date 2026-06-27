@@ -195,7 +195,7 @@ import { ElMessage } from 'element-plus'
 import { storeToRefs } from 'pinia'
 import { useDownloadStore } from '../stores/download'
 const emit = defineEmits<{ 'go-home': [] }>()
-import type { DownloadProgress, DownloadJob, BatchStartInfo, JobState } from '../../shared/types'
+import type { DownloadProgress, DownloadJob, BatchStartInfo, JobState, JobStage } from '../../shared/types'
 import { formatSpeed, formatTime } from '../../shared/format'
 import { humanizeError } from '../../shared/errors'
 import { buildOutputPath } from '../../shared/filename'
@@ -204,16 +204,16 @@ const dlStore = useDownloadStore()
 const { jobs, running, stats, doneCount, finishedCount, failedCount, batchPercent,
         activeJobs, completedJobs, failedCancelledJobs } = storeToRefs(dlStore)
 
-const STATE_TEXT: Record<string, string> = {
+const STATE_TEXT: Record<JobState | 'None', string> = {
   None: '就绪', Created: '已创建', Queued: '排队中', ResolvingM3u8: '解析中',
   Downloading: '下载中', Merging: '合并中', Completed: '已完成',
   Failed: '失败', Cancelled: '已取消'
 }
-const STATE_ICON: Record<string, string> = {
+const STATE_ICON: Partial<Record<JobState | 'None', string>> = {
   Queued: '⏳', ResolvingM3u8: '🔍', Downloading: '⬇', Merging: '🔗',
   Completed: '✓', Failed: '✗', Cancelled: '○', Created: '·'
 }
-const STAGE_TEXT: Record<string, string> = {
+const STAGE_TEXT: Record<JobStage, string> = {
   None: '等待开始', FetchingPlaylist: '获取播放列表',
   DownloadingShards: '下载并解密分片', MergingShards: '合并封装中',
   PublishingOutput: '写入文件'

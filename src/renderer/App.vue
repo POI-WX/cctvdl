@@ -30,8 +30,7 @@
           <!-- download badge -->
           <span
             v-if="tab.name === 'download' && downloadBadge"
-            class="sidebar-nav-badge"
-            :class="downloadBadgeType"
+            class="sidebar-nav-badge active"
           >{{ downloadBadge }}</span>
         </button>
       </nav>
@@ -102,13 +101,13 @@ import DownloadPage from './pages/DownloadPage.vue'
 import SettingsPage from './pages/SettingsPage.vue'
 import { useAppStore } from './stores/app'
 import { useDownloadStore } from './stores/download'
-import type { BatchResult, DownloadProgress } from '../shared/types'
+import type { BatchResult } from '../shared/types'
 
 const appStore = useAppStore()
 const { activeTab, sidebarExpanded, aboutOpen, isDragging, statusMessage, statusType } = storeToRefs(appStore)
 
 const dlStore = useDownloadStore()
-const { downloadBadge, downloadBadgeType, updateVersion } = storeToRefs(dlStore)
+const { downloadBadge, updateVersion } = storeToRefs(dlStore)
 
 const homePageRef = ref<InstanceType<typeof HomePage> | null>(null)
 const appVersion = __APP_VERSION__ // replaced by vite define at build/dev time
@@ -137,7 +136,7 @@ function onKeydown(e: KeyboardEvent) {
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
   cleanups.push(window.cctvdlApi.onBatchFinished((result: BatchResult) => {
-    dlStore.applyBatchFinished(result)
+    // DownloadPage handles store update; App only manages the sidebar status message
     if (result.failed > 0) {
       statusMessage.value = `完成 ${result.completed}，失败 ${result.failed}`
       statusType.value = 'error'
@@ -146,10 +145,6 @@ onMounted(() => {
       statusType.value = 'success'
       setTimeout(() => { statusMessage.value = ''; statusType.value = '' }, 6000)
     }
-  }))
-
-  cleanups.push(window.cctvdlApi.onDownloadProgress((p: DownloadProgress) => {
-    dlStore.applyProgress(p)
   }))
 
   cleanups.push(window.cctvdlApi.onUpdateAvailable(({ version }) => {

@@ -45,10 +45,7 @@ export function parseError(raw: string | undefined | null): AppError {
   return { code: ErrorCode.Unknown, message, raw: text }
 }
 
-/**
- * Convert a raw error string into a concise, user-friendly message.
- * Signature-compatible with previous version — all existing call sites unchanged.
- */
+/** Convert a raw error string into a concise, user-friendly zh-CN message. */
 export function humanizeError(raw: string | undefined | null): string {
   return parseError(raw).message
 }

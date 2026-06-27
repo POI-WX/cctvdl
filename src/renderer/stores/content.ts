@@ -35,8 +35,10 @@ export const useContentStore = defineStore('content', () => {
   const displayRows = computed<ProgramRow[]>(() => {
     const list = filteredPrograms.value
     if (programQuery.value.trim()) return list.map(p => ({ type: 'item' as const, program: p, key: p.columnId }))
-    const favs = list.filter(isFav)
-    const others = list.filter(p => !isFav(p))
+    // Single pass: partition into favs and others simultaneously
+    const favs: ProgramInfo[] = []
+    const others: ProgramInfo[] = []
+    for (const p of list) { if (isFav(p)) favs.push(p); else others.push(p) }
     if (!favs.length) return others.map(p => ({ type: 'item' as const, program: p, key: p.columnId }))
     const rows: ProgramRow[] = [{ type: 'header', label: '⭐ 收藏', key: '__hdr_fav' }]
     for (const p of favs) rows.push({ type: 'item', program: p, key: p.columnId })

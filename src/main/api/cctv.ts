@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { createResilientFetch, type Fetcher, uaInit } from './http'
 import { logger } from '../logger'
+import type { Quality } from '../../shared/types'
 const API_SALT = '47899B86370B879139C08EA3B5E88267'
 const API_UID = '826D8646DEBBFD97A82D23CAE45A55BE'
 const API_VN = '2049'
@@ -13,7 +14,7 @@ const API_VN = '2049'
 //   CCTV-4K超高清:  2048000 / 4096000 only                       (max 1080p 蓝光, 2 tiers)
 //   老节目:         460800 / 870400 only                         (max 360p, 2 tiers)
 // Falls back to the lowest available tier when the requested one is absent.
-export const QUALITY_MAP: Record<string, number> = {
+export const QUALITY_MAP: Record<Quality, number> = {
   auto:      Infinity,   // 自动（最高画质）
   bluray:    4_096_000,  // 蓝光 1080p（3Mbps 和 4Mbps 两档）
   chaoqing:  2_048_000,  // 超清 720p
@@ -126,7 +127,7 @@ export class CctvApiService {
     return { hlsH5eUrl, hlsUrl }
   }
 
-  async resolveSegmentUrls(guid: string, quality: string = 'auto', signal?: AbortSignal): Promise<ResolveResult> {
+  async resolveSegmentUrls(guid: string, quality: Quality = 'auto', signal?: AbortSignal): Promise<ResolveResult> {
     const info = await this.fetchVideoInfo(guid, signal)
 
     const streamUrl = info.hlsH5eUrl || info.hlsUrl

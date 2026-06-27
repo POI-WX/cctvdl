@@ -236,15 +236,18 @@ export class DownloadCoordinator extends EventEmitter {
               this.bytesSampleCount++
             }
           }
-          // Percent reflects overall completion (prior + this run), download phase = 0..80%.
-          const completedCount = this.segments.filter(s => s.status === 'completed').length
+          // Single pass over segments: compute count + index arrays for progress and resume state.
+          let completedCount = 0
+          const completed: number[] = []
+          const pending: number[] = []
+          for (const seg of this.segments) {
+            if (seg.status === 'completed') { completedCount++; completed.push(seg.index) }
+            else { pending.push(seg.index) }
+          }
           job.progressPercent = totalSegments > 0
             ? Math.round((completedCount / totalSegments) * 80)
             : 0
           this.emitProgress(job)  // throttled - high frequency callback
-          // Persist resume state from the live segment map (single source of truth).
-          const completed = this.segments.filter(s => s.status === 'completed').map(s => s.index)
-          const pending = this.segments.filter(s => s.status !== 'completed').map(s => s.index)
           this.saveState(workDir, { guid: job.guid, segmentUrls: segments, completed, pending })
         },
         this.abortController?.signal,

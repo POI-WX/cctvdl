@@ -209,24 +209,23 @@ app.whenReady().then(() => {
       }).catch(() => { /* silent */ })
     }
 
-    // New-content check: compare latest video guid of each favorited program against download history
+    // New-content check: compare latest video guid of each favorited program against download history.
+    // Run concurrently — each fetch is independent.
     const programs = config.getPrograms().filter(p => p.favoritedAt != null)
     if (programs.length === 0) return
     const history = new Set(config.getDownloadHistory())
-    programs.forEach(async (program) => {
-      try {
-        const now = new Date()
-        const month = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
-        let list = await browse.getColumnVideoList(program.columnId, 1, month)
-        if (!list.length && program.itemId) {
-          list = await browse.getAlbumVideoList(program.itemId, 1, month)
-        }
-        const newCount = list.filter(v => !history.has(v.guid)).length
-        if (newCount > 0 && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('new-content', { columnId: program.columnId, count: newCount })
-        }
-      } catch { /* silent — network may be unavailable */ }
-    })
+    const now = new Date()
+    const month = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
+    Promise.allSettled(programs.map(async (program) => {
+      let list = await browse.getColumnVideoList(program.columnId, 1, month)
+      if (!list.length && program.itemId) {
+        list = await browse.getAlbumVideoList(program.itemId, 1, month)
+      }
+      const newCount = list.filter(v => !history.has(v.guid)).length
+      if (newCount > 0 && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('new-content', { columnId: program.columnId, count: newCount })
+      }
+    })).catch(() => { /* silent — network may be unavailable */ })
   })
 
   logger.info('cctvdl ready')

@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { BatchResult, DownloadProgress, DownloadJob, BatchStartInfo } from '../../shared/types'
+import type { BatchResult, DownloadProgress, DownloadJob, BatchStartInfo, JobState, JobStage } from '../../shared/types'
 
 interface JobCard {
   id: string; title: string; guid: string
-  state: import('../../shared/types').JobState
-  stage: import('../../shared/types').JobStage
+  state: JobState
+  stage: JobStage
   percent: number; segmentsDone: number; segmentsTotal: number
   speed: number; eta: number; errorMessage: string
   sourceJob?: DownloadJob
@@ -18,11 +18,14 @@ export const useDownloadStore = defineStore('download', () => {
   const activeDownloads = ref(0)
   const updateVersion = ref('')
 
+  const ACTIVE_STATES: JobState[] = ['Queued', 'ResolvingM3u8', 'Downloading', 'Merging']
+  function isActive(s: JobState) { return ACTIVE_STATES.includes(s) }
+
   const activeJobs = computed(() => jobs.value.filter(j => isActive(j.state)))
   const completedJobs = computed(() => jobs.value.filter(j => j.state === 'Completed'))
   const failedCancelledJobs = computed(() => jobs.value.filter(j => j.state === 'Failed' || j.state === 'Cancelled'))
-  const doneCount = computed(() => jobs.value.filter(j => j.state === 'Completed').length)
-  const finishedCount = computed(() => jobs.value.filter(j => ['Completed', 'Failed', 'Cancelled'].includes(j.state)).length)
+  const doneCount = computed(() => completedJobs.value.length)
+  const finishedCount = computed(() => completedJobs.value.length + failedCancelledJobs.value.length)
   const failedCount = computed(() => jobs.value.filter(j => j.state === 'Failed').length)
   const batchPercent = computed(() => {
     if (!jobs.value.length) return 0
@@ -30,10 +33,6 @@ export const useDownloadStore = defineStore('download', () => {
     return Math.round(total / jobs.value.length)
   })
   const downloadBadge = computed(() => activeDownloads.value > 0 ? String(activeDownloads.value) : '')
-  const downloadBadgeType = computed(() => activeDownloads.value > 0 ? 'active' : '')
-
-  const ACTIVE_STATES: import('../../shared/types').JobState[] = ['Queued', 'ResolvingM3u8', 'Downloading', 'Merging']
-  function isActive(s: import('../../shared/types').JobState) { return ACTIVE_STATES.includes(s) }
 
   function applyProgress(p: DownloadProgress) {
     const idx = jobs.value.findIndex(j => j.id === p.jobId)
@@ -82,7 +81,7 @@ export const useDownloadStore = defineStore('download', () => {
     jobs, running, stats, activeDownloads, updateVersion,
     activeJobs, completedJobs, failedCancelledJobs,
     doneCount, finishedCount, failedCount, batchPercent,
-    downloadBadge, downloadBadgeType,
+    downloadBadge,
     isActive, applyProgress, applyJobFinished, applyBatchFinished, applyBatchStarted, clearFinished
   }
 })
