@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatBytes, formatSpeed, formatTime } from '../../../src/shared/format'
+import { formatBytes, formatSpeed, formatTime, relativeTime, formatFileSize } from '../../../src/shared/format'
 
 describe('shared/format', () => {
   describe('formatBytes', () => {
@@ -51,6 +51,39 @@ describe('shared/format', () => {
     })
     it('formats hours and minutes', () => {
       expect(formatTime(3661)).toBe('1时1分')
+    })
+  })
+
+  describe('relativeTime', () => {
+    it('returns empty string for zero/falsy input', () => {
+      expect(relativeTime(0)).toBe('')
+    })
+    it('returns 刚刚 for less than 1 minute ago', () => {
+      expect(relativeTime(Date.now() - 30000)).toBe('刚刚')
+    })
+    it('returns minutes for recent time', () => {
+      expect(relativeTime(Date.now() - 5 * 60000)).toBe('5 分钟前')
+    })
+    it('returns hours for same-day time', () => {
+      expect(relativeTime(Date.now() - 3 * 3600000)).toBe('3 小时前')
+    })
+    it('returns days for recent days', () => {
+      expect(relativeTime(Date.now() - 2 * 86400000)).toBe('2 天前')
+    })
+  })
+
+  describe('formatFileSize', () => {
+    it('returns empty for zero', () => {
+      expect(formatFileSize(0)).toBe('')
+    })
+    it('formats KB', () => {
+      expect(formatFileSize(2048)).toBe('2.0 KB')
+    })
+    it('formats MB', () => {
+      expect(formatFileSize(5 * 1024 * 1024)).toBe('5.0 MB')
+    })
+    it('formats GB', () => {
+      expect(formatFileSize(1.5 * 1024 * 1024 * 1024)).toBe('1.50 GB')
     })
   })
 })

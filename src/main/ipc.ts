@@ -167,6 +167,7 @@ export function registerIpcHandlers(
   ipcMain.handle('get-download-history', () => config.getDownloadHistory())
 
   ipcMain.handle('clear-download-history', () => config.clearDownloadHistory())
+  ipcMain.handle('remove-from-download-history', (_, guid: string) => config.removeFromDownloadHistory(guid))
 
   ipcMain.handle('select-directory', async (_, defaultPath?: string) => {
     const result = await dialog.showOpenDialog(getWindow(), {

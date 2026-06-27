@@ -144,6 +144,7 @@ export interface CctvdlApi {
   onNewContent(cb: (payload: { columnId: string; count: number }) => void): () => void
   getDownloadHistory(): Promise<HistoryEntry[]>
   clearDownloadHistory(): Promise<void>
+  removeFromDownloadHistory(guid: string): Promise<void>
   // Static platform flag (from preload) — lets the renderer adapt shortcuts, e.g.
   // accepting Backspace as the delete key on macOS.
   isMac: boolean

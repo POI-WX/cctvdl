@@ -177,6 +177,10 @@ export class ConfigStore {
     this.store.set('downloadHistory', [])
   }
 
+  removeFromDownloadHistory(guid: string): void {
+    this.store.set('downloadHistory', this.getDownloadHistory().filter(e => e.guid !== guid))
+  }
+
   getPendingJobs(): DownloadJob[] {
     return this.store.get('pendingJobs')
   }

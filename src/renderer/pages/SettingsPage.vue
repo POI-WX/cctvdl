@@ -197,21 +197,54 @@
         <div class="settings-card-header">
           <span class="settings-card-icon">🕐</span>
           <span class="settings-card-title">下载历史</span>
+          <span class="settings-card-count" v-if="history.length">{{ history.length }} 条</span>
         </div>
 
-        <div class="settings-item">
+        <div class="settings-item" v-if="!history.length">
           <div class="settings-item-label">
-            <span class="settings-item-name">已下载记录</span>
-            <span class="settings-item-desc">
-              共 <strong>{{ historyCount }}</strong> 条记录。清除后，已下载标记将从视频列表消失。
-            </span>
+            <span class="settings-item-name">暂无下载记录</span>
+            <span class="settings-item-desc">下载完成的视频会被记录在此，用于去重与「已下载」标记。</span>
+          </div>
+        </div>
+
+        <div v-if="history.length" class="history-list">
+          <div v-for="entry in history" :key="entry.guid" class="history-item">
+            <div class="history-item-info">
+              <span class="history-item-title" :title="entry.title || entry.guid">
+                {{ entry.title || entry.guid }}
+              </span>
+              <span class="history-item-meta">
+                <span v-if="entry.completedAt">{{ relativeTime(entry.completedAt) }}</span>
+                <span v-if="entry.fileSize" class="history-item-sep">·</span>
+                <span v-if="entry.fileSize">{{ formatFileSize(entry.fileSize) }}</span>
+                <span v-if="entry.outputPath" class="history-item-sep">·</span>
+                <span v-if="entry.outputPath" class="history-item-path" :title="entry.outputPath">
+                  {{ entry.outputPath.split(/[\\/]/).pop() }}
+                </span>
+              </span>
+            </div>
+            <div class="history-item-actions">
+              <button
+                v-if="entry.outputPath"
+                class="history-action-btn"
+                title="在文件管理器中定位"
+                @click="revealHistoryFile(entry.outputPath)"
+              >📂</button>
+              <button
+                class="history-action-btn danger"
+                title="删除此条记录"
+                @click="removeHistoryEntry(entry.guid)"
+              >🗑</button>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="history.length" class="settings-item history-footer">
+          <div class="settings-item-label">
+            <span class="settings-item-desc">清除后，视频列表中的「✓ 已下载」标记将消失。</span>
           </div>
           <div class="settings-item-control">
-            <button
-              class="browse-btn danger"
-              :disabled="historyCount === 0"
-              @click="clearHistory"
-            >清除历史</button>
+            <button class="browse-btn danger" @click="clearHistory">清除全部</button>
           </div>
         </div>
       </div>
@@ -245,13 +278,14 @@ import type { Settings } from '../../shared/types'
 import { MIN_THREADS, MAX_THREADS } from '../../shared/settings'
 import { applyAccentColor } from '../utils/accent'
 import { displayPath } from '../../shared/path-display'
+import { relativeTime, formatFileSize } from '../../shared/format'
 
 const form = ref<Settings>({
   savePath: '', threadCount: 8, quality: 'auto',
   reencode: false, logLevel: 'info', darkMode: false, logPath: '', autoOpenFolder: false, clipboardWatch: false
 })
 
-const historyCount = ref(0)
+const history = ref<import('../../shared/types').HistoryEntry[]>([])
 const appVersion = __APP_VERSION__ // replaced by vite define at build/dev time
 const lastSaved = ref('')
 
@@ -294,8 +328,7 @@ onMounted(async () => {
   form.value = { ...form.value, ...loaded }
   applyDarkMode(form.value.darkMode ?? false)
   applyAccentColor(accentColor.value)
-  const history = await window.cctvdlApi.getDownloadHistory()
-  historyCount.value = history.length
+  history.value = await window.cctvdlApi.getDownloadHistory()
 })
 
 function applyDarkMode(isDark: boolean) {
@@ -317,15 +350,25 @@ async function selectLogDir() {
 async function clearHistory() {
   try {
     await ElMessageBox.confirm(
-      `确定清除全部 ${historyCount.value} 条下载历史吗？清除后视频列表中的「已下载」标记将消失。`,
+      `确定清除全部 ${history.value.length} 条下载历史吗？清除后视频列表中的「已下载」标记将消失。`,
       '清除下载历史',
       { confirmButtonText: '清除', cancelButtonText: '取消', type: 'warning' }
     )
     await window.cctvdlApi.clearDownloadHistory()
-    historyCount.value = 0
+    history.value = []
     window.dispatchEvent(new CustomEvent('cctvdl:history-cleared'))
     ElMessage.success('下载历史已清除')
   } catch { /* cancelled */ }
+}
+
+async function removeHistoryEntry(guid: string) {
+  await window.cctvdlApi.removeFromDownloadHistory(guid)
+  history.value = history.value.filter(e => e.guid !== guid)
+  window.dispatchEvent(new CustomEvent('cctvdl:history-cleared'))
+}
+
+function revealHistoryFile(outputPath: string) {
+  window.cctvdlApi.revealFile(outputPath)
 }
 
 async function save() {
@@ -599,5 +642,87 @@ async function save() {
   color: var(--el-text-color-secondary);
   line-height: 1.5;
   margin-top: 4px;
+}
+
+.settings-card-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.history-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: var(--app-spacing-sm);
+  padding: 8px var(--app-spacing-lg);
+  border-bottom: 1px solid var(--app-border-subtle);
+  transition: background .1s;
+}
+.history-item:last-child { border-bottom: none; }
+.history-item:hover { background: var(--el-fill-color-light); }
+
+.history-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history-item-title {
+  font-size: 13px;
+  font-weight: var(--app-font-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
+.history-item-sep { opacity: .4; }
+
+.history-item-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.history-item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.history-action-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 3px 5px;
+  border-radius: 4px;
+  opacity: .6;
+  transition: opacity .12s, background .12s;
+}
+.history-action-btn:hover { opacity: 1; background: var(--el-fill-color); }
+.history-action-btn.danger:hover { background: var(--el-color-danger-light-9); }
+
+.history-footer {
+  border-top: 1px solid var(--app-border-subtle);
 }
 </style>

@@ -58,7 +58,8 @@
           <span class="dl-group-chevron" :class="{ collapsed: groupCollapsed.active }">›</span>
         </button>
         <TransitionGroup v-if="!groupCollapsed.active" name="card-list" tag="div" class="dl-group-body">
-          <div v-for="job in activeJobs" :key="job.id" class="dl-card active">
+          <div v-for="(job, idx) in activeJobs" :key="job.id" class="dl-card active"
+               @contextmenu.prevent="openContextMenu($event, job)">
               <div class="dl-card-head">
                 <div class="dl-card-indicator" :class="indicatorClass(job.state)">
                   <span class="dl-card-indicator-icon">{{ stateIcon(job.state) }}</span>
@@ -66,17 +67,20 @@
                 <div class="dl-card-info">
                   <span class="dl-card-title" :title="job.title">{{ job.title }}</span>
                   <div class="dl-card-sub">
-                    <span class="dl-card-stage">{{ stageText(job.stage) }}</span>
-                    <template v-if="job.segmentsTotal">
-                      <span class="dl-card-sep">·</span>
-                      <span>{{ job.segmentsDone }}/{{ job.segmentsTotal }} 分片</span>
+                    <template v-if="job.state === 'Queued'">
+                      <span class="dl-card-stage dl-queue-pos">第 {{ idx + 1 }} 位排队</span>
                     </template>
-                    <template v-if="job.speed && job.eta > 0">
-                      <span class="dl-card-sep">·</span>
-                      <span class="dl-card-speed">{{ formatSpeed(job.speed) }}</span>
-                      <span class="dl-card-sep">·</span>
-                      <span>剩余 {{ formatTime(job.eta) }}</span>
+                    <template v-else>
+                      <span class="dl-card-stage">{{ stageText(job.stage) }}</span>
+                      <template v-if="job.segmentsTotal">
+                        <span class="dl-card-sep">·</span>
+                        <span>{{ job.segmentsDone }}/{{ job.segmentsTotal }} 分片</span>
+                      </template>
                     </template>
+                  </div>
+                  <div v-if="job.state === 'Downloading' && job.speed" class="dl-card-speed-row">
+                    <span class="dl-card-speed">{{ formatSpeed(job.speed) }}</span>
+                    <span v-if="job.eta > 0" class="dl-card-eta">剩余 {{ formatTime(job.eta) }}</span>
                   </div>
                 </div>
                 <div class="dl-card-right">
@@ -85,7 +89,11 @@
               </div>
               <div class="dl-card-progress">
                 <div class="dl-progress-track">
-                  <div class="dl-progress-fill" :class="{ indeterminate: job.stage === 'MergingShards' }"
+                  <div class="dl-progress-fill"
+                    :class="{
+                      indeterminate: job.stage === 'MergingShards',
+                      stripe: job.state === 'Downloading'
+                    }"
                     :style="job.stage !== 'MergingShards' ? { width: job.percent + '%' } : {}" />
                 </div>
               </div>
@@ -105,7 +113,8 @@
           <span class="dl-group-chevron" :class="{ collapsed: groupCollapsed.completed }">›</span>
         </button>
         <TransitionGroup v-if="!groupCollapsed.completed" name="card-list" tag="div" class="dl-group-body">
-          <div v-for="job in completedJobs" :key="job.id" class="dl-card">
+          <div v-for="job in completedJobs" :key="job.id" class="dl-card"
+            @contextmenu.prevent="openContextMenu($event, job)">
             <div class="dl-card-head">
               <div class="dl-card-indicator ind-success">
                 <span class="dl-card-indicator-icon">✓</span>
@@ -148,7 +157,8 @@
           <span class="dl-group-chevron" :class="{ collapsed: groupCollapsed.failed }">›</span>
         </button>
         <TransitionGroup v-if="!groupCollapsed.failed" name="card-list" tag="div" class="dl-group-body">
-          <div v-for="job in failedCancelledJobs" :key="job.id" class="dl-card">
+          <div v-for="job in failedCancelledJobs" :key="job.id" class="dl-card"
+            @contextmenu.prevent="openContextMenu($event, job)">
             <div class="dl-card-head">
               <div class="dl-card-indicator" :class="job.state === 'Failed' ? 'ind-error' : 'ind-muted'">
                 <span class="dl-card-indicator-icon">{{ job.state === 'Failed' ? '✗' : '○' }}</span>
@@ -186,12 +196,24 @@
         </TransitionGroup>
       </div>
     </div>
+
+    <!-- 右键菜单 -->
+    <Teleport to="body">
+      <div v-if="ctxMenu.visible" class="dl-ctx-overlay" @click="closeContextMenu" @contextmenu.prevent="closeContextMenu">
+        <div class="dl-ctx-menu" :style="{ top: ctxMenu.y + 'px', left: ctxMenu.x + 'px' }">
+          <button class="dl-ctx-item" @click="ctxCopyTitle">📋 复制标题</button>
+          <button v-if="ctxMenu.job?.sourceJob?.outputPath" class="dl-ctx-item" @click="ctxOpenFile">▶ 播放</button>
+          <button v-if="ctxMenu.job?.sourceJob?.outputPath" class="dl-ctx-item" @click="ctxRevealFile">📂 定位文件</button>
+          <button v-if="ctxMenu.job?.state === 'Failed'" class="dl-ctx-item" @click="ctxRetry">↺ 重试</button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElNotification } from 'element-plus'
 import { storeToRefs } from 'pinia'
 import { useDownloadStore } from '../stores/download'
 const emit = defineEmits<{ 'go-home': [] }>()
@@ -264,6 +286,18 @@ onMounted(() => {
 
   window.cctvdlApi.onBatchFinished((result) => {
     dlStore.applyBatchFinished(result)
+    if (result.total > 0) {
+      const msg = result.failed > 0
+        ? `完成 ${result.completed} 个，失败 ${result.failed} 个`
+        : `${result.completed} 个视频下载完成`
+      ElNotification({
+        title: '下载完成',
+        message: msg,
+        type: result.failed > 0 ? 'warning' : 'success',
+        duration: 4000,
+        position: 'bottom-right'
+      })
+    }
   })
 })
 
@@ -312,6 +346,37 @@ async function playFile(job: typeof jobs.value[0]) {
 async function revealFile(job: typeof jobs.value[0]) {
   const out = job.sourceJob?.outputPath
   if (out) window.cctvdlApi.revealFile(out); else openFolder()
+}
+
+// ─── 右键菜单 ──────────────────────────────────────────────────────────────
+const ctxMenu = ref<{ visible: boolean; x: number; y: number; job: typeof jobs.value[0] | null }>({
+  visible: false, x: 0, y: 0, job: null
+})
+
+function openContextMenu(e: MouseEvent, job: typeof jobs.value[0]) {
+  ctxMenu.value = { visible: true, x: e.clientX, y: e.clientY, job }
+}
+
+function closeContextMenu() { ctxMenu.value.visible = false }
+
+function ctxCopyTitle() {
+  if (ctxMenu.value.job) navigator.clipboard.writeText(ctxMenu.value.job.title)
+  closeContextMenu()
+}
+
+function ctxOpenFile() {
+  if (ctxMenu.value.job) playFile(ctxMenu.value.job)
+  closeContextMenu()
+}
+
+function ctxRevealFile() {
+  if (ctxMenu.value.job) revealFile(ctxMenu.value.job)
+  closeContextMenu()
+}
+
+function ctxRetry() {
+  if (ctxMenu.value.job) retry(ctxMenu.value.job)
+  closeContextMenu()
 }
 </script>
 
@@ -554,7 +619,6 @@ html.dark .ind-error   { background: #2d0a0a; }
 }
 
 .dl-card-sep { opacity: .5; }
-.dl-card-speed { color: var(--el-color-primary); font-weight: var(--app-font-weight-medium); }
 .dl-card-filename {
   color: var(--el-text-color-secondary);
   max-width: 180px;
@@ -761,4 +825,81 @@ html.dark .dl-group-icon.danger  { background: #2d0a0a; }
   flex-direction: column;
   gap: var(--app-spacing-sm);
 }
+
+/* 速度独立行 */
+.dl-card-speed-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.dl-card-speed {
+  font-size: 13px;
+  font-weight: var(--app-font-weight-bold);
+  color: var(--el-color-primary);
+}
+
+.dl-card-eta {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
+/* 排队序号 */
+.dl-queue-pos {
+  color: var(--el-text-color-secondary);
+  font-style: italic;
+}
+
+/* 进度条条纹动画（下载中） */
+.dl-progress-fill.stripe {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255,255,255,.15) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255,255,255,.15) 50%,
+    rgba(255,255,255,.15) 75%,
+    transparent 75%
+  );
+  background-size: 20px 20px;
+  animation: stripe-move 1s linear infinite;
+}
+
+@keyframes stripe-move {
+  from { background-position: 0 0; }
+  to   { background-position: 20px 0; }
+}
+
+/* 右键菜单 */
+.dl-ctx-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+
+.dl-ctx-menu {
+  position: fixed;
+  background: var(--el-bg-color-overlay);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--el-border-radius-base);
+  box-shadow: var(--app-shadow-md);
+  padding: 4px 0;
+  min-width: 140px;
+  z-index: 10000;
+}
+
+.dl-ctx-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 14px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dl-ctx-item:hover { background: var(--el-fill-color-light); }
 </style>

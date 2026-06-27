@@ -53,6 +53,7 @@ const api: CctvdlApi = {
   },
   getDownloadHistory: () => ipcRenderer.invoke('get-download-history'),
   clearDownloadHistory: () => ipcRenderer.invoke('clear-download-history'),
+  removeFromDownloadHistory: (guid: string) => ipcRenderer.invoke('remove-from-download-history', guid),
   onDownloadSkipped: (cb: (info: { guid: string; title: string; reason: string }) => void) => {
     const handler = (_: unknown, info: { guid: string; title: string; reason: string }) => cb(info)
     ipcRenderer.on('download-skipped', handler)
