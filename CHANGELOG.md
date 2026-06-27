@@ -4,6 +4,20 @@
 
 ---
 
+## 0.3.5
+
+### 优化 / 修复
+
+- **并行下载线程均分**：调整为每路视频实际使用 `floor(threadCount / concurrentVideos)` 个线程，总并发保持不变，避免随视频数倍增
+- **设置页文案优化**：所有描述去掉技术内部术语（「分片」「CDN」「去重」），标点统一，面向用户友好表达
+- **按钮 UI 重设计**：「保存设置」与「下载此集/视频」按钮改为胶囊形圆角，加柔和阴影与 hover 上浮动效
+- **代码修复**：消除产品代码中唯一一处 `any` 类型；修复 `resumePending([])` 空数组时误触发 `batchFinished` 的 bug
+- **测试补充**：补 `removeFromDownloadHistory`、`concurrentVideos` clamp、`resumePending` 空数组守卫、`threadCount` 均分共 5 个新测例（单元测试 → 377 个）
+- **文档更新**：README/USAGE/FAQ 补充并行下载、侧边栏快捷键（`Ctrl+\`）、历史详情、线程均分行为等新功能说明
+- **截图重拍**：`home.png`、`home-dark.png`、`settings.png` 对应最新 UI
+
+---
+
 ## 0.3.4
 
 ### 新增
