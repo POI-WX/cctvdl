@@ -54,7 +54,7 @@ shared types    → src/shared/      # 跨进程共享的 TypeScript 类型
 
 关键模块：
 - `src/main/api/cctv.ts` — 视频信息接口、HLS 解析、清晰度选择
-- `src/main/download/coordinator.ts` — 下载任务调度，支持队列/取消/续传
+- `src/main/download/coordinator.ts` — 下载任务调度，支持并行下载、队列排序、取消与断点续传
 - `src/main/download/decryptor.ts` — 在解密子进程中解密分片
 - `src/main/download/finalizer.ts` — 调用 ffmpeg 合并分片
 - `resources/decrypt/` — 第三方解密脚本（**不可修改**，见下）
