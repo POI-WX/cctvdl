@@ -1435,42 +1435,57 @@ html.dark .preview-downloaded-badge {
 .preview-download-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 20px;
+  gap: 8px;
+  height: 40px;
+  padding: 0 24px;
   border: none;
-  border-radius: var(--el-border-radius-base);
+  border-radius: 20px;
   background: var(--el-color-primary);
   color: #fff;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: var(--app-font-weight-semibold);
   font-family: var(--el-font-family);
   cursor: pointer;
-  transition: background .12s, opacity .12s;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, .3);
+  transition: background .15s, box-shadow .15s, transform .15s, color .15s;
   white-space: nowrap;
+  letter-spacing: 0.2px;
 }
 
-.preview-download-btn:hover { background: var(--el-color-primary-dark-2); }
+.preview-download-btn:hover {
+  background: var(--el-color-primary-dark-2);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, .4);
+  transform: translateY(-1px);
+}
+
+.preview-download-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 5px rgba(37, 99, 235, .3);
+}
 
 /* 弱化态：有批量选中时单集按钮降优先级 */
 .preview-download-btn.dimmed {
   background: var(--el-fill-color);
   color: var(--el-text-color-regular);
-  border: 1px solid var(--el-border-color-light);
+  box-shadow: none;
 }
 .preview-download-btn.dimmed:hover {
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
-  border-color: var(--el-color-primary-light-5);
+  box-shadow: none;
+  transform: none;
 }
 
 .preview-download-btn.downloaded {
   background: var(--el-fill-color);
   color: var(--el-text-color-secondary);
+  box-shadow: none;
 }
 .preview-download-btn.downloaded:hover {
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
+  box-shadow: none;
+  transform: translateY(-1px);
 }
 
 .preview-download-hint {

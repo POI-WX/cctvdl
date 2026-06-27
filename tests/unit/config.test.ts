@@ -283,6 +283,21 @@ describe('ConfigStore', () => {
       expect(history[0].fileSize).toBe(0)
       expect(store.isInDownloadHistory('legacy-guid-a')).toBe(true)
     })
+
+    it('removeFromDownloadHistory removes the matching entry', () => {
+      store.addToDownloadHistory(mkEntry('guid-rm-1'))
+      store.addToDownloadHistory(mkEntry('guid-rm-2'))
+      store.removeFromDownloadHistory('guid-rm-1')
+      expect(store.isInDownloadHistory('guid-rm-1')).toBe(false)
+      expect(store.isInDownloadHistory('guid-rm-2')).toBe(true)
+      expect(store.getDownloadHistory()).toHaveLength(1)
+    })
+
+    it('removeFromDownloadHistory with unknown guid is a no-op', () => {
+      store.addToDownloadHistory(mkEntry('guid-safe'))
+      store.removeFromDownloadHistory('guid-nonexistent')
+      expect(store.getDownloadHistory()).toHaveLength(1)
+    })
   })
 
   describe('Pending Jobs', () => {

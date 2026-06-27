@@ -83,6 +83,7 @@ export class DownloadCoordinator extends EventEmitter {
   // Resume a previously persisted batch (e.g. after app restart). Unlike startBatch,
   // does not reset stats so partial progress is preserved.
   resumePending(jobs: DownloadJob[]): void {
+    if (!jobs.length) return
     this.queue = []
     this.isCancellingAll = false
     for (const job of jobs) this.addJob(job)
@@ -275,7 +276,7 @@ export class DownloadCoordinator extends EventEmitter {
           saveJobState(workDir, { guid: job.guid, segmentUrls: segments, completed, pending })
         },
         abort.signal,
-        job.threadCount
+        Math.max(1, Math.floor(job.threadCount / this.concurrentVideos))
       )
 
       if (abort.signal.aborted) {

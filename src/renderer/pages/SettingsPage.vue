@@ -18,7 +18,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">文件保存位置</span>
-            <span class="settings-item-desc">视频文件将保存到此目录</span>
+            <span class="settings-item-desc">下载的视频文件将保存到此目录</span>
           </div>
           <div class="settings-item-control path-control">
             <el-input
@@ -34,7 +34,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">并发下载数</span>
-            <span class="settings-item-desc">同时解密的分片数。调高可加速下载，但会增加 CPU 占用。</span>
+            <span class="settings-item-desc">单个视频内部的并行线程数，调高可加速下载，但会增加 CPU 占用</span>
             <span class="settings-item-hint" :class="threadHintClass">{{ threadHint }}</span>
           </div>
           <div class="settings-item-control thread-control">
@@ -53,7 +53,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">并行下载视频数</span>
-            <span class="settings-item-desc">同时下载的视频数（1–3）。调高可缩短批量下载总时间；受 CDN 带宽限制，建议不超过 2。</span>
+            <span class="settings-item-desc">同时下载的视频数，每路线程数自动均分，总并发保持不变，建议不超过 2</span>
           </div>
           <div class="settings-item-control thread-control">
             <el-slider
@@ -71,7 +71,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">视频清晰度</span>
-            <span class="settings-item-desc">优先下载的画质档位；所选档位不可用时自动降级</span>
+            <span class="settings-item-desc">优先下载的画质档位，所选档位不可用时自动降级</span>
           </div>
           <div class="settings-item-control">
             <el-select v-model="form.quality" size="small" style="width: 160px">
@@ -89,7 +89,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">合并方式</span>
-            <span class="settings-item-desc">无损快速（推荐）；兼容重编码仅在播放异常时使用</span>
+            <span class="settings-item-desc">推荐使用无损快速；仅在视频播放异常时改用兼容重编码</span>
           </div>
           <div class="settings-item-control">
             <div class="radio-group">
@@ -109,7 +109,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">下载完成后打开文件夹</span>
-            <span class="settings-item-desc">「下载本月」或单个视频下载完成后自动打开保存目录；下载选中不触发，避免频繁弹出</span>
+            <span class="settings-item-desc">批量下载或单视频下载完成后，自动在文件管理器中打开保存目录</span>
           </div>
           <div class="settings-item-control">
             <el-switch v-model="form.autoOpenFolder" />
@@ -128,7 +128,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">深色模式</span>
-            <span class="settings-item-desc">切换后立即生效，保存后下次启动保持</span>
+            <span class="settings-item-desc">切换后立即生效</span>
           </div>
           <div class="settings-item-control">
             <el-switch v-model="form.darkMode" @change="onDarkModeChange" />
@@ -139,7 +139,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">主题色</span>
-            <span class="settings-item-desc">立即生效，无需保存设置</span>
+            <span class="settings-item-desc">点击色块立即切换，重启后保持</span>
           </div>
           <div class="settings-item-control">
             <div class="accent-swatches">
@@ -168,7 +168,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">剪贴板自动导入</span>
-            <span class="settings-item-desc">开启后，复制央视链接时弹窗提示导入。开启即允许应用读取剪贴板以检测链接；关闭时不会读取。默认关闭。</span>
+            <span class="settings-item-desc">复制央视链接时弹窗提示是否导入，默认关闭</span>
           </div>
           <div class="settings-item-control">
             <el-switch v-model="form.clipboardWatch" />
@@ -179,7 +179,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">日志级别</span>
-            <span class="settings-item-desc">日常使用选「日常」即可；遇到问题时切到「调试」会记录详细信息，便于排查或反馈</span>
+            <span class="settings-item-desc">日常使用选「日常」；遇到问题时切换到「调试」可获取详细信息</span>
           </div>
           <div class="settings-item-control">
             <el-select v-model="form.logLevel" size="small" style="width: 140px">
@@ -193,7 +193,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">日志目录</span>
-            <span class="settings-item-desc">失败记录文件（cctvdl-failures.log）的存放位置</span>
+            <span class="settings-item-desc">失败记录文件的存放位置</span>
           </div>
           <div class="settings-item-control path-control">
             <el-input
@@ -217,7 +217,7 @@
         <div class="settings-item" v-if="!history.length">
           <div class="settings-item-label">
             <span class="settings-item-name">暂无下载记录</span>
-            <span class="settings-item-desc">下载完成的视频会被记录在此，用于去重与「已下载」标记。</span>
+            <span class="settings-item-desc">已下载的视频会显示在这里</span>
           </div>
         </div>
 
@@ -255,7 +255,7 @@
 
         <div v-if="history.length" class="settings-item history-footer">
           <div class="settings-item-label">
-            <span class="settings-item-desc">清除后，视频列表中的「✓ 已下载」标记将消失。</span>
+            <span class="settings-item-desc">清除后视频列表中的已下载标记将同步消失</span>
           </div>
           <div class="settings-item-control">
             <button class="browse-btn danger" @click="clearHistory">清除全部</button>
@@ -456,22 +456,29 @@ async function save() {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 34px;
-  padding: 0 16px;
-  border: 1px solid var(--el-color-primary);
-  border-radius: var(--el-border-radius-base);
+  height: 36px;
+  padding: 0 22px;
+  border: none;
+  border-radius: 18px;
   background: var(--el-color-primary);
   color: #fff;
   font-size: 13px;
   font-weight: var(--app-font-weight-semibold);
   font-family: var(--el-font-family);
   cursor: pointer;
-  transition: background .12s, border-color .12s;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, .3);
+  transition: background .15s, box-shadow .15s, transform .15s;
 }
 
 .settings-save-btn:hover {
   background: var(--el-color-primary-dark-2);
-  border-color: var(--el-color-primary-dark-2);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, .4);
+  transform: translateY(-1px);
+}
+
+.settings-save-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(37, 99, 235, .3);
 }
 
 .saved-fade-enter-active, .saved-fade-leave-active { transition: opacity .3s ease; }
@@ -494,21 +501,6 @@ async function save() {
   font-weight: var(--app-font-weight-bold);
   color: var(--el-text-color-primary);
 }
-
-.settings-save-btn {
-  padding: 8px 20px;
-  border: none;
-  border-radius: var(--el-border-radius-base);
-  background: var(--el-color-primary);
-  color: #fff;
-  font-size: 13px;
-  font-weight: var(--app-font-weight-semibold);
-  font-family: var(--el-font-family);
-  cursor: pointer;
-  transition: background .12s;
-}
-
-.settings-save-btn:hover { background: var(--el-color-primary-dark-2); }
 
 /* ── 卡片 ──────────────────────────────────────────── */
 .settings-card {

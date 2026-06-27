@@ -260,4 +260,12 @@ describe('Resume 功能测试（真实 fs）', () => {
     expect(passedIndices).toContain(0)   // 0-byte: must re-download
     expect(passedIndices).not.toContain(1) // non-empty: trusted as completed
   })
+
+  it('resumePending 传入空数组时不触发 batchFinished', () => {
+    const coordinator = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer)
+    const batchHandler = vi.fn()
+    coordinator.on('batchFinished', batchHandler)
+    coordinator.resumePending([])
+    expect(batchHandler).not.toHaveBeenCalled()
+  })
 })

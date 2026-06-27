@@ -75,4 +75,16 @@ describe('normalizeSettings', () => {
     const valid: Settings = { ...fallback, threadCount: 3, quality: 'liuchang', reencode: true, darkMode: true }
     expect(normalizeSettings(valid, fallback)).toEqual(valid)
   })
+
+  it('clamps concurrentVideos into [1, 3]', () => {
+    expect(normalizeSettings({ concurrentVideos: 0 }, fallback).concurrentVideos).toBe(1)
+    expect(normalizeSettings({ concurrentVideos: -5 }, fallback).concurrentVideos).toBe(1)
+    expect(normalizeSettings({ concurrentVideos: 5 }, fallback).concurrentVideos).toBe(3)
+    expect(normalizeSettings({ concurrentVideos: 2 }, fallback).concurrentVideos).toBe(2)
+  })
+
+  it('falls back concurrentVideos when not a number', () => {
+    expect(normalizeSettings({ concurrentVideos: 'two' }, fallback).concurrentVideos).toBe(1)
+    expect(normalizeSettings({ concurrentVideos: NaN }, fallback).concurrentVideos).toBe(1)
+  })
 })

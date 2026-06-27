@@ -440,7 +440,7 @@ describe('DownloadCoordinator', () => {
   })
 
   describe('threadCount passing', () => {
-    it('passes job.threadCount to decryptAll', async () => {
+    it('passes job.threadCount to decryptAll when concurrentVideos=1', async () => {
       const job: DownloadJob = {
         id: 'test-threads', guid: 'guid-t', sourceUrl: '',
         title: 'Thread Test', savePath: '/tmp/test.mp4', quality: 'auto',
@@ -452,8 +452,25 @@ describe('DownloadCoordinator', () => {
       await new Promise(r => setTimeout(r, 200))
 
       const callArgs = (mockDecryptor.decryptAll as any).mock.calls[0]
-      // 5th argument is concurrency
+      // concurrentVideos=1 → floor(3/1)=3, no reduction
       expect(callArgs[4]).toBe(3)
+    })
+
+    it('scales down threadCount proportionally when concurrentVideos=2', async () => {
+      coordinator.setConcurrentVideos(2)
+      const job: DownloadJob = {
+        id: 'test-threads-2', guid: 'guid-t2', sourceUrl: '',
+        title: 'Thread Scale', savePath: '/tmp/test2.mp4', quality: 'auto',
+        threadCount: 8,
+        state: 'Created', stage: 'None', progressPercent: 0
+      }
+
+      coordinator.startBatch([job])
+      await new Promise(r => setTimeout(r, 200))
+
+      const callArgs = (mockDecryptor.decryptAll as any).mock.calls[0]
+      // concurrentVideos=2 → floor(8/2)=4
+      expect(callArgs[4]).toBe(4)
     })
   })
 

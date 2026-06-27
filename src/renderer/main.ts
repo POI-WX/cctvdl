@@ -154,6 +154,6 @@ function applyDarkMode(isDark: boolean) {
 applyAccentColor(localStorage.getItem('cctvdl-accent-color') || '#2563EB')
 
 // Restore dark-mode preference from settings
-window.cctvdlApi?.getSettings().then((settings: any) => {
+window.cctvdlApi?.getSettings().then((settings) => {
   applyDarkMode(settings.darkMode || false)
 })
