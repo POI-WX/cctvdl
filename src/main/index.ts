@@ -149,7 +149,7 @@ app.whenReady().then(() => {
 
   const api = new CctvApiService()
   const browse = new BrowseService()
-  const decryptor = new SegmentDecryptor(createDefaultDecrypt(), settings.threadCount || 8)
+  const decryptor = new SegmentDecryptor(createDefaultDecrypt(), settings.threadCount)
   const finalizer = new Finalizer()
   const coordinator = new DownloadCoordinator(api, decryptor, finalizer, config)
   coordinatorRef = coordinator

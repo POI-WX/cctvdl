@@ -26,7 +26,7 @@ export const QUALITY_MAP: Record<Quality, number> = {
 export interface HLSVariant {
   uri: string
   bandwidth: number
-  resolution: [number, number]
+  resolution: { width: number; height: number }
   score: [number, number]
 }
 
@@ -76,7 +76,7 @@ export class CCTVHLSBestParser {
         height = parseInt(parts[1], 10) || 0
       }
       // Collect ALL variants regardless of bandwidth cap; filtering happens below
-      variants.push({ uri, bandwidth, resolution: [width, height], score: [width * height, bandwidth] })
+      variants.push({ uri, bandwidth, resolution: { width, height }, score: [width * height, bandwidth] })
       idx = uriIdx + 1
     }
     if (!variants.length) throw new Error('No HLS variants found')
@@ -146,7 +146,7 @@ export class CctvApiService {
     const variantBase = variant.uri.substring(0, variant.uri.lastIndexOf('/') + 1)
     const segmentUrls = parseSegmentUrls(variantText, variantBase)
 
-    logger.debug(`HLS variant: ${variant.bandwidth}bps ${variant.resolution[0]}x${variant.resolution[1]}, ${segmentUrls.length} segments`)
+    logger.debug(`HLS variant: ${variant.bandwidth}bps ${variant.resolution.width}x${variant.resolution.height}, ${segmentUrls.length} segments`)
     return { segmentUrls }
   }
 }

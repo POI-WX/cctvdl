@@ -28,7 +28,7 @@ describe('CCTVHLSBestParser', () => {
     it('selects highest quality variant by default (no cap)', () => {
       const result = CCTVHLSBestParser.best(threeVariants, 'https://example.com/')
       expect(result.bandwidth).toBe(2048000)
-      expect(result.resolution).toEqual([1280, 720])
+      expect(result.resolution).toEqual({ width: 1280, height: 720 })
       expect(result.uri).toBe('https://example.com/720p.m3u8')
     })
 
@@ -38,7 +38,7 @@ describe('CCTVHLSBestParser', () => {
 720p.m3u8`
       const result = CCTVHLSBestParser.best(playlist, 'https://example.com/')
       expect(result.bandwidth).toBe(0)
-      expect(result.resolution).toEqual([1280, 720])
+      expect(result.resolution).toEqual({ width: 1280, height: 720 })
     })
 
     it('handles missing RESOLUTION attribute (treats as [0,0])', () => {
@@ -47,7 +47,7 @@ describe('CCTVHLSBestParser', () => {
 1m.m3u8`
       const result = CCTVHLSBestParser.best(playlist, 'https://example.com/')
       expect(result.bandwidth).toBe(1000000)
-      expect(result.resolution).toEqual([0, 0])
+      expect(result.resolution).toEqual({ width: 0, height: 0 })
     })
 
     it('selects highest bandwidth when resolution is equal', () => {
@@ -70,7 +70,7 @@ b.m3u8`
     it('selects highest variant within bandwidth cap', () => {
       const result = CCTVHLSBestParser.best(threeVariants, 'https://example.com/', 1_000_000)
       expect(result.bandwidth).toBe(870400)
-      expect(result.resolution).toEqual([640, 360])
+      expect(result.resolution).toEqual({ width: 640, height: 360 })
     })
 
     it('selects single variant exactly at cap boundary', () => {
@@ -102,7 +102,7 @@ b.m3u8`
       // gaoqing = 1228800, both 2Mbps and 4Mbps exceed it → fallback picks 2048000 (lowest)
       const result = CCTVHLSBestParser.best(cctv4kPlaylist, 'https://example.com/', 1_228_800)
       expect(result.bandwidth).toBe(2048000)
-      expect(result.resolution).toEqual([1280, 720])
+      expect(result.resolution).toEqual({ width: 1280, height: 720 })
     })
 
     it('fallback to lowest tier when requested cap is liuchang (460800) on 4K content', () => {

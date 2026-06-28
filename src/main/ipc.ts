@@ -5,7 +5,7 @@ import type { ConfigStore } from './config'
 import path from 'path'
 import fs from 'fs'
 import { appendFailures, logger } from './logger'
-import { DEFAULT_UA } from './api/http'
+import { DEFAULT_UA, DEFAULT_REFERER } from './api/http'
 import { checkSaveDir } from './preflight'
 import type { ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult } from '../shared/types'
 
@@ -193,7 +193,7 @@ export function registerIpcHandlers(
   // Infers extension from Content-Type; appends _2/_3 suffix to avoid overwriting.
   ipcMain.handle('download-cover', async (_, url, saveDir, baseName) => {
     try {
-      const resp = await fetch(url, { headers: { 'User-Agent': DEFAULT_UA, 'Referer': 'https://tv.cctv.com' } })
+      const resp = await fetch(url, { headers: { 'User-Agent': DEFAULT_UA, 'Referer': DEFAULT_REFERER } })
       if (!resp.ok) throw new Error(`服务器返回 ${resp.status}`)
       const ct = resp.headers.get('content-type') || ''
       const ext = ct.includes('png') ? '.png' : ct.includes('webp') ? '.webp' : '.jpg'

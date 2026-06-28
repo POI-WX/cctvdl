@@ -1,5 +1,7 @@
 export type Fetcher = (url: string, init?: RequestInit) => Promise<Response>
 
+export const DEFAULT_REFERER = 'https://tv.cctv.com'
+
 export const DEFAULT_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
 

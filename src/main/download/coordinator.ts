@@ -10,6 +10,11 @@ import { ensureMp4Extension } from '../../shared/filename'
 import { estimateEta } from '../../shared/progress'
 import { logger } from '../logger'
 
+const DOWNLOAD_PHASE_MAX_PCT = 80  // progress % cap during segment download phase
+const MERGE_START_PCT = 85         // progress % at start of merge phase
+const PROGRESS_EMIT_INTERVAL_MS = 250  // minimum ms between progress events
+const STATE_SAVE_DEBOUNCE_MS = 500     // debounce delay for state.json writes
+
 const VALID_TRANSITIONS: Record<JobState, JobState[]> = {
   Created: ['Queued'],
   Queued: ['ResolvingM3u8', 'Cancelled'],
@@ -170,7 +175,7 @@ export class DownloadCoordinator extends EventEmitter {
 
     const emitJobProgress = (forceEmit = false): void => {
       const now = Date.now()
-      if (!forceEmit && now - jobLastEmitTime < 250) return
+      if (!forceEmit && now - jobLastEmitTime < PROGRESS_EMIT_INTERVAL_MS) return
       jobLastEmitTime = now
       const bytesDelta = jobTotalBytes - jobLastBytes
       const timeDelta = (now - jobLastProgressTime) / 1000
@@ -200,7 +205,7 @@ export class DownloadCoordinator extends EventEmitter {
           try { fs.writeFileSync(path.join(jobPendingState.workDir, 'state.json'), JSON.stringify(jobPendingState.state), 'utf-8') } catch { /* best effort */ }
         }
         jobSaveStateTimer = null
-      }, 500)
+      }, STATE_SAVE_DEBOUNCE_MS)
     }
 
     const flushJobState = (workDir: string): void => {
@@ -287,7 +292,7 @@ export class DownloadCoordinator extends EventEmitter {
             if (seg.status === 'completed') { completedCount++; completed.push(seg.index) }
             else { pending.push(seg.index) }
           }
-          job.progressPercent = totalSegments > 0 ? Math.round((completedCount / totalSegments) * 80) : 0
+          job.progressPercent = totalSegments > 0 ? Math.round((completedCount / totalSegments) * DOWNLOAD_PHASE_MAX_PCT) : 0
           emitJobProgress()
           saveJobState(workDir, { guid: job.guid, segmentUrls: segments, completed, pending })
         },
@@ -315,7 +320,7 @@ export class DownloadCoordinator extends EventEmitter {
 
       this.transition(job, 'Merging')
       this.setStage(job, 'MergingShards')
-      job.progressPercent = 85
+      job.progressPercent = MERGE_START_PCT
       emitJobProgress(true)
 
       const listPath = this.finalizer.writeConcatList(workDir, segments.length)
