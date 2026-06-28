@@ -377,5 +377,22 @@ describe('BrowseService', () => {
     it('returns empty string when neither present', () => {
       expect(extractTitle('<html>nothing</html>')).toBe('')
     })
+    it('commentTitle without 《》 falls back to split-on-digit', () => {
+      // "栏目名 20260612 集名" → takes text before the digit
+      expect(extractTitle('<script>var commentTitle = "新闻联播 20260612 今日精选";</script>')).toBe('新闻联播')
+    })
+    it('strips 节目视频 suffix from <title>', () => {
+      expect(extractTitle('<title>经济半小时节目视频_CCTV节目官网-CCTV-2</title>')).toBe('经济半小时')
+    })
+    it('strips 视频 suffix from <title>', () => {
+      expect(extractTitle('<title>经济半小时视频_CCTV节目官网-CCTV-2</title>')).toBe('经济半小时')
+    })
+    it('strips 节目 suffix from <title>', () => {
+      expect(extractTitle('<title>焦点访谈节目_CCTV节目官网</title>')).toBe('焦点访谈')
+    })
+    it('commentTitle takes priority over <title> when both present', () => {
+      const html = '<title>世界战史_CCTV节目官网</title><script>var commentTitle = "《世界战史》 20260601";</script>'
+      expect(extractTitle(html)).toBe('世界战史')
+    })
   })
 })

@@ -93,7 +93,7 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ coverSavePath: '/my/pics' }, fallback).coverSavePath).toBe('/my/pics')
   })
 
-    it('falls back concurrentVideos when not a number', () => {
+  it('falls back concurrentVideos when not a number', () => {
     expect(normalizeSettings({ concurrentVideos: 'two' }, fallback).concurrentVideos).toBe(1)
     expect(normalizeSettings({ concurrentVideos: NaN }, fallback).concurrentVideos).toBe(1)
   })
