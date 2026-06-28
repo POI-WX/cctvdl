@@ -120,7 +120,7 @@ export class DownloadCoordinator extends EventEmitter {
       this.markCancelled(job)
     }
     this.activeJobs.clear()
-    this.queue = []  // clear cancelled zombies
+    this.queue = []
     this.emitBatchFinished()
   }
 

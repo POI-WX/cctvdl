@@ -1,5 +1,4 @@
 // Pure, framework-free helpers for the imported-program ("我的栏目") list.
-// Unit-tested; the UI just calls them.
 
 export interface SortableProgram {
   columnId: string

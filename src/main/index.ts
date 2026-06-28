@@ -121,8 +121,8 @@ app.whenReady().then(() => {
   const iconPath = getResourcePath('icons', 'icon.png')
   if (fs.existsSync(iconPath)) {
     try {
-      // Tray uses the app icon on every platform. (A dedicated monochrome macOS
-      // template image could be added later via setTemplateImage if desired.)
+      // Tray uses the app icon on every platform.
+      // TODO: consider a dedicated monochrome template image for macOS via setTemplateImage
       const trayIcon = nativeImage.createFromPath(iconPath)
 
       tray = new Tray(trayIcon)

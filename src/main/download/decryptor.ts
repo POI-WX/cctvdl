@@ -80,7 +80,7 @@ export function createDefaultDecrypt(timeoutMs: number = DEFAULT_DECRYPT_TIMEOUT
   }
 }
 
-/** Sleep that resolves early (rejecting) if the abort signal fires. */
+/** Sleep that rejects early if the abort signal fires. */
 function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new Error('aborted'))
