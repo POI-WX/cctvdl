@@ -1,7 +1,7 @@
 // Shared, framework-free formatting helpers used by the renderer and covered by unit tests.
 
 /** Format a byte count into a human-readable size (B / KB / MB / GB). */
-export function formatBytes(bytes: number): string {
+function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0 || !Number.isFinite(bytes)) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   let value = bytes

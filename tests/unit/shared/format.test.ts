@@ -1,23 +1,20 @@
 import { describe, it, expect } from 'vitest'
-import { formatBytes, formatSpeed, formatTime, relativeTime, formatFileSize } from '../../../src/shared/format'
+import { formatSpeed, formatTime, relativeTime, formatFileSize } from '../../../src/shared/format'
 
 describe('shared/format', () => {
-  describe('formatBytes', () => {
-    it('formats bytes', () => {
-      expect(formatBytes(0)).toBe('0 B')
-      expect(formatBytes(512)).toBe('512 B')
+  describe('formatFileSize', () => {
+    it('returns empty for zero/falsy', () => {
+      expect(formatFileSize(0)).toBe('')
+      expect(formatFileSize(NaN)).toBe('')
     })
-    it('formats KB/MB/GB', () => {
-      expect(formatBytes(1024)).toBe('1.0 KB')
-      expect(formatBytes(5 * 1024 * 1024)).toBe('5.0 MB')
-      expect(formatBytes(2 * 1024 * 1024 * 1024)).toBe('2.0 GB')
+    it('formats bytes and KB/MB/GB', () => {
+      expect(formatFileSize(512)).toBe('512 B')
+      expect(formatFileSize(1024)).toBe('1.0 KB')
+      expect(formatFileSize(5 * 1024 * 1024)).toBe('5.0 MB')
+      expect(formatFileSize(2 * 1024 * 1024 * 1024)).toBe('2.00 GB')
     })
-    it('drops decimals for large magnitudes', () => {
-      expect(formatBytes(150 * 1024 * 1024)).toBe('150 MB')
-    })
-    it('handles invalid input', () => {
-      expect(formatBytes(-1)).toBe('0 B')
-      expect(formatBytes(NaN)).toBe('0 B')
+    it('shows one decimal for sub-100 magnitudes', () => {
+      expect(formatFileSize(150 * 1024 * 1024)).toBe('150.0 MB')
     })
   })
 

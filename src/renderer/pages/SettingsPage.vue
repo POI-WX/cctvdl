@@ -91,12 +91,7 @@
           </div>
           <div class="settings-item-control">
             <el-select v-model="form.quality" size="small" style="width: 160px">
-              <el-option label="自动（最高画质）" value="auto" />
-              <el-option label="蓝光 1080p" value="bluray" />
-              <el-option label="超清 720p" value="chaoqing" />
-              <el-option label="高清 720p" value="gaoqing" />
-              <el-option label="标清 360p" value="biaoqing" />
-              <el-option label="流畅 270p" value="liuchang" />
+              <el-option v-for="q in QUALITIES" :key="q" :value="q" :label="QUALITY_LABELS[q]" />
             </el-select>
           </div>
         </div>
@@ -328,8 +323,9 @@
 import { ref, computed, onMounted, toRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Settings } from '../../shared/types'
-import { MIN_THREADS, MAX_THREADS, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS } from '../../shared/settings'
+import { MIN_THREADS, MAX_THREADS, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS, QUALITIES } from '../../shared/settings'
 import { applyAccentColor } from '../utils/accent'
+import { applyDarkMode } from '../utils/dark-mode'
 import { displayPath } from '../../shared/path-display'
 import { relativeTime, formatFileSize } from '../../shared/format'
 
@@ -366,6 +362,15 @@ const threadHintClass = computed(() => {
   return 'hint-extreme'
 })
 
+const QUALITY_LABELS: Record<string, string> = {
+  auto: '自动（最高画质）',
+  bluray: '蓝光 1080p',
+  chaoqing: '超清 720p',
+  gaoqing: '高清 720p',
+  biaoqing: '标清 360p',
+  liuchang: '流畅 270p',
+}
+
 const ACCENT_COLORS = [
   { label: '品牌蓝（默认）', value: '#2563EB' },
   { label: '翡翠绿', value: '#059669' },
@@ -391,10 +396,6 @@ onMounted(async () => {
   applyAccentColor(accentColor.value)
   history.value = await window.cctvdlApi.getDownloadHistory()
 })
-
-function applyDarkMode(isDark: boolean) {
-  document.documentElement.classList.toggle('dark', isDark)
-}
 
 function onDarkModeChange(isDark: boolean) { applyDarkMode(isDark) }
 

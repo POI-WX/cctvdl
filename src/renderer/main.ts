@@ -6,6 +6,7 @@ import 'element-plus/dist/index.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
 import App from './App.vue'
 import { applyAccentColor } from './utils/accent'
+import { applyDarkMode } from './utils/dark-mode'
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -145,14 +146,7 @@ designTokens.textContent = `
 `
 document.head.appendChild(designTokens)
 
-// Apply dark mode class to document root
-function applyDarkMode(isDark: boolean) {
-  if (isDark) {
-    document.documentElement.classList.add('dark')
-  } else {
-    document.documentElement.classList.remove('dark')
-  }
-}
+
 
 // Apply saved accent colour on startup (from localStorage)
 applyAccentColor(localStorage.getItem('cctvdl-accent-color') || '#2563EB')
