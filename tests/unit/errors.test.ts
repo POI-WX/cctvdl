@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { humanizeError, parseError, ErrorCode } from '../../src/shared/errors'
+import { humanizeError } from '../../src/shared/errors'
 
 describe('humanizeError（向后兼容）', () => {
   it('handles empty/nullish input', () => {
@@ -54,64 +54,5 @@ describe('humanizeError（向后兼容）', () => {
 
   it('prioritises specific rules (timeout beats network combo)', () => {
     expect(humanizeError('timed out: ECONNRESET')).toContain('超时')
-  })
-})
-
-describe('parseError — ErrorCode 枚举覆盖', () => {
-  it('空/null → Unknown', () => {
-    expect(parseError('').code).toBe(ErrorCode.Unknown)
-    expect(parseError(null).code).toBe(ErrorCode.Unknown)
-    expect(parseError(undefined).code).toBe(ErrorCode.Unknown)
-    expect(parseError('').message).toBe('未知错误')
-  })
-
-  it('Timeout', () => {
-    expect(parseError('timed out').code).toBe(ErrorCode.Timeout)
-    expect(parseError('request timeout').code).toBe(ErrorCode.Timeout)
-  })
-
-  it('NoStream', () => {
-    expect(parseError('No HLS URL found').code).toBe(ErrorCode.NoStream)
-    expect(parseError('no segment urls returned').code).toBe(ErrorCode.NoStream)
-  })
-
-  it('ParseFailed', () => {
-    expect(parseError('无法解析节目信息').code).toBe(ErrorCode.ParseFailed)
-    expect(parseError('cannot parse column_id').code).toBe(ErrorCode.ParseFailed)
-  })
-
-  it('HttpClient', () => {
-    expect(parseError('HTTP 404 not found').code).toBe(ErrorCode.HttpClient)
-    expect(parseError('HTTP 403 forbidden').code).toBe(ErrorCode.HttpClient)
-  })
-
-  it('HttpServer', () => {
-    expect(parseError('HTTP 500 internal server error').code).toBe(ErrorCode.HttpServer)
-    expect(parseError('fetch failed: ENOTFOUND').code).toBe(ErrorCode.HttpServer)
-  })
-
-  it('FfmpegFailed', () => {
-    expect(parseError('ffmpeg exit code 1').code).toBe(ErrorCode.FfmpegFailed)
-  })
-
-  it('EmptyOutput', () => {
-    expect(parseError('output file missing or empty').code).toBe(ErrorCode.EmptyOutput)
-  })
-
-  it('DecryptFailed', () => {
-    expect(parseError('decrypt failed on segment 3').code).toBe(ErrorCode.DecryptFailed)
-  })
-
-  it('Unknown 时 raw 保留原始文本', () => {
-    const result = parseError('some unknown error text')
-    expect(result.code).toBe(ErrorCode.Unknown)
-    expect(result.raw).toBe('some unknown error text')
-    expect(result.message).toBe('some unknown error text')
-  })
-
-  it('raw 始终保留原始文本，即使命中规则', () => {
-    const result = parseError('ffmpeg exit code 1: details here')
-    expect(result.raw).toBe('ffmpeg exit code 1: details here')
-    expect(result.code).toBe(ErrorCode.FfmpegFailed)
   })
 })

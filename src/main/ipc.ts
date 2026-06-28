@@ -5,7 +5,7 @@ import type { ConfigStore } from './config'
 import path from 'path'
 import fs from 'fs'
 import { appendFailures, logger } from './logger'
-import { DEFAULT_UA, DEFAULT_REFERER } from './api/http'
+import { downloadCoverToDir } from './api/cover'
 import { checkSaveDir } from './preflight'
 import type { ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult } from '../shared/types'
 
@@ -187,22 +187,10 @@ export function registerIpcHandlers(
 
   ipcMain.handle('open-url', (_, url: string) => shell.openExternal(url))
 
-  // Reveal a specific file in the OS file manager (selects it).
   ipcMain.handle('reveal-file', (_, p: string) => shell.showItemInFolder(p))
-  // Download a remote cover image to a local directory.
-  // Infers extension from Content-Type; appends _2/_3 suffix to avoid overwriting.
-  ipcMain.handle('download-cover', async (_, url, saveDir, baseName) => {
+  ipcMain.handle('download-cover', async (_, url: string, saveDir: string, baseName: string) => {
     try {
-      const resp = await fetch(url, { headers: { 'User-Agent': DEFAULT_UA, 'Referer': DEFAULT_REFERER } })
-      if (!resp.ok) throw new Error(`服务器返回 ${resp.status}`)
-      const ct = resp.headers.get('content-type') || ''
-      const ext = ct.includes('png') ? '.png' : ct.includes('webp') ? '.webp' : '.jpg'
-      fs.mkdirSync(saveDir, { recursive: true })
-      let fullPath = path.join(saveDir, baseName + ext)
-      let n = 2
-      while (fs.existsSync(fullPath)) fullPath = path.join(saveDir, baseName + '_' + n++ + ext)
-      fs.writeFileSync(fullPath, Buffer.from(await resp.arrayBuffer()))
-      return { savedPath: fullPath }
+      return await downloadCoverToDir(url, saveDir, baseName)
     } catch (err) {
       throw new Error(`封面下载失败：${err instanceof Error ? err.message : err}`)
     }
