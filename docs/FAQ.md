@@ -77,4 +77,4 @@
 默认在应用的用户数据目录下（`cctvdl.log`、失败批次 `cctvdl-failures.log`）。可在「设置 → 日志目录」自定义位置，失败日志会写到同一目录。
 
 **20. 如何反馈问题？**
-请带上版本号（关于弹窗可见）、操作系统、复现步骤与相关日志，按 [Bug 模板](../.github/ISSUE_TEMPLATE/bug_report.yml) 提交 Issue。复现前可在「设置 → 日志级别」切到「调试」以记录更详细的日志；提交时注意脱敏。
+请带上版本号（关于弹窗可见）、操作系统、复现步骤与相关日志，按 [Bug 模板](https://github.com/POI-WX/cctvdl/issues/new?template=bug_report.yml) 提交 Issue。复现前可在「设置 → 日志级别」切到「调试」以记录更详细的日志；提交时注意脱敏。

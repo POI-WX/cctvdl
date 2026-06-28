@@ -54,6 +54,9 @@ shared types    → src/shared/      # 跨进程共享的 TypeScript 类型
 
 关键模块：
 - `src/main/api/cctv.ts` — 视频信息接口、HLS 解析、清晰度选择
+- `src/main/api/browse.ts` — 栏目/单视频页面解析、zombie column 检测
+- `src/main/api/http.ts` — 弹性 HTTP 客户端（重试、超时、UA）
+- `src/renderer/stores/` — Pinia 状态管理（app / content / download）
 - `src/main/download/coordinator.ts` — 下载任务调度，支持并行下载、队列排序、取消与断点续传
 - `src/main/download/decryptor.ts` — 在解密子进程中解密分片
 - `src/main/download/finalizer.ts` — 调用 ffmpeg 合并分片
@@ -116,6 +119,11 @@ npm run typecheck   # tsc --noEmit
 npm test            # 单元测试（离线，<5s）
 npm run test:gui    # GUI 自动化（Playwright，需先 build）
 npm run test:e2e    # 端到端联网管线（解析→解密→合并；仅需网络，手动跑）
+```
+
+> **联网 GUI 测试**（`flow.spec.ts`、`single-video.spec.ts` 中的联网用例）需要访问 CCTV。如需跳过，可在运行 `test:gui` 时追加 `--grep-invert "联网"`。
+
+```bash
 ```
 
 ## 打包安装包
