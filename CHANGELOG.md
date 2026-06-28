@@ -4,6 +4,22 @@
 
 ---
 
+## 0.4.5
+
+### 重构 / 优化
+
+- **死代码清理**：删除从未调用的 navigate 函数、sortedPrograms 死导出；formatBytes 取消导出；__pinia 暴露加 NODE_ENV 守卫
+- **配置修复**：tsconfig.json 删除无效 paths/declaration/outDir 配置，exclude 修正为 dist-electron；vitest.config.ts 显式排除 tests/gui/**；.gitignore 补充 .claude/
+- **注释清理**：修正 decryptor.ts 矛盾注释；删除 8 处纯 WHAT 注释及推测性/断言性注释
+- **代码质量**：finalizer.ts uniquePath 循环耗尽时抛出错误（避免静默覆盖）；coordinator.ts 提取 4 个命名常量；http.ts 添加 DEFAULT_REFERER 常量；HLSVariant.resolution 改为具名对象
+- **冗余合并**：提取 applyDarkMode 到 dark-mode.ts；画质选项改为 v-for + QUALITY_LABELS；formatBytes 内部化
+- **架构改进**：新建 cover.ts 提取封面下载逻辑；ErrorCode/AppError/parseError 简化为单一 humanizeError 函数
+- **测试补全**：extractTitle 补 5 个边界用例；新增 cover.ts 单元测试（7 个）；settings.test.ts 缩进修正
+- **文档修复**：FAQ 链接改为 GitHub issue 创建页面；USAGE 并发描述修正；CONTRIBUTING 模块列表补全
+- **README 重构**：功能列表从 15 条平铺改为 4 组分类（内容管理 / 下载引擎 / 文件与历史 / 使用体验）
+
+---
+
 ## 0.4.4
 
 ### 优化
