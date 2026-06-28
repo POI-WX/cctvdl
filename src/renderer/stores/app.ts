@@ -9,14 +9,10 @@ export const useAppStore = defineStore('app', () => {
   const statusMessage = ref('')
   const statusType = ref<'success' | 'error' | ''>('')
 
-  function navigate(tab: string) {
-    activeTab.value = tab
-  }
-
   function toggleSidebar() {
     sidebarExpanded.value = !sidebarExpanded.value
     localStorage.setItem('cctvdl-sidebar-expanded', String(sidebarExpanded.value))
   }
 
-  return { activeTab, sidebarExpanded, aboutOpen, isDragging, statusMessage, statusType, navigate, toggleSidebar }
+  return { activeTab, sidebarExpanded, aboutOpen, isDragging, statusMessage, statusType, toggleSidebar }
 })

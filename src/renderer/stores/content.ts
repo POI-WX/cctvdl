@@ -101,7 +101,7 @@ export const useContentStore = defineStore('content', () => {
     programs, singleVideos, videos, viewMode, selectedProgram, selectedVideo,
     selectedMonth, downloadedSet, newContentMap, emptyMonths,
     programQuery, searchQuery, debouncedSearch,
-    isFav, sortedPrograms, filteredPrograms, displayRows,
+    isFav, filteredPrograms, displayRows,
     filteredVideos, allSelected, selectedVideos, downloadedCount, allSelectedDownloaded,
     emptyHint, groupedVideos,
     refreshDownloadedSet, recordVideosLoaded, clearEmptyMonths, applyNewContent, clearNewContent

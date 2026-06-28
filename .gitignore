@@ -20,3 +20,6 @@ playwright-report/
 # Environment
 .env
 .env.*
+
+# Local tool config
+.claude/

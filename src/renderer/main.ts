@@ -13,7 +13,8 @@ app.use(pinia)
 app.use(ElementPlus, { locale: zhCn })
 app.mount('#app')
 
-;(window as any).__pinia = pinia
+// Expose pinia for Playwright GUI tests — dev/test only, stripped in production builds.
+if (process.env.NODE_ENV !== 'production') (window as any).__pinia = pinia
 
 // Design token system — overrides Element Plus defaults for a unified visual language
 const designTokens = document.createElement('style')

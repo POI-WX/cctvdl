@@ -32,14 +32,6 @@ describe('useAppStore', () => {
     expect(store.statusType).toBe('')
   })
 
-  it('navigate 切换 tab', () => {
-    const store = useAppStore()
-    store.navigate('download')
-    expect(store.activeTab).toBe('download')
-    store.navigate('settings')
-    expect(store.activeTab).toBe('settings')
-  })
-
   it('toggleSidebar 切换展开状态并写入 localStorage', () => {
     const store = useAppStore()
     const initial = store.sidebarExpanded
