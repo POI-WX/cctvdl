@@ -46,20 +46,22 @@ test.describe('真实用户流程', () => {
     await importInput.fill(COLUMN_URL)
     await importInput.press('Enter')
 
-    // 等待导入（需要网络请求）
-    await page.waitForTimeout(3000)
+    // 等待导入结果 toast（成功/已存在/失败均会出现，给 CI 充裕时间）
+    await expect(page.locator('.el-message').first()).toBeVisible({ timeout: 30000 })
 
     // 3. 验证节目已导入（在列表中，现在是自定义 .program-item）
     const programRow = page.locator('.program-item')
-    await expect(programRow.first()).toBeVisible({ timeout: 5000 })
+    await expect(programRow.first()).toBeVisible({ timeout: 15000 })
 
     // 4. 点击节目，加载视频列表
     await programRow.first().click()
 
-    // 等待视频列表加载
-    await page.waitForTimeout(3000)
+    // 5. 等待视频列表出现（video-item 或空状态 hint 均可，给 CI 充裕时间）
+    await expect(
+      page.locator('.video-item, .video-hint').first()
+    ).toBeVisible({ timeout: 15000 })
 
-    // 5. 验证视频列表（现在是自定义 .video-item）
+    // 6. 验证视频列表（现在是自定义 .video-item）
     const videoItems = page.locator('.video-item')
     const videoCount = await videoItems.count()
     const hasHint = await page.locator('.video-hint').count() > 0
@@ -67,11 +69,11 @@ test.describe('真实用户流程', () => {
     expect(videoCount > 0 || hasHint).toBe(true)
 
     if (videoCount > 0) {
-      // 6. 选中第一个视频
+      // 7. 选中第一个视频
       const firstCheckbox = videoItems.first().locator('.el-checkbox')
       await firstCheckbox.click()
 
-      // 7. 下载按钮应该变为可用
+      // 8. 下载按钮应该变为可用
       const downloadBtn = page.locator('button', { hasText: /下载选中/ })
       await expect(downloadBtn).toBeEnabled()
 
@@ -91,7 +93,8 @@ test.describe('真实用户流程', () => {
     await importInput.fill(EPISODE_URL)
     await importInput.press('Enter')
 
-    await page.waitForTimeout(3000)
+    // 等待导入结果 toast（给 CI 充裕时间）
+    await expect(page.locator('.el-message').first()).toBeVisible({ timeout: 30000 })
 
     // Should succeed or show "already exists"
     const messages = await page.locator('.el-message').allTextContents()
