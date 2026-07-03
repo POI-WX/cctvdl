@@ -285,15 +285,7 @@ describe('BrowseService', () => {
         .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(html) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ image: '', brief: '' }) })
 
-    it('falls back to URL VIDE token when page has no var guid', async () => {
-      const service = new BrowseService(fetchHtml('<title>《大决战》_CCTV节目官网</title>'))
-      const v = await service.resolveSingleVideo('https://tv.cctv.com/2026/06/12/VIDEabc123XYZ260612.shtml?spm=x')
-      expect(v.guid).toBe('VIDEabc123XYZ260612')
-      expect(v.title).toBe('大决战')
-      expect(v.time).toBe('2026-06-12')
-    })
-
-    it('prefers var guid from HTML over URL VIDE token (real CCTV behavior)', async () => {
+    it('uses var guid from HTML even when URL contains a VIDE token', async () => {
       // Real pages: URL contains CMS content ID (VIDE...), HTML has actual playable guid
       const html = '<title>电影名_CCTV</title><script>var guid = "73dfb7e8070247d7acb90016a365c9e6";</script>'
       const service = new BrowseService(fetchHtml(html))
@@ -301,7 +293,7 @@ describe('BrowseService', () => {
       expect(v.guid).toBe('73dfb7e8070247d7acb90016a365c9e6')
     })
 
-    it('falls back to var guid when URL has no VIDE token', async () => {
+    it('uses var guid when URL has no VIDE token', async () => {
       const html = '<title>电影名_央视网</title><script>var guid = "VIDEfallback999";</script>'
       const service = new BrowseService(fetchHtml(html))
       const v = await service.resolveSingleVideo('https://tv.cctv.com/somepage.shtml')
@@ -310,14 +302,14 @@ describe('BrowseService', () => {
     })
 
     it('extracts cover from og:image meta', async () => {
-      const html = '<meta property="og:image" content="https://img.cctv.com/c.jpg"><title>片名_CCTV节目官网</title>'
+      const html = '<meta property="og:image" content="https://img.cctv.com/c.jpg"><title>片名_CCTV节目官网</title><script>var guid = "test000000000000000000000000101";</script>'
       const service = new BrowseService(fetchHtml(html))
       const v = await service.resolveSingleVideo('https://tv.cctv.com/2026/06/12/VIDEcover260612.shtml')
       expect(v.coverUrl).toBe('https://img.cctv.com/c.jpg')
     })
 
     it('extracts cover when content attr comes before property attr', async () => {
-      const html = '<meta content="https://img.cctv.com/rev.jpg" property="og:image"><title>片名_CCTV</title>'
+      const html = '<meta content="https://img.cctv.com/rev.jpg" property="og:image"><title>片名_CCTV</title><script>var guid = "test000000000000000000000000102";</script>'
       const service = new BrowseService(fetchHtml(html))
       const v = await service.resolveSingleVideo('https://tv.cctv.com/2026/06/12/VIDErevattr260612.shtml')
       expect(v.coverUrl).toBe('https://img.cctv.com/rev.jpg')
@@ -338,21 +330,21 @@ describe('BrowseService', () => {
     })
 
     it('prepends https: for protocol-relative og:image URL', async () => {
-      const html = '<meta property="og:image" content="//p4.img.cctvpic.com/photo.jpg"><title>片名_CCTV</title>'
+      const html = '<meta property="og:image" content="//p4.img.cctvpic.com/photo.jpg"><title>片名_CCTV</title><script>var guid = "test000000000000000000000000103";</script>'
       const service = new BrowseService(fetchHtml(html))
       const v = await service.resolveSingleVideo('https://tv.cctv.com/2026/06/12/VIDEproto260612.shtml')
       expect(v.coverUrl).toBe('https://p4.img.cctvpic.com/photo.jpg')
     })
 
     it('extracts brief from unquoted name=description meta (real CCTV format)', async () => {
-      const html = '<meta name=description content="该片讲述了小猪妖的故事。"><title>浪浪山_CCTV</title>'
+      const html = '<meta name=description content="该片讲述了小猪妖的故事。"><title>浪浪山_CCTV</title><script>var guid = "test000000000000000000000000104";</script>'
       const service = new BrowseService(fetchHtml(html))
       const v = await service.resolveSingleVideo('https://tv.cctv.com/2026/06/12/VIDEunquoted260612.shtml')
       expect(v.brief).toContain('小猪妖')
     })
 
     it('returns empty brief when no description meta found', async () => {
-      const html = '<title>片名_CCTV节目官网</title>'
+      const html = '<title>片名_CCTV节目官网</title><script>var guid = "test000000000000000000000000105";</script>'
       const service = new BrowseService(fetchHtml(html))
       const v = await service.resolveSingleVideo('https://tv.cctv.com/2026/06/12/VIDEnobriefXY260612.shtml')
       expect(v.brief).toBe('')

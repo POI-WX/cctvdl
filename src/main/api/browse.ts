@@ -122,25 +122,18 @@ export class BrowseService {
 
   /**
    * Resolve a standalone video page (e.g. a movie that belongs to no column) into
-   * a downloadable VideoInfo. The whole download pipeline only needs the guid, so
-   * we extract the guid (from the VIDE… token in the URL, falling back to a page
-   * variable) plus a best-effort title / cover / date.
+   * a downloadable VideoInfo. The whole download pipeline needs the playable guid
+   * from the page HTML, plus a best-effort title / cover / date.
    */
   async resolveSingleVideo(pageUrl: string): Promise<VideoInfo> {
     const resp = await this.fetch(pageUrl, uaInit())
     if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching page`)
     const html = await resp.text()
 
-    // Prefer var guid from HTML (actual playable guid for download API).
-    // URL's VIDE token is a CMS content ID, not the video guid — fall back to it
-    // only when the page has no var guid declaration.
-    let guid = ''
+    // URL's VIDE token is a CMS content ID, not the playable guid used by the
+    // download API. Require the page's actual guid declaration.
     const htmlGuidMatch = html.match(/var\s+guid\s*=\s*["']([^"']+)["']/)
-    if (htmlGuidMatch) guid = htmlGuidMatch[1]
-    if (!guid) {
-      const urlGuidMatch = pageUrl.match(/(VIDE[A-Za-z0-9]+)\.s?html/i)
-      if (urlGuidMatch) guid = urlGuidMatch[1]
-    }
+    const guid = htmlGuidMatch ? htmlGuidMatch[1] : ''
     if (!guid) throw new Error('无法解析视频信息')
 
     const title = extractTitle(html) || '未命名视频'
