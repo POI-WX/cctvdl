@@ -1,6 +1,6 @@
 <h1 align="center">📺 cctvdl</h1>
 
-<p align="center">将央视节目轻松下载到本地</p>
+<p align="center">跨平台央视视频下载器 · 粘贴链接即可下载 · 开箱即用</p>
 
 <p align="center">
   <a href="https://github.com/POI-WX/cctvdl/actions/workflows/ci.yml"><img src="https://github.com/POI-WX/cctvdl/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-green.svg" alt="Platform">
 </p>
 
-cctvdl 让下载 CCTV 节目变得简单——粘贴链接 → 选择清晰度 → 批量下载，自动保存高清视频。开箱即用，支持 Windows / macOS / Linux。
+cctvdl 让央视视频下载变得简单——粘贴链接、选清晰度、批量下载，全程开箱即用。支持 Windows / macOS / Linux。
 
 <p align="center">
   <img src="docs/assets/home.png" width="820" alt="cctvdl 主界面">
@@ -18,12 +18,12 @@ cctvdl 让下载 CCTV 节目变得简单——粘贴链接 → 选择清晰度 �
 
 **📥 内容管理**
 - **栏目与节目集导入** — 导入央视栏目页、节目页、电视剧/4K 选集页；栏目按月浏览，节目集直接浏览全部选集
-- **单视频直链** — 粘贴独立视频、新闻文章视频、导视/精彩片段、央视新闻移动端视频页（`cctvnews.cctv.com/snow-book/...`）链接直接下载；一条央视新闻移动端链接可能包含多条视频，全部自动加入单视频集合；保留完整标题、封面与发布时间
-- **内容管理** — 收藏置顶常用内容，JSON 导入/导出备份；单视频集合持久收藏
+- **单视频直链** — 独立视频、新闻文章、导视片段、央视新闻移动端视频页等无栏目链接直接下载；自动保留标题、封面与发布时间
+- **收藏与备份** — 收藏置顶常用内容，JSON 导入/导出备份；单视频集合持久收藏
 - **智能导入** — 支持链接拖拽到窗口；可选开启剪贴板监听，复制央视链接时自动提示导入
 
 **⬇️ 下载引擎**
-- **高清画质** — 流畅 / 标清 / 高清 / 超清 / 蓝光（最高 1080p），缺档自动降级；开箱即用，内置 ffmpeg，无需额外安装
+- **高清画质** — 流畅 / 标清 / 高清 / 超清 / 蓝光（最高 1080p），缺档自动降级
 - **并行与断点续传** — 最多同时下载 3 个视频；失败或取消后保留进度，重试自动续传
 - **队列管理** — 多任务队列，支持拖拽排序与一键置顶；实时显示速度、剩余时间与进度
 
@@ -61,7 +61,7 @@ cctvdl 让下载 CCTV 节目变得简单——粘贴链接 → 选择清晰度 �
 | macOS | `.dmg`（分别提供 Intel 与 Apple Silicon） |
 | Linux | `.AppImage` |
 
-> **开箱即用**：无需安装任何额外软件或环境，下载安装包即可使用。
+> **开箱即用**：无需安装任何额外软件（ffmpeg 已内置），下载安装包即可使用。
 >
 > 安装包未做 Apple 开发者签名，首次打开时系统可能提示风险：macOS 在「系统设置 → 隐私与安全性」底部点「仍要打开」，Windows 在 SmartScreen 提示里点「更多信息 → 仍要运行」。详见 [常见问题](docs/FAQ.md)。
 
