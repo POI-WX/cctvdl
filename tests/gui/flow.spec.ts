@@ -70,7 +70,7 @@ test.describe('真实用户流程', () => {
 
     if (videoCount > 0) {
       // 7. 选中第一个视频
-      const firstCheckbox = videoItems.first().locator('.el-checkbox')
+      const firstCheckbox = videoItems.first().locator('.el-checkbox__inner')
       await firstCheckbox.click()
 
       // 8. 下载按钮应该变为可用
@@ -101,6 +101,28 @@ test.describe('真实用户流程', () => {
     const hasSuccess = messages.some(m => m.includes('导入成功') || m.includes('已存在'))
     const hasError = messages.some(m => m.includes('导入失败'))
     expect(hasSuccess || !hasError).toBe(true)
+  })
+
+  test('导入 4K 选集型节目后隐藏月份并显示选集列表', async () => {
+    const ALBUM_URL = 'https://tv.cctv.com/2024/11/30/VIDEkLRS36ABdGAb0llIYJAR241130.shtml'
+
+    const homeTab = page.locator('.sidebar-nav-item', { hasText: '首页' })
+    await homeTab.click()
+    await page.waitForTimeout(500)
+
+    const importInput = page.locator('.import-row input')
+    await importInput.fill(ALBUM_URL)
+    await importInput.press('Enter')
+
+    await expect(page.locator('.el-message').first()).toBeVisible({ timeout: 30000 })
+
+    const programRow = page.locator('.program-item', { hasText: /跟着唐诗去旅行|唐诗/ }).first()
+    await expect(programRow).toBeVisible({ timeout: 15000 })
+    await programRow.click()
+
+    await expect(page.locator('.month-row')).toHaveCount(0)
+    await expect(page.locator('.single-mode-label')).toContainText('选集', { timeout: 15000 })
+    await expect(page.locator('.video-item').first()).toBeVisible({ timeout: 20000 })
   })
 
   test('设置页修改并发数后保存，下载任务使用新并发数', async () => {

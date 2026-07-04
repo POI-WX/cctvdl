@@ -129,6 +129,31 @@ describe('BrowseService', () => {
       expect(videos[0].time).toBe('2026-07-02 20:21:05')
     })
 
+    it('keeps string focus_date as the display time when present', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          data: {
+            list: [
+              {
+                guid: '2ab3dd8eef8b4228bdff85656649a714',
+                title: '《星月征途》 第1集',
+                brief: 'Brief',
+                image: 'https://example.com/xingyue.jpg',
+                time: '2026-06-12 15:48:04',
+                focus_date: '2026-06-12 15:50:36'
+              }
+            ]
+          }
+        })
+      })
+
+      const service = new BrowseService(mockFetch)
+      const videos = await service.getColumnVideoList('TOPC1460958001056237', 1, '202606')
+
+      expect(videos[0].time).toBe('2026-06-12 15:50:36')
+    })
+
     it('returns empty array when list is missing', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -288,6 +313,90 @@ describe('BrowseService', () => {
       expect(info.itemId).toBe('VIDE123456')
     })
 
+    it('resolves CCTV-4K video pages as album programs', async () => {
+      const html = `<title>《跟着唐诗去旅行 第二季》 第5集 双星会_4K专区_央视网</title>
+        <script>var itemid1="VIDEkLRS36ABdGAb0llIYJAR241130"; var guid = "d638c455bf834cbb851b8bf345b7ee2d"; var configType ="cctv4k";</script>`
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(html) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            title: '《跟着唐诗去旅行 第二季》 第5集 双星会',
+            album_id: 'VIDAjM8fGS3rvZWYKznnUUTu220708',
+            vset_title: '《跟着唐诗去旅行》4K',
+            cvid: 'VIDEkLRS36ABdGAb0llIYJAR241130',
+            tnum: '6'
+          })
+        })
+      const service = new BrowseService(mockFetch)
+
+      const info = await service.resolveColumnInfo('https://tv.cctv.com/2024/11/30/VIDEkLRS36ABdGAb0llIYJAR241130.shtml')
+
+      expect(info).toEqual({
+        name: '跟着唐诗去旅行4K',
+        columnId: 'VIDAjM8fGS3rvZWYKznnUUTu220708',
+        itemId: 'VIDEkLRS36ABdGAb0llIYJAR241130',
+        kind: 'album',
+        serviceId: 'cctv4k'
+      })
+    })
+
+    it('resolves episode pages as album programs', async () => {
+      const html = `<title>《星月征途》 第1集</title>
+        <script>var commentTitle = "《星月征途》 第1集"; var column_id = "TOPC1460958001056237"; var itemid1="VIDElk5c6FRjXLZhcppxIHhL260612"; var guid = "2ab3dd8eef8b4228bdff85656649a714";</script>`
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(html) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            title: '《星月征途》 第1集',
+            album_id: 'VIDAo7h09tLB0WMqOC7e1775260609',
+            vset_title: '《星月征途》',
+            cvid: 'VIDElk5c6FRjXLZhcppxIHhL260612',
+            tnum: '36'
+          })
+        })
+      const service = new BrowseService(mockFetch)
+
+      const info = await service.resolveColumnInfo('https://tv.cctv.com/2026/06/12/VIDElk5c6FRjXLZhcppxIHhL260612.shtml')
+
+      expect(info).toEqual({
+        name: '星月征途',
+        columnId: 'VIDAo7h09tLB0WMqOC7e1775260609',
+        itemId: 'VIDElk5c6FRjXLZhcppxIHhL260612',
+        kind: 'album',
+        serviceId: 'tvcctv'
+      })
+    })
+
+    it('keeps dated program pages as column programs even when metadata has album_id', async () => {
+      const html = `<title>《解码科技史》 20260701 筑基苍穹</title>
+        <script>var commentTitle = "《解码科技史》 20260701 筑基苍穹"; var column_id = "TOPC1570876640457386"; var itemid1="VIDEgkpWAAVCNkSdEnYSK5GO260702"; var guid = "3a922317e4fe47379c3b5e9efd746562";</script>`
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(html) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            title: '《解码科技史》 20260701 筑基苍穹',
+            album_id: 'VIDAAlajJpqBqqF4vjvuAyHS191015',
+            vset_title: '解码科技史',
+            cvid: 'VIDEgkpWAAVCNkSdEnYSK5GO260702',
+            tnum: '0'
+          })
+        })
+      const service = new BrowseService(mockFetch)
+
+      const info = await service.resolveColumnInfo('https://tv.cctv.com/2026/07/02/VIDEgkpWAAVCNkSdEnYSK5GO260702.shtml')
+
+      expect(info).toEqual({
+        name: '解码科技史',
+        columnId: 'TOPC1570876640457386',
+        itemId: 'VIDEgkpWAAVCNkSdEnYSK5GO260702',
+        kind: 'column',
+        serviceId: 'tvcctv'
+      })
+    })
+
     it('rejects special columns with a name but no column_id/topicID (no URL-slug fallback)', async () => {
       // 等着我-style microsite: a messy <title> resolves a name, but none of the
       // standard column vars exist. Without the old slug fallback, columnId stays
@@ -320,6 +429,23 @@ describe('BrowseService', () => {
       await expect(service.resolveColumnInfo('https://tv.cctv.cn/2026/06/01/VIDEWlCudM1meuAyGrF6c2Ba260601.shtml'))
         .rejects.toThrow('无法解析节目信息')
     })
+
+    it('rejects old guide clip pages so they fall back to single-video import', async () => {
+      const html = `<title>[创新进行时]《养“鱼”神器》导视_CCTV节目官网-CCTV-10</title>
+        <script>
+          var commentTitle = "[创新进行时]《养“鱼”神器》导视";
+          var column_id = "TOPC1570875218228998";
+          var itemid1="VIDEDvCPMR7rm10QI5chA4In191116";
+          var guid = "04165fc7a85cc5d2aab930f2381bab6e";
+        </script>`
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true, text: () => Promise.resolve(html)
+      })
+      const service = new BrowseService(mockFetch)
+
+      await expect(service.resolveColumnInfo('https://tv.cctv.com/2019/11/16/VIDEDvCPMR7rm10QI5chA4In191116.shtml'))
+        .rejects.toThrow('无法解析节目信息')
+    })
   })
 
   describe('resolveSingleVideo', () => {
@@ -344,6 +470,29 @@ describe('BrowseService', () => {
       const v = await service.resolveSingleVideo('https://tv.cctv.com/somepage.shtml')
       expect(v.guid).toBe('VIDEfallback999')
       expect(v.title).toBe('电影名')
+    })
+
+    it('uses video metadata title and full display time for TV single videos', async () => {
+      const html = '<title>页面标题_CCTV</title><script>var guid = "04165fc7a85cc5d2aab930f2381bab6e";</script>'
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(html) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            title: '[创新进行时]《养“鱼”神器》导视',
+            brief: '[创新进行时]《养“鱼”神器》导视',
+            img: 'https://p1.img.cctvpic.com/fmspic/2019/11/16/04165fc7a85cc5d2aab930f2381bab6e-1.jpg',
+            time: '2019-11-16 17:46:03'
+          })
+        })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ image: '', brief: '' }) })
+      const service = new BrowseService(mockFetch)
+
+      const v = await service.resolveSingleVideo('https://tv.cctv.com/2019/11/16/VIDEDvCPMR7rm10QI5chA4In191116.shtml')
+
+      expect(v.title).toBe('[创新进行时]《养“鱼”神器》导视')
+      expect(v.time).toBe('2019-11-16 17:46:03')
+      expect(v.coverUrl).toBe('https://p1.img.cctvpic.com/fmspic/2019/11/16/04165fc7a85cc5d2aab930f2381bab6e-1.jpg')
     })
 
     it('preserves the parsed title for clip video pages', async () => {
@@ -457,7 +606,7 @@ describe('BrowseService', () => {
         title: '星火成炬 沃野新篇｜村里来了个年轻人',
         brief: '星火成炬 沃野新篇｜村里来了个年轻人',
         coverUrl: 'https://p5.img.cntv.cn/fmspic/2026/06/28/6ef3fbbea4924a0a87a8cb12b76cc109-1.png',
-        time: '2026-06-28'
+        time: '2026-06-28 17:45:30'
       })
       expect(mockFetch).toHaveBeenNthCalledWith(2,
         'https://zy.api.cntv.cn/video/videoinfoByGuid?serviceId=tvcctv&guid=6ef3fbbea4924a0a87a8cb12b76cc109',

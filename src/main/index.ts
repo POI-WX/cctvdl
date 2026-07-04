@@ -239,10 +239,9 @@ app.whenReady().then(() => {
     const now = new Date()
     const month = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
     Promise.allSettled(programs.map(async (program) => {
-      let list = await browse.getColumnVideoList(program.columnId, 1, month)
-      if (!list.length && program.itemId) {
-        list = await browse.getAlbumVideoList(program.itemId, 1, month)
-      }
+      const list = (program.kind ?? 'column') === 'album'
+        ? await browse.getAlbumVideoList(program.columnId, 1, month, program.serviceId ?? 'tvcctv')
+        : await browse.getColumnVideoList(program.columnId, 1, month)
       const newCount = list.filter(v => !history.has(v.guid)).length
       if (newCount > 0 && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('new-content', { columnId: program.columnId, count: newCount })

@@ -97,7 +97,7 @@
       <!-- video section -->
       <div class="sidebar-section video-section">
         <div class="section-header">
-          <div v-if="viewMode === 'column'" class="month-row">
+          <div v-if="viewMode === 'column' && !selectedIsAlbum" class="month-row">
             <el-date-picker
               v-model="selectedMonth"
               type="month"
@@ -113,12 +113,15 @@
             <button class="month-quick-btn today" title="跳回本月" @click="jumpMonth(0)">本月</button>
             <button class="month-quick-btn" title="下个月" @click="jumpMonth(1)">›</button>
           </div>
-          <div v-else class="single-mode-label">
+          <div v-else-if="viewMode === 'single'" class="single-mode-label">
             <span>📌 单个视频 · {{ singleVideos.length }}</span>
             <span class="single-mode-actions">
               <button class="icon-btn" title="从 JSON 导入单视频" @click="importSingleVideos">↓</button>
               <button class="icon-btn" title="导出单视频备份" :disabled="!singleVideos.length" @click="exportSingleVideos">↑</button>
             </span>
+          </div>
+          <div v-else class="single-mode-label">
+            <span>选集 · {{ videos.length }}</span>
           </div>
           <div class="section-actions">
             <button
@@ -440,6 +443,7 @@ const {
 } = storeToRefs(contentStore)
 
 const isFav = contentStore.isFav
+const selectedIsAlbum = computed(() => (selectedProgram.value?.kind ?? 'column') === 'album')
 
 const isMac = window.cctvdlApi.isMac
 
@@ -763,13 +767,14 @@ async function loadVideos() {
   loadingVideos.value = true
   contentStore.refreshDownloadedSet()
   try {
-    const list = await window.cctvdlApi.listVideos(selectedProgram.value.columnId, selectedProgram.value.itemId, selectedMonth.value)
+    const program = { ...selectedProgram.value }
+    const list = await window.cctvdlApi.listVideos(program, selectedIsAlbum.value ? '' : selectedMonth.value)
     videos.value = list.map(v => ({ ...v, selected: false }))
     searchQuery.value = ''
     debouncedSearch.value = ''
     selectedVideo.value = null
     resetVideoListScroll()
-    contentStore.recordVideosLoaded(selectedMonth.value, list)
+    if (!selectedIsAlbum.value) contentStore.recordVideosLoaded(selectedMonth.value, list)
   } catch (err) { ElMessage.error(`加载失败：${humanizeError(String(err))}`) }
   finally { loadingVideos.value = false }
 }
@@ -791,7 +796,7 @@ function jumpMonth(offset: number) {
     target = new Date(Number(cur.slice(0, 4)), Number(cur.slice(4, 6)) - 1 + offset)
   }
   selectedMonth.value = `${target.getFullYear()}${String(target.getMonth() + 1).padStart(2, '0')}`
-  if (selectedProgram.value) loadVideos()
+  if (selectedProgram.value && !selectedIsAlbum.value) loadVideos()
 }
 
 function highlightText(text: string, query: string): string {

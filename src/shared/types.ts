@@ -2,6 +2,8 @@ export interface ProgramInfo {
   name: string
   columnId: string
   itemId: string
+  kind?: 'column' | 'album'
+  serviceId?: 'tvcctv' | 'cctv4k'
   // Epoch ms when favorited (pinned to top); undefined = not favorited.
   favoritedAt?: number
 }
@@ -112,7 +114,7 @@ export interface HistoryEntry {
 
 export interface CctvdlApi {
   browseProgram(url: string): Promise<ProgramInfo>
-  listVideos(columnId: string, itemId: string, month: string): Promise<VideoInfo[]>
+  listVideos(program: ProgramInfo, month: string): Promise<VideoInfo[]>
   importProgram(p: ProgramInfo): Promise<boolean>
   importPrograms(): Promise<number>
   deleteProgram(columnId: string): Promise<void>

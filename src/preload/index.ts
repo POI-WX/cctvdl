@@ -3,8 +3,8 @@ import type { ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, B
 
 const api: CctvdlApi = {
   browseProgram: (url: string) => ipcRenderer.invoke('browse-program', url),
-  listVideos: (columnId: string, itemId: string, month: string) =>
-    ipcRenderer.invoke('list-videos', columnId, itemId, month),
+  listVideos: (program: ProgramInfo, month: string) =>
+    ipcRenderer.invoke('list-videos', program, month),
   importProgram: (p: ProgramInfo) => ipcRenderer.invoke('import-program', p),
   importPrograms: () => ipcRenderer.invoke('import-programs'),
   deleteProgram: (columnId: string) => ipcRenderer.invoke('delete-program', columnId),

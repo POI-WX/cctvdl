@@ -56,12 +56,13 @@ export const useContentStore = defineStore('content', () => {
   )
   const emptyHint = computed(() => {
     if (viewMode.value === 'single') return videos.value.length ? '没有匹配的视频' : '粘贴单个视频链接添加'
+    if ((selectedProgram.value?.kind ?? 'column') === 'album') return videos.value.length ? '没有匹配的视频' : '暂无选集'
     return videos.value.length ? '没有匹配的视频' : '该月份暂无视频'
   })
   const groupedVideos = computed(() => {
     const groups: Array<{ date: string; items: typeof filteredVideos.value }> = []
     for (const v of filteredVideos.value) {
-      const date = v.time || ''
+      const date = (v.time || '').slice(0, 10)
       const last = groups[groups.length - 1]
       if (last && last.date === date) last.items.push(v)
       else groups.push({ date, items: [v] })

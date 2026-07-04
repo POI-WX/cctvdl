@@ -1,6 +1,8 @@
 import { createResilientFetch, type Fetcher, uaInit } from './http'
 import type { VideoInfo, ProgramInfo } from '../../shared/types'
 
+type CctvServiceId = 'tvcctv' | 'cctv4k'
+
 /**
  * Clean a CCTV brief field into display-ready plain text.
  * Strips the leading "本期节目主要内容：" prefix and trailing attribution block
@@ -65,10 +67,15 @@ export class BrowseService {
 
   // `_month` is part of the symmetric signature with getColumnVideoList but the
   // album endpoint doesn't filter by month, so it's intentionally unused.
-  async getAlbumVideoList(albumId: string, page: number, _month: string): Promise<VideoInfo[]> {
+  async getAlbumVideoList(albumId: string, page: number, _month: string, serviceId: CctvServiceId = 'tvcctv'): Promise<VideoInfo[]> {
     const params = new URLSearchParams({
-      id: albumId, pub: '1', sort: 'asc', mode: '0',
-      p: String(page), n: '100', serviceId: 'tvcctv'
+      id: albumId,
+      pub: serviceId === 'cctv4k' ? '2' : '1',
+      sort: 'asc',
+      mode: '0',
+      p: String(page),
+      n: '100',
+      serviceId
     })
     const url = `https://api.cntv.cn/NewVideo/getVideoListByAlbumIdNew?${params}`
     const resp = await this.fetch(url, uaInit())
@@ -84,10 +91,25 @@ export class BrowseService {
     if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching page`)
     const html = await resp.text()
 
-    // Clip pages expose a column_id for their parent program, but the page
-    // itself is a standalone playable video. Let the caller fall back to
-    // resolveSingleVideo so the clip title and guid are preserved.
+    // Clip pages expose parent program metadata, but the page itself is a
+    // standalone playable video. Let the caller fall back to resolveSingleVideo.
     if (isTvClipVideoPage(html)) throw new Error('无法解析节目信息')
+
+    const htmlGuidMatch = html.match(/var\s+guid\s*=\s*["']([^"']+)["']/)
+    const guid = htmlGuidMatch ? htmlGuidMatch[1] : ''
+    if (guid) {
+      const serviceId = detectTvServiceId(pageUrl, html)
+      const videoInfo = await this.fetchVideoInfoByGuid(guid, serviceId).catch(() => null)
+      if (videoInfo && isClipVideoInfo(videoInfo)) throw new Error('无法解析节目信息')
+      if (videoInfo && isAlbumProgram(videoInfo, serviceId)) {
+        const albumId = String(videoInfo['album_id'] || '')
+        const name = cleanProgramName(String(videoInfo['vset_title'] || '')) || extractTitle(html)
+        const itemId = String(videoInfo['cvid'] || extractItemId(html))
+        if (albumId && name) {
+          return { name, columnId: albumId, itemId, kind: 'album', serviceId }
+        }
+      }
+    }
 
     // 1. Extract column ID (priority: column_id → topicID → AJAX URL in page JS)
     let columnId = ''
@@ -117,12 +139,10 @@ export class BrowseService {
     const name = extractTitle(html)
 
     // 3. Extract itemid (optional, used for album fallback)
-    let itemId = ''
-    const itemIdMatch = html.match(/var\s+itemid1\s*=\s*["']([^"']+)["']/)
-    if (itemIdMatch) itemId = itemIdMatch[1]
+    const itemId = extractItemId(html)
 
     if (!name || !columnId) throw new Error('无法解析节目信息')
-    return { name, columnId, itemId }
+    return { name, columnId, itemId, kind: 'column', serviceId: 'tvcctv' }
   }
 
   /**
@@ -152,15 +172,23 @@ export class BrowseService {
     const guid = htmlGuidMatch ? htmlGuidMatch[1] : ''
     if (!guid) throw new Error('无法解析视频信息')
 
-    const title = extractTitle(html) || '未命名视频'
-
-    const time = dateFromUrl(pageUrl)
+    const serviceId = detectTvServiceId(pageUrl, html)
 
     // Fetch the real cover and brief from getHttpVideoInfo (best-effort, non-blocking).
     // This gives the actual episode thumbnail (fmspic) instead of the generic og:image
     // placeholder that many CCTV pages use.
     let apiCoverUrl = ''
     let apiBrief = ''
+    let apiTitle = ''
+    let apiTime = ''
+    try {
+      const videoInfo = await this.fetchVideoInfoByGuid(guid, serviceId)
+      apiTitle = String(videoInfo['title'] || '')
+      apiCoverUrl = String(videoInfo['img'] || videoInfo['image'] || '')
+      apiBrief = cleanBrief(String(videoInfo['brief'] || ''))
+      apiTime = formatVideoTime(videoInfo['focus_date']) || String(videoInfo['time'] || '')
+    } catch { /* fall through to getHttpVideoInfo */ }
+
     try {
       const infoResp = await this.fetch(
         `https://vdn.apps.cntv.cn/api/getHttpVideoInfo.do?pid=${guid}&type=json&ltype=html5`,
@@ -168,10 +196,13 @@ export class BrowseService {
       )
       if (infoResp.ok) {
         const info = await infoResp.json() as Record<string, unknown>
-        apiCoverUrl = String(info['image'] || '')
-        apiBrief = cleanBrief(String(info['brief'] || ''))
+        if (!apiCoverUrl) apiCoverUrl = String(info['image'] || '')
+        if (!apiBrief) apiBrief = cleanBrief(String(info['brief'] || ''))
       }
     } catch { /* silent — og:image fallback below */ }
+
+    const title = apiTitle || extractTitle(html) || '未命名视频'
+    const time = apiTime || dateFromUrl(pageUrl)
 
     // Cover: prefer API image, fall back to og:image from page HTML.
     const coverMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
@@ -204,20 +235,29 @@ export class BrowseService {
     const brief = cleanBrief(String(info['brief'] || ''))
     const coverUrl = normalizeResourceUrl(String(info['img'] || info['image'] || ''))
     const rawTime = String(info['time'] || '')
-    const time = rawTime.slice(0, 10) || dateFromUrl(pageUrl)
+    const time = formatVideoTime(info['focus_date']) || rawTime || dateFromUrl(pageUrl)
 
     return { guid, title, brief, coverUrl, time }
+  }
+
+  private async fetchVideoInfoByGuid(guid: string, serviceId: CctvServiceId): Promise<Record<string, unknown>> {
+    const infoResp = await this.fetch(
+      `https://api.cntv.cn/video/videoinfoByGuid?serviceId=${serviceId}&guid=${encodeURIComponent(guid)}`,
+      uaInit()
+    )
+    if (!infoResp.ok) throw new Error(`HTTP ${infoResp.status} from videoinfoByGuid`)
+    return await infoResp.json() as Record<string, unknown>
   }
 }
 
 function mapVideoItem(item: Record<string, unknown>): VideoInfo {
-  const focusDate = Number(item['focus_date'] || 0)
+  const focusDate = formatVideoTime(item['focus_date'])
   return {
     guid: String(item['guid'] || ''),
     title: String(item['title'] || ''),
     brief: cleanBrief(String(item['brief'] || '')),
     coverUrl: String(item['image'] || ''),
-    time: focusDate > 0 ? formatUnixMsChina(focusDate) : String(item['time'] || '')
+    time: focusDate || String(item['time'] || '')
   }
 }
 
@@ -231,9 +271,12 @@ function isNewsArticlePage(pageUrl: string): boolean {
 }
 
 function isTvClipVideoPage(html: string): boolean {
-  return /var\s+guid\s*=\s*["'][^"']+["']/.test(html)
+  const hasParentGuid = /var\s+guid\s*=\s*["'][^"']+["']/.test(html)
     && /var\s+parentGuid\s*=\s*["'][0-9a-fA-F]{32}["']/.test(html)
     && /var\s+commentTitle\s*=\s*["']\[[^\]]+\][^"']+["']/.test(html)
+  const commentTitle = extractCommentTitle(html)
+  const isGuideClip = /^\[[^\]]+\].*(导视|片段|预告|精彩)/.test(commentTitle)
+  return hasParentGuid || isGuideClip
 }
 
 function extractNewsArticleVideoCenterId(html: string): string {
@@ -248,6 +291,50 @@ function dateFromUrl(pageUrl: string): string {
 
 function normalizeResourceUrl(url: string): string {
   return url.startsWith('//') ? `https:${url}` : url
+}
+
+function extractItemId(html: string): string {
+  const itemIdMatch = html.match(/var\s+itemid1\s*=\s*["']([^"']+)["']/)
+  return itemIdMatch ? itemIdMatch[1] : ''
+}
+
+function extractCommentTitle(html: string): string {
+  const commentTitleMatch = html.match(/var\s+commentTitle\s*=\s*["']([^"']+)["']/)
+  return commentTitleMatch ? commentTitleMatch[1] : ''
+}
+
+function detectTvServiceId(pageUrl: string, html: string): CctvServiceId {
+  return /cctv4k|4K专区|configType\s*=\s*["']cctv4k["']/i.test(pageUrl + html) ? 'cctv4k' : 'tvcctv'
+}
+
+function isAlbumProgram(info: Record<string, unknown>, serviceId: CctvServiceId): boolean {
+  if (!String(info['album_id'] || '')) return false
+  if (serviceId === 'cctv4k') return true
+  const tnum = Number(info['tnum'] || 0)
+  const title = String(info['title'] || '')
+  return tnum > 0 || /第\s*\d+\s*集/.test(title)
+}
+
+function isClipVideoInfo(info: Record<string, unknown>): boolean {
+  const title = String(info['title'] || '')
+  const len = String(info['len'] || '')
+  return /^\[[^\]]+\].*(导视|片段|预告|精彩)/.test(title)
+    || /^(00:00|00:01):/.test(len) && /^\[[^\]]+\]/.test(title)
+}
+
+function cleanProgramName(name: string): string {
+  return name.trim().replace(/^《([^》]+)》(.*)$/, '$1$2')
+}
+
+function formatVideoTime(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return formatUnixMsChina(value)
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return ''
+    if (/^\d+$/.test(trimmed)) return formatUnixMsChina(Number(trimmed))
+    return trimmed
+  }
+  return ''
 }
 
 function formatUnixMsChina(ms: number): string {

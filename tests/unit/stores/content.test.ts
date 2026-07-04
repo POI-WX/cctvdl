@@ -130,12 +130,33 @@ describe('useContentStore', () => {
       expect(store.emptyHint).toBe('粘贴单个视频链接添加')
     })
 
-    it('emptyHint 栏目模式无视频时正确', () => {
-      const store = useContentStore()
-      store.viewMode = 'column'
-      store.videos = []
-      expect(store.emptyHint).toBe('该月份暂无视频')
-    })
+      it('emptyHint 栏目模式无视频时正确', () => {
+        const store = useContentStore()
+        store.viewMode = 'column'
+        store.videos = []
+        expect(store.emptyHint).toBe('该月份暂无视频')
+      })
+
+      it('emptyHint 选集模式无视频时正确', () => {
+        const store = useContentStore()
+        store.viewMode = 'column'
+        store.selectedProgram = { name: '星月征途', columnId: 'VIDA1', itemId: '', kind: 'album' }
+        store.videos = []
+        expect(store.emptyHint).toBe('暂无选集')
+      })
+
+      it('groupedVideos groups full timestamps by date', () => {
+        const store = useContentStore()
+        store.videos = [
+          { guid: 'G1', title: 'T1', brief: '', coverUrl: '', time: '2026-06-12 15:50:36' },
+          { guid: 'G2', title: 'T2', brief: '', coverUrl: '', time: '2026-06-12 17:26:37' },
+          { guid: 'G3', title: 'T3', brief: '', coverUrl: '', time: '2026-06-13 09:00:00' },
+        ]
+
+        expect(store.groupedVideos).toHaveLength(2)
+        expect(store.groupedVideos[0].date).toBe('2026-06-12')
+        expect(store.groupedVideos[0].items).toHaveLength(2)
+      })
 
     it('allSelected 全选时为 true', () => {
       const store = useContentStore()

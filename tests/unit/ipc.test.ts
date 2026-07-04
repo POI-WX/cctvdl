@@ -96,6 +96,18 @@ describe('IPC Handlers', () => {
       expect(result).toEqual({ name: 'Test', columnId: 'TOPC1', itemId: '' })
     })
 
+    it('resolves album info and probes album content', async () => {
+      const album = { name: 'Album', columnId: 'VIDA1', itemId: 'VIDE1', kind: 'album' as const, serviceId: 'cctv4k' as const }
+      vi.mocked(mockBrowse.resolveColumnInfo).mockResolvedValueOnce(album)
+      vi.mocked(mockBrowse.getAlbumVideoList).mockResolvedValueOnce([{ guid: 'ag1', title: 'A1', brief: '', coverUrl: '', time: '' }])
+
+      const result = await handlers['browse-program']({}, 'https://tv.cctv.com/4k.shtml')
+
+      expect(mockBrowse.getAlbumVideoList).toHaveBeenCalledWith('VIDA1', 1, '', 'cctv4k')
+      expect(mockBrowse.getColumnVideoList).not.toHaveBeenCalled()
+      expect(result).toEqual(album)
+    })
+
     it('throws when all-time list is empty (zombie column)', async () => {
       vi.mocked(mockBrowse.getColumnVideoList).mockResolvedValueOnce([])
       await expect(handlers['browse-program']({}, 'https://tv.cctv.com/lm/test/')).rejects.toThrow('无法解析节目信息')
@@ -104,20 +116,20 @@ describe('IPC Handlers', () => {
 
   describe('list-videos', () => {
     it('calls getColumnVideoList', async () => {
-      const result = await handlers['list-videos']({}, 'TOPC1', '', '202601')
+      const result = await handlers['list-videos']({}, { name: 'Test', columnId: 'TOPC1', itemId: '' }, '202601')
       expect(mockBrowse.getColumnVideoList).toHaveBeenCalledWith('TOPC1', 1, '202601')
       expect(result).toHaveLength(1)
     })
 
-    it('falls back to getAlbumVideoList when column list is empty and itemId provided', async () => {
-      vi.mocked(mockBrowse.getColumnVideoList).mockResolvedValueOnce([])
-      await handlers['list-videos']({}, 'TOPC1', 'album123', '202601')
-      expect(mockBrowse.getAlbumVideoList).toHaveBeenCalledWith('album123', 1, '202601')
+    it('calls getAlbumVideoList for album programs', async () => {
+      await handlers['list-videos']({}, { name: 'Album', columnId: 'album123', itemId: '', kind: 'album', serviceId: 'cctv4k' }, '202601')
+      expect(mockBrowse.getAlbumVideoList).toHaveBeenCalledWith('album123', 1, '202601', 'cctv4k')
+      expect(mockBrowse.getColumnVideoList).not.toHaveBeenCalled()
     })
 
     it('does not fall back on network error (propagates directly)', async () => {
       vi.mocked(mockBrowse.getColumnVideoList).mockRejectedValueOnce(new Error('HTTP 503'))
-      await expect(handlers['list-videos']({}, 'TOPC1', 'album123', '202601')).rejects.toThrow('HTTP 503')
+      await expect(handlers['list-videos']({}, { name: 'Test', columnId: 'TOPC1', itemId: 'album123' }, '202601')).rejects.toThrow('HTTP 503')
       expect(mockBrowse.getAlbumVideoList).not.toHaveBeenCalled()
     })
   })

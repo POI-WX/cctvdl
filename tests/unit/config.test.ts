@@ -149,6 +149,18 @@ describe('ConfigStore', () => {
       expect(store.getPrograms().map((p) => p.columnId)).toEqual(['TOPC001', 'TOPC002', 'TOPC004'])
     })
 
+    it('importPrograms preserves program kind and serviceId', () => {
+      const added = store.importPrograms([
+        { name: '跟着唐诗去旅行', columnId: 'VIDA1', itemId: 'VIDE1', kind: 'album', serviceId: 'cctv4k' }
+      ])
+
+      expect(added).toBe(1)
+      expect(store.getPrograms()[0]).toMatchObject({
+        kind: 'album',
+        serviceId: 'cctv4k'
+      })
+    })
+
     it('importPrograms throws on non-array input', () => {
       expect(() => store.importPrograms({ not: 'an array' })).toThrow()
     })

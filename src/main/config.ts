@@ -95,6 +95,8 @@ export class ConfigStore {
           columnId: p.columnId,
           itemId: typeof p.itemId === 'string' ? p.itemId : ''
         }
+        if (p.kind === 'album' || p.kind === 'column') program.kind = p.kind
+        if (p.serviceId === 'tvcctv' || p.serviceId === 'cctv4k') program.serviceId = p.serviceId
         if (typeof p.favoritedAt === 'number') program.favoritedAt = p.favoritedAt
         if (this.addProgram(program)) added++
       }

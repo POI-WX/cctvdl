@@ -50,8 +50,8 @@ describe('CCTV API smoke', () => {
     expect(v.coverUrl).not.toContain('photoAlbum/page/performance')
     // brief extracted from og:description or name=description
     expect(v.brief.length).toBeGreaterThan(10)
-    // date from URL path
-    expect(v.time).toBe('2026-06-12')
+    // full display time from videoinfoByGuid metadata
+    expect(v.time).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
 
     // Confirm the resolved guid is downloadable
     const r = await new CctvApiService().resolveSegmentUrls(v.guid, 'liuchang')
@@ -66,9 +66,36 @@ describe('CCTV API smoke', () => {
     expect(v.title).toBe('星火成炬 沃野新篇｜村里来了个年轻人')
     expect(v.coverUrl).toMatch(/^https:\/\//)
     expect(v.brief.length).toBeGreaterThan(10)
-    expect(v.time).toBe('2026-06-28')
+    expect(v.time).toMatch(/^2026-06-28 \d{2}:\d{2}:\d{2}$/)
 
     const r = await api.resolveSegmentUrls(v.guid, 'liuchang')
     expect(r.segmentUrls.length).toBeGreaterThan(0)
   }, 60_000)
+
+  it('classifies real complex CCTV pages by their content shape', async () => {
+    const fourK = await browse.resolveColumnInfo('https://tv.cctv.com/2024/11/30/VIDEkLRS36ABdGAb0llIYJAR241130.shtml')
+    expect(fourK.kind).toBe('album')
+    expect(fourK.serviceId).toBe('cctv4k')
+    expect(fourK.columnId).toBeTruthy()
+    const fourKList = await browse.getAlbumVideoList(fourK.columnId, 1, '', fourK.serviceId)
+    expect(fourKList.length).toBeGreaterThan(1)
+    expect(fourKList.some(v => v.title.includes('第5集'))).toBe(true)
+
+    const drama = await browse.resolveColumnInfo('https://tv.cctv.com/2026/06/12/VIDElk5c6FRjXLZhcppxIHhL260612.shtml')
+    expect(drama.kind).toBe('album')
+    expect(drama.serviceId).toBe('tvcctv')
+    const dramaList = await browse.getAlbumVideoList(drama.columnId, 1, '', drama.serviceId)
+    expect(dramaList.length).toBeGreaterThan(1)
+    expect(dramaList[0].title).toContain('第1集')
+
+    const column = await browse.resolveColumnInfo('https://tv.cctv.com/2026/07/02/VIDEgkpWAAVCNkSdEnYSK5GO260702.shtml')
+    expect(column.kind).toBe('column')
+    expect(column.columnId).toMatch(/^TOPC/)
+
+    await expect(browse.resolveColumnInfo('https://tv.cctv.com/2019/11/16/VIDEDvCPMR7rm10QI5chA4In191116.shtml'))
+      .rejects.toThrow('无法解析节目信息')
+    const clip = await browse.resolveSingleVideo('https://tv.cctv.com/2019/11/16/VIDEDvCPMR7rm10QI5chA4In191116.shtml')
+    expect(clip.title).toContain('导视')
+    expect(clip.time).toMatch(/^2019-11-16 \d{2}:\d{2}:\d{2}$/)
+  }, 90_000)
 })

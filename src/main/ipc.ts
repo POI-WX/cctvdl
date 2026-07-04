@@ -26,6 +26,11 @@ export function registerIpcHandlers(
   let currentBatchAutoOpen = false
   ipcMain.handle('browse-program', async (_, url: string) => {
     const info = await browse.resolveColumnInfo(url)
+    if ((info.kind ?? 'column') === 'album') {
+      const anyVideos = await browse.getAlbumVideoList(info.columnId, 1, '', info.serviceId ?? 'tvcctv').catch(() => [])
+      if (!anyVideos.length) throw new Error('无法解析节目信息')
+      return info
+    }
     // Guard against zombie columns: pages that carry a column_id but whose
     // video list is permanently empty (e.g. standalone movie pages on CCTV).
     // A single no-month query (d='') returns all-time content — real columns
@@ -38,12 +43,11 @@ export function registerIpcHandlers(
     return info
   })
 
-  ipcMain.handle('list-videos', async (_, columnId: string, itemId: string, month: string) => {
-    const result = await browse.getColumnVideoList(columnId, 1, month)
-    if (!result.length && itemId) {
-      return browse.getAlbumVideoList(itemId, 1, month)
+  ipcMain.handle('list-videos', async (_, program: ProgramInfo, month: string) => {
+    if ((program.kind ?? 'column') === 'album') {
+      return browse.getAlbumVideoList(program.columnId, 1, month, program.serviceId ?? 'tvcctv')
     }
-    return result
+    return browse.getColumnVideoList(program.columnId, 1, month)
   })
 
   ipcMain.handle('import-program', (_, program: ProgramInfo) => config.addProgram(program))
