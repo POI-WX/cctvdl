@@ -57,4 +57,18 @@ describe('CCTV API smoke', () => {
     const r = await new CctvApiService().resolveSegmentUrls(v.guid, 'liuchang')
     expect(r.segmentUrls.length).toBeGreaterThan(0)
   }, 60_000)
+
+  it('resolveSingleVideo: resolves real news article page and its downloadable stream', async () => {
+    const url = 'https://news.cctv.cn/2026/06/28/ARTIjYR3vK99sMNjxITajoyS260628.shtml'
+    const v = await browse.resolveSingleVideo(url)
+
+    expect(v.guid).toBe('6ef3fbbea4924a0a87a8cb12b76cc109')
+    expect(v.title).toBe('星火成炬 沃野新篇｜村里来了个年轻人')
+    expect(v.coverUrl).toMatch(/^https:\/\//)
+    expect(v.brief.length).toBeGreaterThan(10)
+    expect(v.time).toBe('2026-06-28')
+
+    const r = await api.resolveSegmentUrls(v.guid, 'liuchang')
+    expect(r.segmentUrls.length).toBeGreaterThan(0)
+  }, 60_000)
 })

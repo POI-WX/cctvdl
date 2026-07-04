@@ -121,15 +121,26 @@ export class BrowseService {
   }
 
   /**
-   * Resolve a standalone video page (e.g. a movie that belongs to no column) into
-   * a downloadable VideoInfo. The whole download pipeline needs the playable guid
-   * from the page HTML, plus a best-effort title / cover / date.
+   * Resolve a standalone video page into the VideoInfo consumed by the download
+   * pipeline. Different CCTV page families expose playable guids differently:
+   * tv.cctv.com pages declare `var guid`, while news article pages embed
+   * `videoCenterId` and need a videoinfoByGuid metadata lookup.
+   *
+   * URL tokens such as VIDE... or ARTI... are CMS content IDs, not playable
+   * guids, so they are never used as fallbacks.
    */
   async resolveSingleVideo(pageUrl: string): Promise<VideoInfo> {
     const resp = await this.fetch(pageUrl, uaInit())
     if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching page`)
     const html = await resp.text()
 
+    if (isNewsArticlePage(pageUrl)) {
+      return this.resolveNewsArticleVideo(pageUrl, html)
+    }
+    return this.resolveTvVideoPage(pageUrl, html)
+  }
+
+  private async resolveTvVideoPage(pageUrl: string, html: string): Promise<VideoInfo> {
     // URL's VIDE token is a CMS content ID, not the playable guid used by the
     // download API. Require the page's actual guid declaration.
     const htmlGuidMatch = html.match(/var\s+guid\s*=\s*["']([^"']+)["']/)
@@ -138,9 +149,7 @@ export class BrowseService {
 
     const title = extractTitle(html) || '未命名视频'
 
-    // Date from the /YYYY/MM/DD/ path segment, if present.
-    const dateMatch = pageUrl.match(/\/(\d{4})\/(\d{2})\/(\d{2})\//)
-    const time = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : ''
+    const time = dateFromUrl(pageUrl)
 
     // Fetch the real cover and brief from getHttpVideoInfo (best-effort, non-blocking).
     // This gives the actual episode thumbnail (fmspic) instead of the generic og:image
@@ -163,13 +172,34 @@ export class BrowseService {
     const coverMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
       ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
     const coverRaw = apiCoverUrl || (coverMatch ? coverMatch[1] : '')
-    const coverUrl = coverRaw.startsWith('//') ? `https:${coverRaw}` : coverRaw
+    const coverUrl = normalizeResourceUrl(coverRaw)
 
     // Brief: prefer API value, fall back to og:description / name=description.
     const briefMatch = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']{10,}?)["']/i)
       ?? html.match(/<meta[^>]+name=["']?description["']?[^>]+content=["']([^"']{10,}?)["']/i)
       ?? html.match(/<meta[^>]+content=["']([^"']{10,}?)["'][^>]+property=["']og:description["']/i)
     const brief = apiBrief || (briefMatch ? cleanBrief(briefMatch[1]) : '')
+
+    return { guid, title, brief, coverUrl, time }
+  }
+
+  private async resolveNewsArticleVideo(pageUrl: string, html: string): Promise<VideoInfo> {
+    const videoCenterId = extractNewsArticleVideoCenterId(html)
+    if (!videoCenterId) throw new Error('无法解析视频信息')
+
+    const infoResp = await this.fetch(
+      `https://zy.api.cntv.cn/video/videoinfoByGuid?serviceId=tvcctv&guid=${encodeURIComponent(videoCenterId)}`,
+      uaInit()
+    )
+    if (!infoResp.ok) throw new Error(`HTTP ${infoResp.status} from videoinfoByGuid`)
+    const info = await infoResp.json() as Record<string, unknown>
+
+    const guid = String(info['vid'] || videoCenterId)
+    const title = String(info['title'] || extractTitle(html) || '未命名视频')
+    const brief = cleanBrief(String(info['brief'] || ''))
+    const coverUrl = normalizeResourceUrl(String(info['img'] || info['image'] || ''))
+    const rawTime = String(info['time'] || '')
+    const time = rawTime.slice(0, 10) || dateFromUrl(pageUrl)
 
     return { guid, title, brief, coverUrl, time }
   }
@@ -183,4 +213,27 @@ function mapVideoItem(item: Record<string, unknown>): VideoInfo {
     coverUrl: String(item['image'] || ''),
     time: String(item['time'] || '')
   }
+}
+
+function isNewsArticlePage(pageUrl: string): boolean {
+  try {
+    const url = new URL(pageUrl)
+    return /^news\.cctv\.(cn|com)$/i.test(url.hostname) && /\/ARTI[A-Za-z0-9]+\.s?html$/i.test(url.pathname)
+  } catch {
+    return false
+  }
+}
+
+function extractNewsArticleVideoCenterId(html: string): string {
+  const match = html.match(/["']?\bvideoCenterId\b["']?\s*:\s*["']([0-9a-fA-F]{32})["']/)
+  return match ? match[1] : ''
+}
+
+function dateFromUrl(pageUrl: string): string {
+  const dateMatch = pageUrl.match(/\/(\d{4})\/(\d{2})\/(\d{2})\//)
+  return dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : ''
+}
+
+function normalizeResourceUrl(url: string): string {
+  return url.startsWith('//') ? `https:${url}` : url
 }

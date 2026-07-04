@@ -357,6 +357,79 @@ describe('BrowseService', () => {
       const noGuid = new BrowseService(fetchHtml('<html>nothing</html>'))
       await expect(noGuid.resolveSingleVideo('https://tv.cctv.com/x.shtml')).rejects.toThrow('无法解析视频信息')
     })
+
+    it('resolves news article page via videoCenterId metadata lookup', async () => {
+      const pageUrl = 'https://news.cctv.cn/2026/06/28/ARTIjYR3vK99sMNjxITajoyS260628.shtml'
+      const html = `
+        <html>
+          <title>央视新闻文章页</title>
+          <script>
+            var playerParas = {
+              videoCenterId: "6ef3fbbea4924a0a87a8cb12b76cc109",
+              videoId: "VIDEOKiskwnhFAi08Xhw7CLN260628"
+            };
+          </script>
+        </html>
+      `
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(html) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            vid: '6ef3fbbea4924a0a87a8cb12b76cc109',
+            title: '星火成炬 沃野新篇｜村里来了个年轻人',
+            brief: '星火成炬 沃野新篇｜村里来了个年轻人',
+            img: 'https://p5.img.cntv.cn/fmspic/2026/06/28/6ef3fbbea4924a0a87a8cb12b76cc109-1.png',
+            time: '2026-06-28 17:45:30'
+          })
+        })
+      const service = new BrowseService(mockFetch)
+
+      const v = await service.resolveSingleVideo(pageUrl)
+
+      expect(v).toEqual({
+        guid: '6ef3fbbea4924a0a87a8cb12b76cc109',
+        title: '星火成炬 沃野新篇｜村里来了个年轻人',
+        brief: '星火成炬 沃野新篇｜村里来了个年轻人',
+        coverUrl: 'https://p5.img.cntv.cn/fmspic/2026/06/28/6ef3fbbea4924a0a87a8cb12b76cc109-1.png',
+        time: '2026-06-28'
+      })
+      expect(mockFetch).toHaveBeenNthCalledWith(2,
+        'https://zy.api.cntv.cn/video/videoinfoByGuid?serviceId=tvcctv&guid=6ef3fbbea4924a0a87a8cb12b76cc109',
+        expect.any(Object)
+      )
+    })
+
+    it('uses videoCenterId when news metadata has no vid', async () => {
+      const html = '<script>var playerParas = { videoCenterId: "6ef3fbbea4924a0a87a8cb12b76cc109" };</script>'
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(html) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            title: '新闻文章视频',
+            img: '//p5.img.cntv.cn/news.jpg',
+            time: ''
+          })
+        })
+      const service = new BrowseService(mockFetch)
+
+      const v = await service.resolveSingleVideo('https://news.cctv.cn/2026/06/28/ARTIjYR3vK99sMNjxITajoyS260628.shtml')
+
+      expect(v.guid).toBe('6ef3fbbea4924a0a87a8cb12b76cc109')
+      expect(v.coverUrl).toBe('https://p5.img.cntv.cn/news.jpg')
+      expect(v.time).toBe('2026-06-28')
+    })
+
+    it('rejects news article page when videoCenterId is missing', async () => {
+      const service = new BrowseService(vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve('<html><title>新闻文章页</title></html>')
+      }))
+
+      await expect(service.resolveSingleVideo('https://news.cctv.cn/2026/06/28/ARTIjYR3vK99sMNjxITajoyS260628.shtml'))
+        .rejects.toThrow('无法解析视频信息')
+    })
   })
 
   describe('extractTitle', () => {
