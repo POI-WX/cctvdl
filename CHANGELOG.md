@@ -4,6 +4,26 @@
 
 ---
 
+## 0.5.1
+
+### 新增
+
+- **央视新闻移动端视频下载**：支持 `cctvnews.cctv.com/snow-book/{video,index}.html?item_id=...` 链接，通过 Emas 网关（HMAC-SHA256 签名 + base64 响应解码）获取视频元数据与多档 m3u8，按用户在设置中选择的清晰度档位挑选最佳一档下载。一条央视新闻移动端链接可能包含多条视频，全部自动加入「📌 单个视频」集合。
+- **未加密 HLS 下载路径**：下载协调器新增 `m3u8Url` 分支——对于预解析好的明文 m3u8（当前仅由 cctvnews 提供），直接并发下载 `.ts` segment 并用 ffmpeg 无损合并，**跳过 CCTV 解密子进程**；常规 CCTV 加密流路径保持不变。
+- **`resolveVideoBatch` IPC**：新增批量解析接口返回 `VideoInfo[]`，统一处理单视频页与多视频央视新闻文章；`resolveSingleVideo` 保留向后兼容。
+- **错误消息本地化**：`humanizeError` 新增 cctvnews 专属规则（接口空响应 / base64 解码 / Emas 网关 / 缺少 `item_id`），并补充「无法解析视频信息」规则对齐已有节目解析错误。
+
+### 优化
+
+- **文件大小格式化统一**：`formatFileSize` 改为委托 `formatBytes`，消除重复的 KB/MB/GB 逻辑。
+
+### 测试
+
+- 新增 `tests/unit/api/cctvnews.test.ts`：覆盖签名已知向量、`fetchArticle` / `resolveFromUrl` mock 响应（含多画质 / 多视频 / 空响应 / base64 失败）、`isCctvNewsSnowBookPage` 形态、`pickQuality` 带宽选择。
+- `browse.test.ts` 与 `coordinator.test.ts` 分别扩展 cctvnews 路由与 `m3u8Url` 分支的成功 / m3u8 失败 / segment 失败三种路径。
+
+---
+
 ## 0.5.0
 
 ### 新增
