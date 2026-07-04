@@ -54,11 +54,12 @@ shared types    → src/shared/      # 跨进程共享的 TypeScript 类型
 
 关键模块：
 - `src/main/api/cctv.ts` — 视频信息接口、HLS 解析、清晰度选择
-- `src/main/api/browse.ts` — 栏目/单视频页面解析、zombie column 检测
+- `src/main/api/cctvnews.ts` — 央视新闻移动端视频页（`cctvnews.cctv.com/snow-book`）解析：Emas 网关 HMAC-SHA256 签名、base64 响应解码、多画质 m3u8 选择
+- `src/main/api/browse.ts` — 栏目/单视频页面解析、zombie column 检测；`resolveSingleVideoBatch` 统一调度普通 CCTV 页与 cctvnews 页
 - `src/main/api/http.ts` — 弹性 HTTP 客户端（重试、超时、UA）
 - `src/renderer/stores/` — Pinia 状态管理（app / content / download）
-- `src/main/download/coordinator.ts` — 下载任务调度，支持并行下载、队列排序、取消与断点续传
-- `src/main/download/decryptor.ts` — 在解密子进程中解密分片
+- `src/main/download/coordinator.ts` — 下载任务调度，支持并行下载、队列排序、取消与断点续传；`m3u8Url` 分支直接下载明文 segment（用于 cctvnews）
+- `src/main/download/decryptor.ts` — 在解密子进程中解密分片（仅用于常规 CCTV 加密流）
 - `src/main/download/finalizer.ts` — 调用 ffmpeg 合并分片
 - `resources/decrypt/` — 第三方解密脚本（**不可修改**，见下）
 
