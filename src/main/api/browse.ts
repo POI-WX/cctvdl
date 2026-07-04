@@ -84,6 +84,11 @@ export class BrowseService {
     if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching page`)
     const html = await resp.text()
 
+    // Clip pages expose a column_id for their parent program, but the page
+    // itself is a standalone playable video. Let the caller fall back to
+    // resolveSingleVideo so the clip title and guid are preserved.
+    if (isTvClipVideoPage(html)) throw new Error('无法解析节目信息')
+
     // 1. Extract column ID (priority: column_id → topicID → AJAX URL in page JS)
     let columnId = ''
     const colIdMatch = html.match(/var\s+column_id\s*=\s*["']([^"']+)["']/)
@@ -206,12 +211,13 @@ export class BrowseService {
 }
 
 function mapVideoItem(item: Record<string, unknown>): VideoInfo {
+  const focusDate = Number(item['focus_date'] || 0)
   return {
     guid: String(item['guid'] || ''),
     title: String(item['title'] || ''),
     brief: cleanBrief(String(item['brief'] || '')),
     coverUrl: String(item['image'] || ''),
-    time: String(item['time'] || '')
+    time: focusDate > 0 ? formatUnixMsChina(focusDate) : String(item['time'] || '')
   }
 }
 
@@ -222,6 +228,12 @@ function isNewsArticlePage(pageUrl: string): boolean {
   } catch {
     return false
   }
+}
+
+function isTvClipVideoPage(html: string): boolean {
+  return /var\s+guid\s*=\s*["'][^"']+["']/.test(html)
+    && /var\s+parentGuid\s*=\s*["'][0-9a-fA-F]{32}["']/.test(html)
+    && /var\s+commentTitle\s*=\s*["']\[[^\]]+\][^"']+["']/.test(html)
 }
 
 function extractNewsArticleVideoCenterId(html: string): string {
@@ -236,4 +248,10 @@ function dateFromUrl(pageUrl: string): string {
 
 function normalizeResourceUrl(url: string): string {
   return url.startsWith('//') ? `https:${url}` : url
+}
+
+function formatUnixMsChina(ms: number): string {
+  const date = new Date(ms + 8 * 60 * 60 * 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`
 }

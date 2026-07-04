@@ -104,6 +104,31 @@ describe('BrowseService', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1)
     })
 
+    it('prefers focus_date as the display time when present', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          data: {
+            list: [
+              {
+                guid: '773935b913f3422886bd982ebf3bcaa9',
+                title: '《海峡两岸》 20260514',
+                brief: 'Brief',
+                image: 'https://example.com/hxla.jpg',
+                time: '2026-05-14 20:30:00',
+                focus_date: 1782994865121
+              }
+            ]
+          }
+        })
+      })
+
+      const service = new BrowseService(mockFetch)
+      const videos = await service.getColumnVideoList('TOPC1451540328102649', 1, '202607')
+
+      expect(videos[0].time).toBe('2026-07-02 20:21:05')
+    })
+
     it('returns empty array when list is missing', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -275,6 +300,26 @@ describe('BrowseService', () => {
       await expect(service.resolveColumnInfo('https://tv.cctv.com/lm/dzw/index.shtml'))
         .rejects.toThrow('无法解析节目信息')
     })
+
+    it('rejects clip video pages so they fall back to single-video import', async () => {
+      const html = `
+        <title>[海峡两岸]郑丽文启程访美 岛内有何忠告？</title>
+        <script>
+          var commentTitle = "[海峡两岸]郑丽文启程访美 岛内有何忠告？";
+          var column_id = "TOPC1451540328102649";
+          var itemid1 = "VIDEWlCudM1meuAyGrF6c2Ba260601";
+          var parentGuid = "cb6c6d3309f343d5b42af9a1dca9c46e";
+          var guid = "6782ab8382cd4307923de0e47b8f4808";
+        </script>
+      `
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true, text: () => Promise.resolve(html)
+      })
+      const service = new BrowseService(mockFetch)
+
+      await expect(service.resolveColumnInfo('https://tv.cctv.cn/2026/06/01/VIDEWlCudM1meuAyGrF6c2Ba260601.shtml'))
+        .rejects.toThrow('无法解析节目信息')
+    })
   })
 
   describe('resolveSingleVideo', () => {
@@ -299,6 +344,26 @@ describe('BrowseService', () => {
       const v = await service.resolveSingleVideo('https://tv.cctv.com/somepage.shtml')
       expect(v.guid).toBe('VIDEfallback999')
       expect(v.title).toBe('电影名')
+    })
+
+    it('preserves the parsed title for clip video pages', async () => {
+      const html = `
+        <title>[海峡两岸]郑丽文启程访美 岛内有何忠告？</title>
+        <script>
+          var commentTitle = "[海峡两岸]郑丽文启程访美 岛内有何忠告？";
+          var column_id = "TOPC1451540328102649";
+          var itemid1 = "VIDEWlCudM1meuAyGrF6c2Ba260601";
+          var parentGuid = "cb6c6d3309f343d5b42af9a1dca9c46e";
+          var guid = "6782ab8382cd4307923de0e47b8f4808";
+        </script>
+      `
+      const service = new BrowseService(fetchHtml(html))
+
+      const v = await service.resolveSingleVideo('https://tv.cctv.cn/2026/06/01/VIDEWlCudM1meuAyGrF6c2Ba260601.shtml')
+
+      expect(v.guid).toBe('6782ab8382cd4307923de0e47b8f4808')
+      expect(v.title).toBe('[海峡两岸]郑丽文启程访美 岛内有何忠告？')
+      expect(v.time).toBe('2026-06-01')
     })
 
     it('extracts cover from og:image meta', async () => {
