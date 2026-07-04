@@ -64,6 +64,7 @@ export function registerIpcHandlers(
 
   // Standalone (non-column) videos: resolve a video page → persist/list/remove.
   ipcMain.handle('resolve-single-video', (_, url: string) => browse.resolveSingleVideo(url))
+  ipcMain.handle('resolve-video-batch', (_, url: string) => browse.resolveSingleVideoBatch(url))
   ipcMain.handle('get-single-videos', () => config.getSingleVideos())
   ipcMain.handle('add-single-video', (_, v: VideoInfo) => config.addSingleVideo(v))
   ipcMain.handle('delete-single-video', (_, guid: string) => config.deleteSingleVideo(guid))

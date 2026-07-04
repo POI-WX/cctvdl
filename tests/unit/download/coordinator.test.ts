@@ -653,4 +653,133 @@ describe('DownloadCoordinator', () => {
       expect(ids).toEqual(['rq-b', 'rq-a'])
     })
   })
+
+  describe('m3u8Url branch (cctvnews)', () => {
+    // Build a fetch mock whose call log we can inspect. Each call resolves to
+    // the next queued response; unmatched URLs fall through to a 404.
+    function buildFetchMock(responses: Array<{ match: (u: string) => boolean; body: string | Buffer; ok?: boolean; status?: number }>) {
+      const calls: string[] = []
+      const fn = vi.fn(async (url: string | URL | Request) => {
+        const u = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
+        calls.push(u)
+        const hit = responses.find(r => r.match(u))
+        if (!hit) return { ok: false, status: 404, text: async () => '', arrayBuffer: async () => new ArrayBuffer(0), headers: new Map() }
+        const bodyBuf = typeof hit.body === 'string' ? Buffer.from(hit.body, 'utf-8') : hit.body
+        return {
+          ok: hit.ok ?? true,
+          status: hit.status ?? 200,
+          text: async () => bodyBuf.toString('utf-8'),
+          arrayBuffer: async () => bodyBuf.buffer.slice(bodyBuf.byteOffset, bodyBuf.byteOffset + bodyBuf.byteLength),
+          headers: new Map([['content-length', String(bodyBuf.byteLength)]])
+        }
+      })
+      return { fn, calls }
+    }
+
+    it('downloads segments directly and merges into a completed mp4', async () => {
+      const m3u8 = [
+        '#EXTM3U',
+        '#EXT-X-VERSION:3',
+        '#EXTINF:10,', 'seg1.ts',
+        '#EXTINF:10,', 'seg2.ts',
+        '#EXT-X-ENDLIST'
+      ].join('\n')
+      const fetchMock = buildFetchMock([
+        { match: u => u.endsWith('.m3u8'), body: m3u8 },
+        { match: u => u.includes('seg1.ts'), body: Buffer.from('AAAA-seg1') },
+        { match: u => u.includes('seg2.ts'), body: Buffer.from('BBBB-seg2') }
+      ])
+      vi.stubGlobal('fetch', fetchMock.fn)
+
+      // Add mergeCopy alongside the existing merge mock
+      const mergedOut = path.join(outDir, 'm3u8-merged.mp4')
+      ;(mockFinalizer as any).mergeCopy = vi.fn().mockImplementation(async () => {
+        fs.writeFileSync(mergedOut, 'final-bytes')
+        return mergedOut
+      })
+
+      const finished = vi.fn()
+      coordinator.on('jobFinished', finished)
+
+      const job: DownloadJob = {
+        id: 'm3u8-1', guid: 'guid-m3u8', sourceUrl: 'https://x', title: 'M',
+        savePath: path.join(outDir, 'out.mp4'), quality: 'auto', threadCount: 2,
+        reencode: false, state: 'Created', stage: 'None', progressPercent: 0,
+        m3u8Url: 'https://res.example.com/v/foo.m3u8'
+      }
+      coordinator.startBatch([job])
+      await new Promise(r => setTimeout(r, 200))
+
+      // API must NOT have been called — m3u8Url bypasses resolveSegmentUrls
+      expect(mockApi.resolveSegmentUrls).not.toHaveBeenCalled()
+      // Decryptor must NOT have been called — segments are plain
+      expect(mockDecryptor.decryptAll).not.toHaveBeenCalled()
+      // The m3u8 URL + 2 segment URLs should have been fetched
+      expect(fetchMock.calls).toHaveLength(3)
+      expect(fetchMock.calls[0]).toBe('https://res.example.com/v/foo.m3u8')
+      expect(fetchMock.calls.slice(1).sort()).toEqual([
+        'https://res.example.com/v/seg1.ts',
+        'https://res.example.com/v/seg2.ts'
+      ])
+      // mergeCopy was called (not merge) with the concat list + outputPath
+      expect((mockFinalizer as any).mergeCopy).toHaveBeenCalledTimes(1)
+      // Job transitioned to Completed with outputPath set
+      expect(finished).toHaveBeenCalledWith(expect.objectContaining({ id: 'm3u8-1', state: 'Completed', outputPath: mergedOut }))
+    })
+
+    it('marks job Failed when m3u8 fetch fails', async () => {
+      const fetchMock = buildFetchMock([
+        { match: u => u.endsWith('.m3u8'), body: '', ok: false, status: 503 }
+      ])
+      vi.stubGlobal('fetch', fetchMock.fn)
+      ;(mockFinalizer as any).mergeCopy = vi.fn()
+
+      const finished = vi.fn()
+      coordinator.on('jobFinished', finished)
+
+      const job: DownloadJob = {
+        id: 'm3u8-err', guid: 'guid-m3u8-err', sourceUrl: 'https://x', title: 'M',
+        savePath: path.join(outDir, 'out.mp4'), quality: 'auto', threadCount: 2,
+        reencode: false, state: 'Created', stage: 'None', progressPercent: 0,
+        m3u8Url: 'https://res.example.com/v/bad.m3u8'
+      }
+      coordinator.startBatch([job])
+      await new Promise(r => setTimeout(r, 200))
+
+      expect(finished).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'm3u8-err', state: 'Failed',
+        errorMessage: expect.stringContaining('HTTP 503')
+      }))
+      expect((mockFinalizer as any).mergeCopy).not.toHaveBeenCalled()
+    })
+
+    it('marks job Failed when a segment fetch fails', async () => {
+      const m3u8 = '#EXTM3U\n#EXTINF:10,\nseg1.ts\n#EXTINF:10,\nseg2.ts\n'
+      const fetchMock = buildFetchMock([
+        { match: u => u.endsWith('.m3u8'), body: m3u8 },
+        { match: u => u.includes('seg1.ts'), body: '', ok: false, status: 404 },
+        { match: u => u.includes('seg2.ts'), body: Buffer.from('ok-seg2') }
+      ])
+      vi.stubGlobal('fetch', fetchMock.fn)
+      ;(mockFinalizer as any).mergeCopy = vi.fn()
+
+      const finished = vi.fn()
+      coordinator.on('jobFinished', finished)
+
+      const job: DownloadJob = {
+        id: 'm3u8-seg', guid: 'guid-m3u8-seg', sourceUrl: 'https://x', title: 'M',
+        savePath: path.join(outDir, 'out.mp4'), quality: 'auto', threadCount: 1,
+        reencode: false, state: 'Created', stage: 'None', progressPercent: 0,
+        m3u8Url: 'https://res.example.com/v/foo.m3u8'
+      }
+      coordinator.startBatch([job])
+      await new Promise(r => setTimeout(r, 200))
+
+      expect(finished).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'm3u8-seg', state: 'Failed',
+        errorMessage: expect.stringContaining('segment 0 failed')
+      }))
+      expect((mockFinalizer as any).mergeCopy).not.toHaveBeenCalled()
+    })
+  })
 })

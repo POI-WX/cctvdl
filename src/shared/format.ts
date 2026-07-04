@@ -45,11 +45,12 @@ export function relativeTime(epochMs: number): string {
   return new Date(epochMs).toLocaleDateString('zh-CN')
 }
 
-/** Format a file size in bytes, returning empty string for zero/unknown. */
+/**
+ * Format a file size in bytes. Returns empty string for zero/unknown so the UI
+ * can simply omit the field. Delegates to formatBytes for the actual number
+ * formatting so there's one source of truth.
+ */
 export function formatFileSize(bytes: number): string {
-  if (!bytes) return ''
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
+  if (!bytes || bytes <= 0) return ''
+  return formatBytes(bytes)
 }

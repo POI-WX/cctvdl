@@ -17,6 +17,11 @@ export interface VideoInfo {
   brief: string
   coverUrl: string
   time: string
+  // When set, the download pipeline uses this variant m3u8 URL directly instead
+  // of resolving segments via CctvApiService (which requires a CCTV guid and the
+  // flash-client signature). Used by cctvnews.cctv.com snow-book videos whose
+  // segments are unencrypted and can be fetched directly.
+  m3u8Url?: string
 }
 
 export interface DownloadJob {
@@ -36,6 +41,9 @@ export interface DownloadJob {
   errorSegmentIndex?: number
   // The actual file written on success (may differ from savePath due to dedupe suffix / ext).
   outputPath?: string
+  // When set, coordinator downloads this variant m3u8 directly (no CCTV API
+  // segment resolution, no decryption) and merges the plain .ts segments.
+  m3u8Url?: string
 }
 
 export type Quality = 'auto' | 'bluray' | 'chaoqing' | 'gaoqing' | 'biaoqing' | 'liuchang'
@@ -125,6 +133,9 @@ export interface CctvdlApi {
   setProgramFavorite(columnId: string, favorite: boolean): Promise<void>
   getPrograms(): Promise<ProgramInfo[]>
   resolveSingleVideo(url: string): Promise<VideoInfo>
+  // Returns all videos reachable from a single URL. Regular pages yield a
+  // single-element array; cctvnews snow-book articles may yield N.
+  resolveVideoBatch(url: string): Promise<VideoInfo[]>
   getSingleVideos(): Promise<VideoInfo[]>
   addSingleVideo(v: VideoInfo): Promise<boolean>
   deleteSingleVideo(guid: string): Promise<void>

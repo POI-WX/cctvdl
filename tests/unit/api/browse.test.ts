@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { BrowseService, cleanBrief, extractTitle } from '../../../src/main/api/browse'
+import { BrowseService, cleanBrief, extractTitle, isCctvNewsSnowBookPage } from '../../../src/main/api/browse'
 
 describe('cleanBrief', () => {
   it('returns empty string for empty input', () => {
@@ -672,6 +672,59 @@ describe('BrowseService', () => {
     it('commentTitle takes priority over <title> when both present', () => {
       const html = '<title>世界战史_CCTV节目官网</title><script>var commentTitle = "《世界战史》 20260601";</script>'
       expect(extractTitle(html)).toBe('世界战史')
+    })
+  })
+
+  describe('cctvnews snow-book routing', () => {
+    it('isCctvNewsSnowBookPage matches content-static subdomain with item_id', () => {
+      expect(isCctvNewsSnowBookPage('https://content-static.cctvnews.cctv.com/snow-book/video.html?item_id=123')).toBe(true)
+      expect(isCctvNewsSnowBookPage('https://cctvnews.cctv.com/snow-book/index.html?item_id=456&foo=bar')).toBe(true)
+    })
+    it('isCctvNewsSnowBookPage rejects other domains or missing item_id', () => {
+      expect(isCctvNewsSnowBookPage('https://news.cctv.com/2026/07/04/ARTIabc.shtml')).toBe(false)
+      expect(isCctvNewsSnowBookPage('https://content-static.cctvnews.cctv.com/snow-book/video.html')).toBe(false)
+      expect(isCctvNewsSnowBookPage('https://tv.cctv.com/lm/xwlb/')).toBe(false)
+    })
+
+    it('resolveSingleVideoBatch dispatches cctvnews URLs to the injected service', async () => {
+      const fakeVideos = [
+        { guid: 'cctvnews_X_0', title: 'V1', brief: '', coverUrl: '', time: '', m3u8Url: 'https://res/a.m3u8' },
+        { guid: 'cctvnews_X_1', title: 'V2', brief: '', coverUrl: '', time: '', m3u8Url: 'https://res/b.m3u8' }
+      ]
+      const mockCctvNews = { resolveFromUrl: vi.fn().mockResolvedValue(fakeVideos) } as unknown as import('../../../src/main/api/cctvnews').CctvNewsService
+      const mockFetch = vi.fn()  // must NOT be called for cctvnews URLs
+      const service = new BrowseService(mockFetch, mockCctvNews)
+
+      const result = await service.resolveSingleVideoBatch('https://content-static.cctvnews.cctv.com/snow-book/video.html?item_id=X')
+
+      expect(mockCctvNews.resolveFromUrl).toHaveBeenCalledWith(
+        'https://content-static.cctvnews.cctv.com/snow-book/video.html?item_id=X',
+        'auto'
+      )
+      expect(result).toEqual(fakeVideos)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('resolveSingleVideoBatch forwards quality tier to the cctvnews service', async () => {
+      const mockCctvNews = { resolveFromUrl: vi.fn().mockResolvedValue([]) } as unknown as import('../../../src/main/api/cctvnews').CctvNewsService
+      const service = new BrowseService(vi.fn(), mockCctvNews)
+      await service.resolveSingleVideoBatch('https://cctvnews.cctv.com/?item_id=X', 'gaoqing')
+      expect(mockCctvNews.resolveFromUrl).toHaveBeenCalledWith(expect.stringContaining('item_id=X'), 'gaoqing')
+    })
+
+    it('resolveSingleVideoBatch wraps non-cctvnews URLs in a single-element array', async () => {
+      const html = '<title>电影名_CCTV</title><script>var guid = "73dfb7e8070247d7acb90016a365c9e6";</script>'
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(html) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ image: '', brief: '' }) })
+      const mockCctvNews = { resolveFromUrl: vi.fn() } as unknown as import('../../../src/main/api/cctvnews').CctvNewsService
+      const service = new BrowseService(mockFetch, mockCctvNews)
+
+      const result = await service.resolveSingleVideoBatch('https://tv.cctv.com/2026/06/12/VIDExxx.shtml')
+
+      expect(mockCctvNews.resolveFromUrl).not.toHaveBeenCalled()
+      expect(result).toHaveLength(1)
+      expect(result[0].guid).toBe('73dfb7e8070247d7acb90016a365c9e6')
     })
   })
 })

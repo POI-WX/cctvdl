@@ -1,5 +1,8 @@
 import { createResilientFetch, type Fetcher, uaInit } from './http'
-import type { VideoInfo, ProgramInfo } from '../../shared/types'
+import { CctvNewsService, isCctvNewsSnowBookPage } from './cctvnews'
+import type { VideoInfo, ProgramInfo, Quality } from '../../shared/types'
+
+export { isCctvNewsSnowBookPage }
 
 type CctvServiceId = 'tvcctv' | 'cctv4k'
 
@@ -49,7 +52,10 @@ export function extractTitle(html: string): string {
 }
 
 export class BrowseService {
-  constructor(private readonly fetch: Fetcher = createResilientFetch()) {}
+  constructor(
+    private readonly fetch: Fetcher = createResilientFetch(),
+    private readonly cctvNewsService: CctvNewsService = new CctvNewsService()
+  ) {}
 
   async getColumnVideoList(columnId: string, page: number, month: string): Promise<VideoInfo[]> {
     const params = new URLSearchParams({
@@ -163,6 +169,24 @@ export class BrowseService {
       return this.resolveNewsArticleVideo(pageUrl, html)
     }
     return this.resolveTvVideoPage(pageUrl, html)
+  }
+
+  /**
+   * Resolve a single URL into all the videos it contains.
+   *
+   * Most CCTV pages host exactly one playable video, so the returned array has
+   * a single element. cctvnews snow-book articles are the exception — they may
+   * embed multiple videos, each resolved to its own variant m3u8 URL.
+   *
+   * `quality` is forwarded to the cctvnews branch (which must pick one of
+   * several server-side quality tiers); the regular CCTV branch ignores it
+   * because quality selection there happens at segment-resolution time.
+   */
+  async resolveSingleVideoBatch(pageUrl: string, quality: Quality = 'auto'): Promise<VideoInfo[]> {
+    if (isCctvNewsSnowBookPage(pageUrl)) {
+      return this.cctvNewsService.resolveFromUrl(pageUrl, quality)
+    }
+    return [await this.resolveSingleVideo(pageUrl)]
   }
 
   private async resolveTvVideoPage(pageUrl: string, html: string): Promise<VideoInfo> {

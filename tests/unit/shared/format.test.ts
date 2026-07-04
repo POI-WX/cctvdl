@@ -7,14 +7,14 @@ describe('shared/format', () => {
       expect(formatFileSize(0)).toBe('')
       expect(formatFileSize(NaN)).toBe('')
     })
-    it('formats bytes and KB/MB/GB', () => {
+    it('formats bytes and KB/MB/GB via shared formatBytes', () => {
       expect(formatFileSize(512)).toBe('512 B')
       expect(formatFileSize(1024)).toBe('1.0 KB')
       expect(formatFileSize(5 * 1024 * 1024)).toBe('5.0 MB')
-      expect(formatFileSize(2 * 1024 * 1024 * 1024)).toBe('2.00 GB')
+      expect(formatFileSize(2 * 1024 * 1024 * 1024)).toBe('2.0 GB')
     })
-    it('shows one decimal for sub-100 magnitudes', () => {
-      expect(formatFileSize(150 * 1024 * 1024)).toBe('150.0 MB')
+    it('uses 0 decimals for values ≥ 100 in their unit', () => {
+      expect(formatFileSize(150 * 1024 * 1024)).toBe('150 MB')
     })
   })
 
@@ -66,21 +66,6 @@ describe('shared/format', () => {
     })
     it('returns days for recent days', () => {
       expect(relativeTime(Date.now() - 2 * 86400000)).toBe('2 天前')
-    })
-  })
-
-  describe('formatFileSize', () => {
-    it('returns empty for zero', () => {
-      expect(formatFileSize(0)).toBe('')
-    })
-    it('formats KB', () => {
-      expect(formatFileSize(2048)).toBe('2.0 KB')
-    })
-    it('formats MB', () => {
-      expect(formatFileSize(5 * 1024 * 1024)).toBe('5.0 MB')
-    })
-    it('formats GB', () => {
-      expect(formatFileSize(1.5 * 1024 * 1024 * 1024)).toBe('1.50 GB')
     })
   })
 })

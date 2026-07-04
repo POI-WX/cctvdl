@@ -13,6 +13,7 @@ const api: CctvdlApi = {
     ipcRenderer.invoke('set-program-favorite', columnId, favorite),
   getPrograms: () => ipcRenderer.invoke('get-programs'),
   resolveSingleVideo: (url: string) => ipcRenderer.invoke('resolve-single-video', url),
+  resolveVideoBatch: (url: string) => ipcRenderer.invoke('resolve-video-batch', url),
   getSingleVideos: () => ipcRenderer.invoke('get-single-videos'),
   addSingleVideo: (v: VideoInfo) => ipcRenderer.invoke('add-single-video', v),
   deleteSingleVideo: (guid: string) => ipcRenderer.invoke('delete-single-video', guid),

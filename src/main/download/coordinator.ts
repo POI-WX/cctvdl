@@ -1,8 +1,11 @@
 import { EventEmitter } from 'events'
 import fs from 'fs'
 import path from 'path'
+import PQueue from 'p-queue'
 import type { DownloadJob, JobState, JobStage, DownloadProgress, BatchResult, HistoryEntry } from '../../shared/types'
 import type { CctvApiService } from '../api/cctv'
+import { parseSegmentUrls } from '../api/cctv'
+import { uaInit } from '../api/http'
 import type { SegmentDecryptor, ProgressInfo } from './decryptor'
 import { segmentFileName } from './decryptor'
 import type { Finalizer } from './finalizer'
@@ -163,6 +166,9 @@ export class DownloadCoordinator extends EventEmitter {
   }
 
   private async executeJob(job: DownloadJob, abort: AbortController): Promise<void> {
+    if (job.m3u8Url) {
+      return this.executeM3u8UrlJob(job, abort)
+    }
     // Per-job runtime state (not shared between parallel jobs)
     let jobTotalBytes = 0
     let jobLastBytes = 0
@@ -353,6 +359,154 @@ export class DownloadCoordinator extends EventEmitter {
       this.markFailed(job, String(err))
       logger.error(`Job ${job.id} failed: ${err}`)
       if (jobSaveStateTimer) { clearTimeout(jobSaveStateTimer); jobSaveStateTimer = null }
+    }
+
+    this.activeJobs.delete(job.id)
+    this.startNext()
+  }
+
+  /**
+   * Execute a download job whose source is a pre-resolved variant m3u8 URL
+   * (currently used only by cctvnews snow-book videos). Differences from the
+   * regular executeJob pipeline:
+   *   - No CctvApiService.resolveSegmentUrls call — we already have the variant URL
+   *   - No SegmentDecryptor — segments are plain (no EXT-X-KEY)
+   *   - Direct HTTP GET per segment, streamed to disk with segmentFileName naming
+   *   - Same Finalizer.mergeCopy + history + state machine as the regular flow
+   */
+  private async executeM3u8UrlJob(job: DownloadJob, abort: AbortController): Promise<void> {
+    const workDir = path.join(path.dirname(job.savePath), `.cctvdl_${job.guid}`)
+    let jobTotalBytes = 0
+    let jobLastBytes = 0
+    let jobLastProgressTime = Date.now()
+    let jobLastEmitTime = 0
+    const segments: Array<{ index: number; status: 'pending' | 'completed' | 'failed'; progress: number; error?: string }> = []
+
+    const emitJobProgress = (forceEmit = false): void => {
+      const now = Date.now()
+      if (!forceEmit && now - jobLastEmitTime < PROGRESS_EMIT_INTERVAL_MS) return
+      jobLastEmitTime = now
+      const bytesDelta = jobTotalBytes - jobLastBytes
+      const timeDelta = (now - jobLastProgressTime) / 1000
+      let speed = 0
+      if (timeDelta > 0 && bytesDelta > 0) { speed = bytesDelta / timeDelta; jobLastProgressTime = now; jobLastBytes = jobTotalBytes }
+      const completedCount = segments.filter(s => s.status === 'completed').length
+      const totalCount = segments.length
+      const eta = estimateEta(jobTotalBytes, completedCount, completedCount, totalCount, speed)
+      const progress: DownloadProgress = {
+        jobId: job.id, percent: job.progressPercent,
+        state: job.state, stage: job.stage,
+        speed, eta, title: job.title,
+        segmentsDone: completedCount > 0 ? completedCount : undefined,
+        segmentsTotal: totalCount > 0 ? totalCount : undefined,
+        batchCompleted: this.batchStats.completed + this.batchStats.failed + this.batchStats.cancelled,
+        batchTotal: this.batchStats.total
+      }
+      this.emit('progress', progress)
+    }
+
+    try {
+      fs.mkdirSync(workDir, { recursive: true })
+
+      // Phase 1: resolve segments from the variant m3u8
+      this.transition(job, 'ResolvingM3u8')
+      this.setStage(job, 'FetchingPlaylist')
+      emitJobProgress(true)
+
+      const m3u8Resp = await fetch(job.m3u8Url!, uaInit(abort.signal))
+      if (!m3u8Resp.ok) throw new Error(`HTTP ${m3u8Resp.status} fetching cctvnews m3u8`)
+      const m3u8Text = await m3u8Resp.text()
+      const m3u8Base = job.m3u8Url!.substring(0, job.m3u8Url!.lastIndexOf('/') + 1)
+      const segmentUrls = parseSegmentUrls(m3u8Text, m3u8Base)
+      if (!segmentUrls.length) throw new Error('cctvnews m3u8 contained no segments')
+
+      if (abort.signal.aborted) { this.markCancelled(job); this.activeJobs.delete(job.id); this.startNext(); return }
+
+      for (let i = 0; i < segmentUrls.length; i++) {
+        segments.push({ index: i, status: 'pending', progress: 0 })
+      }
+      const totalSegments = segmentUrls.length
+
+      logger.debug(`[${job.guid}] cctvnews m3u8: ${totalSegments} segments, starting download`)
+
+      // Phase 2: download each segment directly (no decrypt)
+      this.transition(job, 'Downloading')
+      this.setStage(job, 'DownloadingShards')
+      emitJobProgress(true)
+
+      const queue = new PQueue({ concurrency: Math.max(1, job.threadCount) })
+
+      for (let i = 0; i < segmentUrls.length; i++) {
+        const idx = i
+        const url = segmentUrls[i]
+        const outPath = path.join(workDir, segmentFileName(idx))
+        void queue.add(async () => {
+          if (abort.signal.aborted) return
+          try {
+            const segResp = await fetch(url, uaInit(abort.signal))
+            if (!segResp.ok) throw new Error(`HTTP ${segResp.status} on segment ${idx}`)
+            const buf = Buffer.from(await segResp.arrayBuffer())
+            if (abort.signal.aborted) return
+            fs.writeFileSync(outPath, buf)
+            segments[idx].status = 'completed'
+            segments[idx].progress = 100
+            jobTotalBytes += buf.length
+            const completedCount = segments.filter(s => s.status === 'completed').length
+            job.progressPercent = Math.round((completedCount / totalSegments) * DOWNLOAD_PHASE_MAX_PCT)
+            emitJobProgress()
+          } catch (err) {
+            if (abort.signal.aborted) return
+            segments[idx].status = 'failed'
+            segments[idx].error = String(err)
+          }
+        })
+      }
+      await queue.onIdle()
+
+      if (abort.signal.aborted) { this.markCancelled(job); this.activeJobs.delete(job.id); this.startNext(); return }
+
+      const failedSeg = segments.find(s => s.status === 'failed')
+      if (failedSeg) {
+        this.markFailed(job, `segment ${failedSeg.index} failed: ${failedSeg.error}`, failedSeg.index)
+        this.activeJobs.delete(job.id)
+        this.startNext()
+        return
+      }
+
+      // Phase 3: merge via ffmpeg stream-copy concat
+      this.transition(job, 'Merging')
+      this.setStage(job, 'MergingShards')
+      job.progressPercent = MERGE_START_PCT
+      emitJobProgress(true)
+
+      const listPath = this.finalizer.writeConcatList(workDir, segmentUrls.length)
+      const outputPath = ensureMp4Extension(job.savePath)
+      logger.debug(`[${job.guid}] merging ${segmentUrls.length} cctvnews segments → ${outputPath}`)
+      const finalPath = await this.finalizer.mergeCopy(listPath, outputPath)
+      this.assertNonEmptyOutput(finalPath)
+
+      if (!this.transition(job, 'Completed')) {
+        this.activeJobs.delete(job.id)
+        this.startNext()
+        return
+      }
+      job.outputPath = finalPath
+      logger.debug(`[${job.guid}] completed → ${finalPath}`)
+      this.setStage(job, 'PublishingOutput')
+      job.progressPercent = 100
+      this.batchStats.completed++
+
+      if (job.guid && this.config) {
+        const fileSize = (() => { try { return fs.statSync(finalPath).size } catch { return 0 } })()
+        this.config.addToDownloadHistory({ guid: job.guid, title: job.title, outputPath: finalPath, fileSize, completedAt: Date.now() })
+      }
+
+      this.emit('jobFinished', job)
+      emitJobProgress(true)
+      this.cleanWorkDir(workDir)
+    } catch (err) {
+      this.markFailed(job, String(err))
+      logger.error(`cctvnews job ${job.id} failed: ${err}`)
     }
 
     this.activeJobs.delete(job.id)

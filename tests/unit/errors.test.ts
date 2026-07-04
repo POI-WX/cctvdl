@@ -18,6 +18,14 @@ describe('humanizeError（向后兼容）', () => {
     expect(humanizeError('no segment urls')).toContain('未找到可下载的视频流')
   })
 
+  it('maps browse-service parse failures to a friendly message', () => {
+    expect(humanizeError('无法解析节目信息')).toContain('无法解析该链接')
+    expect(humanizeError('无法解析视频信息')).toContain('无法解析该链接')
+    // Must not be misread as a network or HTTP error
+    expect(humanizeError('无法解析节目信息')).not.toContain('网络')
+    expect(humanizeError('无法解析视频信息')).not.toContain('服务器')
+  })
+
   it('maps HTTP 4xx to access error', () => {
     expect(humanizeError('HTTP 404 fetching page')).toContain('不可访问')
   })

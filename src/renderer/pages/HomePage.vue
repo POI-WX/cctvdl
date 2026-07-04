@@ -651,11 +651,31 @@ async function doImport(url: string) {
     try {
       info = await window.cctvdlApi.browseProgram(url)
     } catch (columnErr) {
-      // Not a column page (e.g. a standalone movie with no column) — fall back to
-      // resolving it as a single video and add it to the persisted collection.
+      // Not a column page (e.g. a standalone movie, a news article, or a cctvnews
+      // snow-book URL) — fall back to resolving it as single video(s). cctvnews
+      // articles may return multiple videos; regular pages return one.
       try {
-        const video = await window.cctvdlApi.resolveSingleVideo(url)
-        await addAndShowSingleVideo(video)
+        const videos = await window.cctvdlApi.resolveVideoBatch(url)
+        if (videos.length === 0) throw columnErr
+        if (videos.length === 1) {
+          await addAndShowSingleVideo(videos[0])
+        } else {
+          let added = 0
+          for (const v of videos) {
+            if (await window.cctvdlApi.addSingleVideo(v)) added++
+          }
+          singleVideos.value = await window.cctvdlApi.getSingleVideos()
+          videos.value = singleVideos.value.map(v => ({ ...v, selected: false }))
+          viewMode.value = 'single'
+          selectedProgram.value = null
+          selectedVideo.value = videos[0]
+          coverError.value = false
+          coverLoading.value = true
+          importUrl.value = ''
+          importSuccess.value = true
+          setTimeout(() => { importSuccess.value = false }, 800)
+          ElMessage.success(added > 0 ? `已导入 ${added} 个视频` : `已在单个视频列表：${videos.length} 个视频`)
+        }
         return
       } catch {
         throw columnErr
@@ -861,13 +881,15 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
   try {
     const settings = await window.cctvdlApi.getSettings()
     const jobs: DownloadJob[] = validVideos.map(v => {
-      return {
+      const job: DownloadJob = {
         id: crypto.randomUUID(), guid: v.guid, sourceUrl: v.guid, title: v.title,
         savePath: buildOutputPath(settings.savePath, v.title),
         quality: settings.quality, threadCount: settings.threadCount,
         reencode: settings.reencode ?? false,
         state: 'Created' as const, stage: 'None' as const, progressPercent: 0
       }
+      if (v.m3u8Url) job.m3u8Url = v.m3u8Url
+      return job
     })
     await window.cctvdlApi.startDownload(jobs, autoOpen)
     ElMessage.success(`已添加 ${jobs.length} 个下载任务`)
