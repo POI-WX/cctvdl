@@ -405,26 +405,6 @@ test.describe('cctvdl GUI 测试', () => {
     await expect(page.locator('.video-list')).toBeVisible()
   })
 
-  // ── U2 · 预览面板可折叠 ─────────────────────────────────────
-  test('U2: 预览面板折叠/展开按钮存在并可切换', async () => {
-    await navTab(page, '首页').click()
-    await page.waitForTimeout(300)
-
-    const toggleBtn = page.locator('.preview-toggle')
-    await expect(toggleBtn).toBeVisible()
-
-    // 点击折叠
-    await toggleBtn.click()
-    await page.waitForTimeout(200)
-    const panel = page.locator('.home-preview')
-    await expect(panel).toHaveClass(/collapsed/)
-
-    // 再次展开
-    await toggleBtn.click()
-    await page.waitForTimeout(200)
-    await expect(panel).not.toHaveClass(/collapsed/)
-  })
-
   // ── U1 · 视频行缩略图 ──────────────────────────────────────
   test('U1: 单个视频集合视频行有缩略图 img 元素', async () => {
     await navTab(page, '首页').click()

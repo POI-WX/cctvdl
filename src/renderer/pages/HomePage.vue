@@ -290,11 +290,7 @@
     </div>
 
     <!-- right preview panel -->
-    <div class="home-preview" :class="{ collapsed: previewCollapsed }">
-      <button class="preview-toggle" :title="previewCollapsed ? '展开预览' : '折叠预览'" @click="previewCollapsed = !previewCollapsed">
-        {{ previewCollapsed ? '›' : '‹' }}
-      </button>
-      <Transition name="preview-fade" mode="out-in">
+    <div class="home-preview">
         <div v-if="selectedVideo" :key="selectedVideo.guid" class="preview-inner">
           <!-- cover image -->
           <div class="preview-cover-wrap">
@@ -404,7 +400,6 @@
             <p class="preview-guide-tip">💡 也可以将链接直接拖入窗口快速导入</p>
           </div>
         </div>
-      </Transition>
     </div>
     <!-- lightbox -->
     <Transition name="lightbox-fade">
@@ -467,7 +462,6 @@ const coverError = ref(false)
 const coverLoading = ref(false)
 const coverDownloading = ref(false)
 const lightboxOpen = ref(false)
-const previewCollapsed = ref(false)
 
 // ─── 虚拟滚动（> 100 条时启用）─────────────────────────────────────────────
 const VITEM_H = 46  // approximate row height (px) — checkbox + thumb + text
@@ -1339,36 +1333,7 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
   background: var(--el-bg-color);
   position: relative;
   min-width: 0;
-  transition: flex .2s ease, min-width .2s ease;
 }
-
-.home-preview.collapsed {
-  flex: 0 0 28px;
-  overflow: hidden;
-}
-
-.preview-toggle {
-  position: absolute;
-  top: 8px;
-  left: 4px;
-  z-index: 2;
-  width: 20px;
-  height: 20px;
-  border: none;
-  background: transparent;
-  color: var(--el-text-color-secondary);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: .5;
-  transition: opacity .15s;
-}
-
-.preview-toggle:hover { opacity: 1; background: var(--el-fill-color); }
 
 .preview-inner {
   display: flex;
@@ -1878,12 +1843,6 @@ html.dark :deep(.hl) {
   background: rgba(234, 179, 8, .25);
   color: #fbbf24;
 }
-
-/* 预览过渡动画 */
-.preview-fade-enter-active,
-.preview-fade-leave-active { transition: opacity .2s ease; }
-.preview-fade-enter-from,
-.preview-fade-leave-to { opacity: 0; }
 
 /* 栏目列表入场 + 收藏重排时的平滑移动动画 */
 .prog-list-enter-active { transition: opacity .15s ease, transform .15s ease; }
