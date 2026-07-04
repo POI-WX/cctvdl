@@ -138,7 +138,7 @@ export class BrowseService {
     // 2. Extract column name (priority: commentTitle → <title> tag)
     const name = extractTitle(html)
 
-    // 3. Extract itemid (optional, used for album fallback)
+    // 3. Extract itemid (optional current-page id, preserved for compatibility)
     const itemId = extractItemId(html)
 
     if (!name || !columnId) throw new Error('无法解析节目信息')
@@ -174,9 +174,8 @@ export class BrowseService {
 
     const serviceId = detectTvServiceId(pageUrl, html)
 
-    // Fetch the real cover and brief from getHttpVideoInfo (best-effort, non-blocking).
-    // This gives the actual episode thumbnail (fmspic) instead of the generic og:image
-    // placeholder that many CCTV pages use.
+    // Prefer videoinfoByGuid for the canonical title, cover, brief, and full
+    // timestamp. getHttpVideoInfo is a best-effort secondary metadata source.
     let apiCoverUrl = ''
     let apiBrief = ''
     let apiTitle = ''
@@ -319,7 +318,7 @@ function isClipVideoInfo(info: Record<string, unknown>): boolean {
   const title = String(info['title'] || '')
   const len = String(info['len'] || '')
   return /^\[[^\]]+\].*(导视|片段|预告|精彩)/.test(title)
-    || /^(00:00|00:01):/.test(len) && /^\[[^\]]+\]/.test(title)
+    || (/^(00:00|00:01):/.test(len) && /^\[[^\]]+\]/.test(title))
 }
 
 function cleanProgramName(name: string): string {

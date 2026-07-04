@@ -1,4 +1,4 @@
-// Pure, framework-free helpers for the imported-program ("我的栏目") list.
+// Pure, framework-free helpers for the imported content list.
 
 export interface SortableProgram {
   columnId: string

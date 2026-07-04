@@ -1,7 +1,10 @@
 export interface ProgramInfo {
   name: string
+  // Primary list id: TOPC... for regular columns, album_id for episode-style programs.
   columnId: string
+  // Source page/item id when CCTV exposes one; legacy configs may leave it empty.
   itemId: string
+  // Missing kind means a legacy regular column.
   kind?: 'column' | 'album'
   serviceId?: 'tvcctv' | 'cctv4k'
   // Epoch ms when favorited (pinned to top); undefined = not favorited.
