@@ -128,7 +128,7 @@
               class="icon-btn"
               title="全选 / 取消全选"
               :disabled="!filteredVideos.length"
-              @click="toggleSelectAll"
+              @click="contentStore.toggleSelectAllFiltered(!allSelected)"
             >{{ allSelected ? '☑' : '☐' }}</button>
             <button
               v-if="viewMode === 'column'"
@@ -167,7 +167,7 @@
                   :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
                   @click="onVideoClick(v)"
                 >
-                  <el-checkbox v-model="v.selected" @click.stop size="small" />
+                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v)" @click.stop size="small" />
                   <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
                        @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
@@ -187,7 +187,7 @@
                   :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
                   @click="onVideoClick(v)"
                 >
-                  <el-checkbox v-model="v.selected" @click.stop size="small" />
+                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v)" @click.stop size="small" />
                   <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
                        @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
@@ -210,7 +210,7 @@
                   :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
                   @click="onVideoClick(v)"
                 >
-                  <el-checkbox v-model="v.selected" @click.stop size="small" />
+                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v)" @click.stop size="small" />
                   <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
                        @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
@@ -229,7 +229,7 @@
                   :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
                   @click="onVideoClick(v)"
                 >
-                  <el-checkbox v-model="v.selected" @click.stop size="small" />
+                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v)" @click.stop size="small" />
                   <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
                        @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
@@ -251,7 +251,7 @@
                   :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
                   @click="onVideoClick(v)"
                 >
-                  <el-checkbox v-model="v.selected" @click.stop size="small" />
+                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v)" @click.stop size="small" />
                   <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
                        @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
@@ -268,7 +268,7 @@
           <span class="video-count" v-if="videos.length">
             {{ filteredVideos.length }} 个{{ debouncedSearch ? '（过滤）' : '' }}
             <span v-if="downloadedCount" class="video-downloaded-count"> · ✓{{ downloadedCount }}</span>
-            <span v-if="selectedVideos.length" class="video-selected-count"> · 已选 {{ selectedVideos.length }}</span>
+            <span v-if="selectedCount" class="video-selected-count"> · 已选 {{ selectedCount }}<template v-if="currentMonthSelectedCount && currentMonthSelectedCount !== selectedCount">（本月 {{ currentMonthSelectedCount }}）</template></span>
           </span>
           <button
             v-if="viewMode === 'column' && filteredVideos.length"
@@ -278,12 +278,12 @@
           <button
             v-if="viewMode === 'column'"
             class="footer-btn"
-            :class="selectedVideos.length ? 'footer-btn-primary' : 'footer-btn-idle'"
-            :disabled="!selectedVideos.length"
+            :class="selectedCount ? 'footer-btn-primary' : 'footer-btn-idle'"
+            :disabled="!selectedCount"
             @click="downloadSelected"
           >
             {{ allSelectedDownloaded ? '重新下载' : '下载选中' }}
-            <span v-if="selectedVideos.length" class="footer-btn-count">{{ selectedVideos.length }}</span>
+            <span v-if="selectedCount" class="footer-btn-count">{{ selectedCount }}</span>
           </button>
         </div>
       </div>
@@ -356,15 +356,15 @@
                 class="preview-download-btn"
                 :class="{
                   downloaded: downloadedSet.has(selectedVideo.guid),
-                  dimmed: selectedVideos.length > 0 && !downloadedSet.has(selectedVideo.guid)
+                  dimmed: currentMonthSelectedCount > 0 && !downloadedSet.has(selectedVideo.guid)
                 }"
                 @click="downloadVideos([selectedVideo], viewMode === 'single')"
               >
                 <span>⬇</span>
                 {{ downloadedSet.has(selectedVideo.guid) ? '重新下载' : (viewMode === 'single' ? '下载此视频' : '下载此集') }}
               </button>
-              <span v-if="selectedVideos.length > 0" class="preview-download-hint">
-                已选 {{ selectedVideos.length }} 个，可在下方批量下载
+              <span v-if="currentMonthSelectedCount > 0" class="preview-download-hint">
+                已选 {{ selectedCount }}<template v-if="currentMonthSelectedCount !== selectedCount">（本月 {{ currentMonthSelectedCount }}）</template> 个，可在下方批量下载
               </span>
             </div>
           </div>
@@ -433,12 +433,20 @@ const {
   selectedMonth, downloadedSet, newContentMap, emptyMonths,
   programQuery, searchQuery, debouncedSearch,
   filteredPrograms, displayRows,
-  filteredVideos, allSelected, selectedVideos, downloadedCount, allSelectedDownloaded,
-  emptyHint, groupedVideos
+  filteredVideos, allSelected, downloadedCount, allSelectedDownloaded,
+  emptyHint, groupedVideos, allSelectedVideos, selectedCount
 } = storeToRefs(contentStore)
 
 const isFav = contentStore.isFav
+const isVideoSelected = contentStore.isVideoSelected
+const toggleVideoSelection = contentStore.toggleVideoSelection
 const selectedIsAlbum = computed(() => (selectedProgram.value?.kind ?? 'column') === 'album')
+// How many videos in the *currently visible* list are selected. Shown in the
+// footer next to the cross-month `selectedCount` so users can see both scopes
+// (e.g. "本月 3 / 累计 7").
+const currentMonthSelectedCount = computed(() =>
+  videos.value.filter(v => contentStore.isVideoSelected(v)).length
+)
 
 const isMac = window.cctvdlApi.isMac
 
@@ -557,7 +565,7 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && lightboxOpen.value) { e.preventDefault(); closeLightbox(); return }
   if (isEditingTarget()) return
   if (e.key === 'F5') { e.preventDefault(); if (selectedProgram.value) loadVideos(); return }
-  if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); if (videos.value.length > 0) toggleSelectAll(); return }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); if (filteredVideos.value.length > 0) contentStore.toggleSelectAllFiltered(!allSelected.value); return }
   if (isProgramDeleteKey(e.key, isMac) && selectedProgram.value) { e.preventDefault(); deleteProgram(selectedProgram.value) }
 }
 
@@ -565,8 +573,13 @@ onMounted(async () => {
   programs.value = await window.cctvdlApi.getPrograms()
   singleVideos.value = await window.cctvdlApi.getSingleVideos()
   contentStore.refreshDownloadedSet()
-  const now = new Date()
-  selectedMonth.value = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
+  // Only seed the month on the very first mount. Subsequent mounts (from
+  // v-if tab switching) must preserve whatever month the user last picked
+  // — wiping it here was the "切到下载页再切回，月份变 7 月" bug.
+  if (!selectedMonth.value) {
+    const now = new Date()
+    selectedMonth.value = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
+  }
   window.addEventListener('keydown', onKeydown)
 
   // Rotate import placeholder
@@ -624,8 +637,7 @@ async function importSingleVideos() {
     const count = await window.cctvdlApi.importSingleVideos()
     if (count < 0) return // cancelled
     singleVideos.value = await window.cctvdlApi.getSingleVideos()
-    videos.value = singleVideos.value.map(v => ({ ...v, selected: false }))
-    resetVideoListScroll()
+    selectSingleMode()
     ElMessage.success(`已导入 ${count} 个单视频`)
   } catch (err) { ElMessage.error(`导入失败：${humanizeError(String(err))}`) }
 }
@@ -659,9 +671,10 @@ async function doImport(url: string) {
             if (await window.cctvdlApi.addSingleVideo(v)) added++
           }
           singleVideos.value = await window.cctvdlApi.getSingleVideos()
-          videos.value = singleVideos.value.map(v => ({ ...v, selected: false }))
+          videos.value = singleVideos.value
           viewMode.value = 'single'
           selectedProgram.value = null
+          contentStore.clearAllSelection()
           selectedVideo.value = videos[0]
           coverError.value = false
           coverLoading.value = true
@@ -698,7 +711,15 @@ async function doImport(url: string) {
 
 defineExpose({ handleDropImport })
 
-function onProgramClick(row: ProgramInfo) { viewMode.value = 'column'; selectedProgram.value = row; contentStore.clearEmptyMonths(); contentStore.clearNewContent(row.columnId); loadVideos() }
+function onProgramClick(row: ProgramInfo) {
+  viewMode.value = 'column'
+  selectedProgram.value = row
+  contentStore.clearEmptyMonths()
+  contentStore.clearNewContent(row.columnId)
+  contentStore.clearAllSelection()
+  selectedVideo.value = null
+  loadVideos()
+}
 
 // ─── Single-video collection ────────────────────────────────────────────────
 function selectSingleMode() {
@@ -707,8 +728,9 @@ function selectSingleMode() {
   selectedVideo.value = null
   searchQuery.value = ''
   debouncedSearch.value = ''
+  contentStore.clearAllSelection()
   contentStore.refreshDownloadedSet()
-  videos.value = singleVideos.value.map(v => ({ ...v, selected: false }))
+  videos.value = singleVideos.value
   resetVideoListScroll()
 }
 
@@ -783,23 +805,23 @@ async function loadVideos() {
   try {
     const program = { ...selectedProgram.value }
     const list = await window.cctvdlApi.listVideos(program, selectedIsAlbum.value ? '' : selectedMonth.value)
-    videos.value = list.map(v => ({ ...v, selected: false }))
-    searchQuery.value = ''
-    debouncedSearch.value = ''
-    selectedVideo.value = null
-    resetVideoListScroll()
+    videos.value = list
+    // Only drop the preview if its video is no longer in the freshly loaded
+    // list (e.g. deleted from the server). Otherwise preserve so users can
+    // browse months without losing their preview context.
+    if (selectedVideo.value && !list.some(v => v.guid === selectedVideo.value?.guid)) {
+      selectedVideo.value = null
+    }
     if (!selectedIsAlbum.value) contentStore.recordVideosLoaded(selectedMonth.value, list)
   } catch (err) { ElMessage.error(`加载失败：${humanizeError(String(err))}`) }
   finally { loadingVideos.value = false }
 }
 
-function onVideoClick(row: VideoInfo & { selected?: boolean }) {
+function onVideoClick(row: VideoInfo) {
   selectedVideo.value = row
   coverError.value = false
   coverLoading.value = true
 }
-
-function toggleSelectAll() { const s = !allSelected.value; filteredVideos.value.forEach(v => v.selected = s) }
 
 function jumpMonth(offset: number) {
   let target: Date
@@ -859,13 +881,13 @@ async function downloadCoverImage() {
 }
 
 // Selected items: auto-open only for single videos (column partial selections don't).
-async function downloadSelected() { await downloadVideos(selectedVideos.value, viewMode.value === 'single') }
+async function downloadSelected() { await downloadVideos(allSelectedVideos.value, viewMode.value === 'single') }
 
-// 下载本月（仅栏目）：先勾选当前列表的全部期数（复选框打勾），再整批下载；
+// 下载本月（仅栏目）：先把当前列表的全部期数加入跨月选择，再整批下载；
 // 这是「全量下载」意图，会触发自动打开文件夹。
 async function downloadAll() {
-  filteredVideos.value.forEach(v => { v.selected = true })
-  await downloadVideos(filteredVideos.value, true)
+  contentStore.toggleSelectAllFiltered(true)
+  await downloadVideos(allSelectedVideos.value, true)
 }
 
 async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {

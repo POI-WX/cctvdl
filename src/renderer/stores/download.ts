@@ -69,12 +69,19 @@ export const useDownloadStore = defineStore('download', () => {
   }
 
   function applyBatchStarted(info: BatchStartInfo) {
-    jobs.value = info.jobs.map(j => ({
-      id: j.id, title: j.title, guid: j.guid,
-      state: 'Queued' as const, stage: 'None' as const,
-      percent: 0, segmentsDone: 0, segmentsTotal: 0,
-      speed: 0, eta: 0, errorMessage: ''
-    }))
+    // Append new jobs, dedup by id. With the coordinator's appendJobs semantics
+    // the same id can only appear if the user retried a job that was already
+    // on the queue (rare); in that case the later record wins.
+    const existing = new Map(jobs.value.map(j => [j.id, j]))
+    for (const j of info.jobs) {
+      existing.set(j.id, {
+        id: j.id, title: j.title, guid: j.guid,
+        state: 'Queued' as const, stage: 'None' as const,
+        percent: 0, segmentsDone: 0, segmentsTotal: 0,
+        speed: 0, eta: 0, errorMessage: ''
+      })
+    }
+    jobs.value = Array.from(existing.values())
     running.value = true
   }
 

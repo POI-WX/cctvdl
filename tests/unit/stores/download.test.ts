@@ -29,6 +29,28 @@ describe('useDownloadStore', () => {
       expect(store.jobs[0].state).toBe('Queued')
       expect(store.running).toBe(true)
     })
+
+    it('second launch appends to existing jobs (cross-month / cross-column accumulation)', () => {
+      const store = useDownloadStore()
+      store.applyBatchStarted({ total: 2, jobs: [
+        { id: 'j1', title: 'A', guid: 'G1' },
+        { id: 'j2', title: 'B', guid: 'G2' },
+      ]})
+      store.applyBatchStarted({ total: 1, jobs: [
+        { id: 'j3', title: 'C', guid: 'G3' },
+      ]})
+      expect(store.jobs).toHaveLength(3)
+      expect(store.jobs.map(j => j.id)).toEqual(['j1', 'j2', 'j3'])
+    })
+
+    it('duplicate id is overwritten (e.g. retry of a queued job) rather than duplicated', () => {
+      const store = useDownloadStore()
+      store.applyBatchStarted({ total: 1, jobs: [{ id: 'j1', title: 'Old', guid: 'G1' }] })
+      store.applyBatchStarted({ total: 1, jobs: [{ id: 'j1', title: 'New', guid: 'G1' }] })
+      expect(store.jobs).toHaveLength(1)
+      expect(store.jobs[0].title).toBe('New')
+      expect(store.jobs[0].state).toBe('Queued')
+    })
   })
 
   describe('applyProgress', () => {

@@ -74,7 +74,7 @@ describe('Resume 功能测试（真实 fs）', () => {
 
     await new Promise<void>((resolve, reject) => {
       coordinator.on('batchFinished', resolve)
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       setTimeout(() => reject(new Error('Timeout')), 5000)
     })
 
@@ -104,7 +104,7 @@ describe('Resume 功能测试（真实 fs）', () => {
 
     await new Promise<void>((resolve, reject) => {
       coordinator.on('batchFinished', resolve)
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       setTimeout(() => reject(new Error('Timeout')), 5000)
     })
 
@@ -140,7 +140,7 @@ describe('Resume 功能测试（真实 fs）', () => {
 
     await new Promise<void>((resolve, reject) => {
       coordinator.on('batchFinished', resolve)
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       setTimeout(() => reject(new Error('Timeout')), 5000)
     })
 
@@ -165,7 +165,7 @@ describe('Resume 功能测试（真实 fs）', () => {
 
     await new Promise<void>((resolve, reject) => {
       coordinator.on('batchFinished', resolve)
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       setTimeout(() => reject(new Error('Timeout')), 5000)
     })
 
@@ -190,7 +190,7 @@ describe('Resume 功能测试（真实 fs）', () => {
     )
 
     const coordinator = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer)
-    coordinator.startBatch([job])
+    coordinator.appendJobs([job])
     // let it reach the Downloading phase
     await new Promise((r) => setTimeout(r, 50))
 
@@ -214,7 +214,7 @@ describe('Resume 功能测试（真实 fs）', () => {
     await new Promise<void>((resolve, reject) => {
       coordinator.on('jobFinished', (j) => { finishedJob = j })
       coordinator.on('batchFinished', resolve)
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       setTimeout(() => reject(new Error('Timeout')), 5000)
     })
 
@@ -249,7 +249,7 @@ describe('Resume 功能测试（真实 fs）', () => {
 
     await new Promise<void>((resolve, reject) => {
       coordinator.on('batchFinished', resolve)
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       setTimeout(() => reject(new Error('Timeout')), 5000)
     })
 

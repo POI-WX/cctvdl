@@ -6,9 +6,15 @@ import { filterVideos } from '../../shared/video-filter'
 import { recordMonthResult } from '../../shared/month-tracker'
 
 export const useContentStore = defineStore('content', () => {
+  // ─── Persisted / long-lived refs ───────────────────────────────────────
   const programs = ref<ProgramInfo[]>([])
   const singleVideos = ref<VideoInfo[]>([])
-  const videos = ref<(VideoInfo & { selected?: boolean })[]>([])
+  // Currently displayed video list (driven by selectedProgram + selectedMonth,
+  // or by singleVideos when viewMode === 'single'). Plain VideoInfo — no
+  // per-item selection flag. Selection lives in selectedVideoMap below so it
+  // survives month switches (the old "videos.value = list.map(v => ({...v,
+  // selected: false}))" pattern wiped cross-month selection on every switch).
+  const videos = ref<VideoInfo[]>([])
   const viewMode = ref<'column' | 'single'>('column')
   const selectedProgram = ref<ProgramInfo | null>(null)
   const selectedVideo = ref<VideoInfo | null>(null)
@@ -16,10 +22,17 @@ export const useContentStore = defineStore('content', () => {
   const downloadedSet = ref<Set<string>>(new Set())
   const newContentMap = ref<Map<string, number>>(new Map())
   const emptyMonths = ref<Set<string>>(new Set())
+  // Cross-month selection (scoped to the current column). Keyed by guid so
+  // the same video can be selected in June and still be remembered when the
+  // user switches to July and back. Cleared on column switch — cross-column
+  // selection is deliberately not supported (different programs, different
+  // user intent).
+  const selectedVideoMap = ref<Map<string, VideoInfo>>(new Map())
   const programQuery = ref('')
   const searchQuery = ref('')
   const debouncedSearch = ref('')
 
+  // ─── Derived state ─────────────────────────────────────────────────────
   const isFav = (p: ProgramInfo) => p.favoritedAt != null
   const sortedPrograms = computed(() => sortPrograms(programs.value))
   const filteredPrograms = computed(() => {
@@ -35,7 +48,6 @@ export const useContentStore = defineStore('content', () => {
   const displayRows = computed<ProgramRow[]>(() => {
     const list = filteredPrograms.value
     if (programQuery.value.trim()) return list.map(p => ({ type: 'item' as const, program: p, key: p.columnId }))
-    // Single pass: partition into favs and others simultaneously
     const favs: ProgramInfo[] = []
     const others: ProgramInfo[] = []
     for (const p of list) { if (isFav(p)) favs.push(p); else others.push(p) }
@@ -48,8 +60,23 @@ export const useContentStore = defineStore('content', () => {
   })
 
   const filteredVideos = computed(() => filterVideos(videos.value, debouncedSearch.value))
-  const allSelected = computed(() => filteredVideos.value.length > 0 && filteredVideos.value.every(v => v.selected))
-  const selectedVideos = computed(() => videos.value.filter(v => v.selected))
+  // Per-video predicate (used by template checkboxes). Reads from the map so
+  // a video checked in June still renders as checked after the user visits
+  // July and returns to June.
+  const isVideoSelected = (v: VideoInfo) => selectedVideoMap.value.has(v.guid)
+  // Current-month selection (subset of allSelectedVideos that's visible in
+  // the current video list). Drives the "全选" checkbox.
+  const selectedVideos = computed(() =>
+    videos.value.filter(v => selectedVideoMap.value.has(v.guid))
+  )
+  // Cross-month accumulation. Drives "下载选中" — this is what actually gets
+  // sent to the download pipeline.
+  const allSelectedVideos = computed(() => Array.from(selectedVideoMap.value.values()))
+  const selectedCount = computed(() => selectedVideoMap.value.size)
+  const allSelected = computed(() =>
+    filteredVideos.value.length > 0
+    && filteredVideos.value.every(v => selectedVideoMap.value.has(v.guid))
+  )
   const downloadedCount = computed(() => videos.value.filter(v => downloadedSet.value.has(v.guid)).length)
   const allSelectedDownloaded = computed(() =>
     selectedVideos.value.length > 0 && selectedVideos.value.every(v => downloadedSet.value.has(v.guid))
@@ -70,6 +97,7 @@ export const useContentStore = defineStore('content', () => {
     return groups
   })
 
+  // ─── Actions ───────────────────────────────────────────────────────────
   async function refreshDownloadedSet() {
     try {
       const history = await window.cctvdlApi.getDownloadHistory()
@@ -98,13 +126,46 @@ export const useContentStore = defineStore('content', () => {
     newContentMap.value = next
   }
 
+  // Toggle one video's membership in the cross-month selection map.
+  // Idempotent and safe to call from any view mode (single mode is no-op in
+  // practice because singleVideos don't typically go through this flow, but
+  // the function handles it correctly if called).
+  function toggleVideoSelection(v: VideoInfo) {
+    const next = new Map(selectedVideoMap.value)
+    if (next.has(v.guid)) next.delete(v.guid)
+    else next.set(v.guid, v)
+    selectedVideoMap.value = next
+  }
+
+  // Select / deselect every video in the current filtered list. Used by the
+  // header checkbox. Operates on filteredVideos so search results can be
+  // bulk-selected without touching hidden rows.
+  function toggleSelectAllFiltered(select: boolean) {
+    const next = new Map(selectedVideoMap.value)
+    for (const v of filteredVideos.value) {
+      if (select) next.set(v.guid, v)
+      else next.delete(v.guid)
+    }
+    selectedVideoMap.value = next
+  }
+
+  // Drop every entry from the selection map. Called on column switch (where
+  // cross-column selection would be semantically meaningless) and can also
+  // be exposed as a "清空选择" action in the UI.
+  function clearAllSelection() {
+    if (selectedVideoMap.value.size === 0) return
+    selectedVideoMap.value = new Map()
+  }
+
   return {
     programs, singleVideos, videos, viewMode, selectedProgram, selectedVideo,
-    selectedMonth, downloadedSet, newContentMap, emptyMonths,
+    selectedMonth, downloadedSet, newContentMap, emptyMonths, selectedVideoMap,
     programQuery, searchQuery, debouncedSearch,
     isFav, filteredPrograms, displayRows,
-    filteredVideos, allSelected, selectedVideos, downloadedCount, allSelectedDownloaded,
+    filteredVideos, isVideoSelected, selectedVideos, allSelectedVideos, selectedCount,
+    allSelected, downloadedCount, allSelectedDownloaded,
     emptyHint, groupedVideos,
-    refreshDownloadedSet, recordVideosLoaded, clearEmptyMonths, applyNewContent, clearNewContent
+    refreshDownloadedSet, recordVideosLoaded, clearEmptyMonths, applyNewContent, clearNewContent,
+    toggleVideoSelection, toggleSelectAllFiltered, clearAllSelection
   }
 })

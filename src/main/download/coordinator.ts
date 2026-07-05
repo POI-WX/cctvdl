@@ -78,18 +78,51 @@ export class DownloadCoordinator extends EventEmitter {
     this.batchStats.total++
   }
 
-  startBatch(jobs: DownloadJob[]): void {
-    this.queue = []  // clear any stale entries from the previous batch
-    this.batchStats = { completed: 0, failed: 0, cancelled: 0, total: 0 }
-    this.failedJobs = []
-    this.isCancellingAll = false
+  /**
+   * Append jobs to the current batch. The queue is **never** wiped on entry —
+   * new jobs land after whatever is already running or queued, so cross-month
+   * and cross-column downloads accumulate in one continuous batch.
+   *
+   * `batchStats` / `failedJobs` are reset only when the coordinator is idle
+   * (no active downloads, no queued work), which marks the start of a fresh
+   * batch. Subsequent appends while work is in flight keep the running tally
+   * so the final `batchFinished` event reports accurate totals across every
+   * append that contributed to the batch.
+   *
+   * Persistence: only Queued jobs are saved as pending — running / finished
+   * jobs live in their own per-guid `state.json` work dirs.
+   */
+  appendJobs(jobs: DownloadJob[]): void {
+    const hasActive = this.activeJobs.size > 0
+      || this.queue.some(j =>
+        j.state === 'Queued' || j.state === 'ResolvingM3u8'
+        || j.state === 'Downloading' || j.state === 'Merging'
+      )
+    if (!hasActive) {
+      this.batchStats = { completed: 0, failed: 0, cancelled: 0, total: 0 }
+      this.failedJobs = []
+    }
     for (const job of jobs) this.addJob(job)
-    this.config?.savePendingJobs(jobs)
+    this.isCancellingAll = false
+    this.config?.savePendingJobs(this.queue.filter(j => j.state === 'Queued'))
     this.startNext()
   }
 
-  // Resume a previously persisted batch (e.g. after app restart). Unlike startBatch,
-  // does not reset stats so partial progress is preserved.
+  /**
+   * Drop every queued / running / finished job and zero the stats. Called
+   * by `cancelAll` to end the current batch cleanly; `appendJobs` called
+   * afterwards will start a fresh batch.
+   */
+  resetQueue(): void {
+    this.queue = []
+    this.batchStats = { completed: 0, failed: 0, cancelled: 0, total: 0 }
+    this.failedJobs = []
+    this.config?.clearPendingJobs()
+  }
+
+  // Resume a previously persisted batch (e.g. after app restart). The queue
+  // is assumed empty on entry (coordinator just booted); if stats must carry
+  // over across runs, the caller is responsible for seeding them.
   resumePending(jobs: DownloadJob[]): void {
     if (!jobs.length) return
     this.queue = []
@@ -128,7 +161,7 @@ export class DownloadCoordinator extends EventEmitter {
       this.markCancelled(job)
     }
     this.activeJobs.clear()
-    this.queue = []
+    this.resetQueue()
     this.emitBatchFinished()
   }
 

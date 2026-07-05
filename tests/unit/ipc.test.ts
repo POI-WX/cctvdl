@@ -47,7 +47,7 @@ describe('IPC Handlers', () => {
     } as unknown as BrowserWindow
 
     mockCoordinator = {
-      startBatch: vi.fn(),
+      appendJobs: vi.fn(),
       cancel: vi.fn(),
       cancelAll: vi.fn(),
       setConcurrentVideos: vi.fn(),
@@ -248,18 +248,18 @@ describe('IPC Handlers', () => {
   })
 
   describe('start-download', () => {
-    it('calls coordinator.startBatch for new jobs', async () => {
+    it('calls coordinator.appendJobs for new jobs', async () => {
       const jobs = [{ id: 'j1', guid: 'g1', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
       await handlers['start-download']({}, jobs)
-      expect(mockCoordinator.startBatch).toHaveBeenCalledWith(jobs)
+      expect(mockCoordinator.appendJobs).toHaveBeenCalledWith(jobs)
     })
 
     it('skips already-downloaded jobs', async () => {
       const jobs = [{ id: 'j1', guid: 'g1', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
       await handlers['start-download']({}, jobs)
-      expect(mockCoordinator.startBatch).not.toHaveBeenCalled()
+      expect(mockCoordinator.appendJobs).not.toHaveBeenCalled()
       expect(mockWindow.webContents.send).toHaveBeenCalledWith('download-skipped', expect.any(Object))
     })
 
@@ -277,7 +277,7 @@ describe('IPC Handlers', () => {
       // Even though it's in history, retry should still run it.
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
       await handlers['retry-job']({}, job)
-      expect(mockCoordinator.startBatch).toHaveBeenCalledWith([job])
+      expect(mockCoordinator.appendJobs).toHaveBeenCalledWith([job])
       expect(mockConfig.isInDownloadHistory).not.toHaveBeenCalled()
     })
   })
@@ -290,7 +290,7 @@ describe('IPC Handlers', () => {
       ]
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
       await handlers['retry-jobs']({}, jobs)
-      expect(mockCoordinator.startBatch).toHaveBeenCalledWith(jobs)
+      expect(mockCoordinator.appendJobs).toHaveBeenCalledWith(jobs)
       expect(mockConfig.isInDownloadHistory).not.toHaveBeenCalled()
     })
   })

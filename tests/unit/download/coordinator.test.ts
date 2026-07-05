@@ -88,7 +88,7 @@ describe('DownloadCoordinator', () => {
       }
 
       coordinator.addJob(job)
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
 
       // Wait for async operations
       await new Promise((resolve) => setTimeout(resolve, 100))
@@ -130,7 +130,7 @@ describe('DownloadCoordinator', () => {
       const finishedHandler = vi.fn()
       coordinator.on('jobFinished', finishedHandler)
 
-      coordinator.startBatch([job1, job2])
+      coordinator.appendJobs([job1, job2])
 
       // Wait for async operations
       await new Promise((resolve) => setTimeout(resolve, 200))
@@ -158,7 +158,7 @@ describe('DownloadCoordinator', () => {
         progressPercent: 0
       }
 
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
 
       // Wait for async operations
       await new Promise((resolve) => setTimeout(resolve, 200))
@@ -198,7 +198,7 @@ describe('DownloadCoordinator', () => {
         progressPercent: 0
       }
 
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
 
       // Wait for async operations
       await new Promise((resolve) => setTimeout(resolve, 200))
@@ -254,7 +254,7 @@ describe('DownloadCoordinator', () => {
         progressPercent: 0
       }
 
-      coordinator.startBatch([job1, job2])
+      coordinator.appendJobs([job1, job2])
 
       // Wait for async operations
       await new Promise((resolve) => setTimeout(resolve, 300))
@@ -279,7 +279,7 @@ describe('DownloadCoordinator', () => {
         state: 'Created', stage: 'None', progressPercent: 0
       }
 
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise((resolve) => setTimeout(resolve, 200))
 
       // Must go through decryptAll (no shortcut)
@@ -302,7 +302,7 @@ describe('DownloadCoordinator', () => {
         state: 'Created', stage: 'None', progressPercent: 0
       }
 
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise((resolve) => setTimeout(resolve, 200))
 
       expect(mockConfig.addToDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ guid: 'guid-4k-h' }))
@@ -337,7 +337,7 @@ describe('DownloadCoordinator', () => {
         quality: 'auto', threadCount: 8, reencode: false,
         state: 'Created', stage: 'None', progressPercent: 0
       }
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 200))
 
       expect(finishedHandler).toHaveBeenCalledWith(expect.objectContaining({
@@ -352,7 +352,7 @@ describe('DownloadCoordinator', () => {
         quality: 'auto', threadCount: 8, reencode: true,
         state: 'Created', stage: 'None', progressPercent: 0
       }
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 200))
 
       // merge is called with (listPath, outputPath, reencode)
@@ -370,7 +370,7 @@ describe('DownloadCoordinator', () => {
         quality: 'auto', threadCount: 8, reencode: false,
         state: 'Created', stage: 'None', progressPercent: 0
       }
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 200))
 
       expect(finishedHandler).toHaveBeenCalledWith(expect.objectContaining({
@@ -400,7 +400,7 @@ describe('DownloadCoordinator', () => {
         state: 'Created', stage: 'None', progressPercent: 0
       }
 
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 50))
       coordinator.cancel('test-once')   // current job: abort + transition + count
       await new Promise(r => setTimeout(r, 200)) // executeJob's abort branch runs
@@ -429,7 +429,7 @@ describe('DownloadCoordinator', () => {
         state: 'Created', stage: 'None', progressPercent: 0
       }
 
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 50))
       coordinator.cancelAll()
       await new Promise(r => setTimeout(r, 200))
@@ -448,7 +448,7 @@ describe('DownloadCoordinator', () => {
         state: 'Created', stage: 'None', progressPercent: 0
       }
 
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 200))
 
       const callArgs = (mockDecryptor.decryptAll as any).mock.calls[0]
@@ -465,7 +465,7 @@ describe('DownloadCoordinator', () => {
         state: 'Created', stage: 'None', progressPercent: 0
       }
 
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 200))
 
       const callArgs = (mockDecryptor.decryptAll as any).mock.calls[0]
@@ -486,7 +486,7 @@ describe('DownloadCoordinator', () => {
         state: 'Created', stage: 'None', progressPercent: 0
       }
 
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 200))
 
       expect(mockConfig.addToDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({ guid: 'guid-history' }))
@@ -507,7 +507,7 @@ describe('DownloadCoordinator', () => {
         state: 'Created', stage: 'None', progressPercent: 0
       }
 
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 200))
 
       expect(mockConfig.addToDownloadHistory).not.toHaveBeenCalled()
@@ -539,7 +539,7 @@ describe('DownloadCoordinator', () => {
         state: 'Created', stage: 'None', progressPercent: 0
       }
 
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 50)) // let job start
       coordinator.cancel('test-running')
       await new Promise(r => setTimeout(r, 200))
@@ -562,7 +562,7 @@ describe('DownloadCoordinator', () => {
       }
       coordinator.addJob(job1)
       coordinator.addJob(job2)
-      // job1 is current (startBatch hasn't been called, so just queued)
+      // job1 is current (appendJobs hasn't been called, so just queued)
       coordinator.cancel('job-q-2')
       expect(job2.state).toBe('Cancelled')
     })
@@ -591,7 +591,7 @@ describe('DownloadCoordinator', () => {
       const jobA: DownloadJob = { id: 'par-a', guid: 'guid-par-a', sourceUrl: '', title: 'A', savePath: '/tmp/a.mp4', quality: 'auto', threadCount: 2, reencode: false, state: 'Created', stage: 'None', progressPercent: 0 }
       const jobB: DownloadJob = { id: 'par-b', guid: 'guid-par-b', sourceUrl: '', title: 'B', savePath: '/tmp/b.mp4', quality: 'auto', threadCount: 2, reencode: false, state: 'Created', stage: 'None', progressPercent: 0 }
       const jobC: DownloadJob = { id: 'par-c', guid: 'guid-par-c', sourceUrl: '', title: 'C', savePath: '/tmp/c.mp4', quality: 'auto', threadCount: 2, reencode: false, state: 'Created', stage: 'None', progressPercent: 0 }
-      coordinator.startBatch([jobA, jobB, jobC])
+      coordinator.appendJobs([jobA, jobB, jobC])
       await new Promise((r) => setTimeout(r, 30))
 
       // At least 2 active (resolving/downloading) and 1 still queued
@@ -707,7 +707,7 @@ describe('DownloadCoordinator', () => {
         reencode: false, state: 'Created', stage: 'None', progressPercent: 0,
         m3u8Url: 'https://res.example.com/v/foo.m3u8'
       }
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 200))
 
       // API must NOT have been called — m3u8Url bypasses resolveSegmentUrls
@@ -743,7 +743,7 @@ describe('DownloadCoordinator', () => {
         reencode: false, state: 'Created', stage: 'None', progressPercent: 0,
         m3u8Url: 'https://res.example.com/v/bad.m3u8'
       }
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 200))
 
       expect(finished).toHaveBeenCalledWith(expect.objectContaining({
@@ -772,7 +772,7 @@ describe('DownloadCoordinator', () => {
         reencode: false, state: 'Created', stage: 'None', progressPercent: 0,
         m3u8Url: 'https://res.example.com/v/foo.m3u8'
       }
-      coordinator.startBatch([job])
+      coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 200))
 
       expect(finished).toHaveBeenCalledWith(expect.objectContaining({
@@ -780,6 +780,139 @@ describe('DownloadCoordinator', () => {
         errorMessage: expect.stringContaining('segment 0 failed')
       }))
       expect((mockFinalizer as any).mergeCopy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('appendJobs (cross-month / cross-column accumulation)', () => {
+    // Build a slow decryptor so jobs stay in the queue / active set across
+    // multiple appendJobs calls within a single test.
+    const installSlowDecryptor = () => {
+      ;(mockDecryptor.decryptAll as any).mockImplementation(
+        (_tasks: any, _dir: any, _cb: any, signal: AbortSignal) =>
+          new Promise(resolve => {
+            const timer = setTimeout(() => resolve({ completed: [0, 1], failed: [] }), 300)
+            signal?.addEventListener('abort', () => {
+              clearTimeout(timer)
+              resolve({ completed: [], failed: [] })
+            })
+          })
+      )
+    }
+
+    const mkJob = (id: string): DownloadJob => ({
+      id, guid: `guid-${id}`, sourceUrl: '', title: id, savePath: `/tmp/${id}.mp4`,
+      quality: 'auto', threadCount: 8, reencode: false,
+      state: 'Created', stage: 'None', progressPercent: 0
+    })
+
+    it('second launch while first is running appends instead of replacing', async () => {
+      installSlowDecryptor()
+      const jobA = mkJob('A')
+      const jobB = mkJob('B')
+
+      coordinator.appendJobs([jobA])
+      await new Promise(r => setTimeout(r, 30))  // A is active
+      coordinator.appendJobs([jobB])               // B should land behind A
+      await new Promise(r => setTimeout(r, 30))
+
+      // Both are tracked — A active, B either queued or active depending on
+      // concurrency. Crucially, A was NOT wiped when B was appended.
+      expect(['Queued', 'ResolvingM3u8', 'Downloading', 'Merging']).toContain(jobA.state)
+      expect(['Queued', 'ResolvingM3u8', 'Downloading', 'Merging']).toContain(jobB.state)
+    })
+
+    it('batchStats reset when coordinator is idle at append time', async () => {
+      // Fast decryptor so the first batch fully completes before the second append.
+      const batchHandler = vi.fn()
+      coordinator.on('batchFinished', batchHandler)
+
+      coordinator.appendJobs([mkJob('first')])
+      await new Promise(r => setTimeout(r, 200))
+
+      // First batch settled: one batchFinished with total=1.
+      expect(batchHandler).toHaveBeenCalledTimes(1)
+      expect(batchHandler.mock.calls[0][0]).toMatchObject({ completed: 1, total: 1 })
+
+      coordinator.appendJobs([mkJob('second')])
+      await new Promise(r => setTimeout(r, 200))
+
+      // Second batch started from zero (idle at launch), so its stats stand
+      // alone rather than being summed with the first.
+      expect(batchHandler).toHaveBeenCalledTimes(2)
+      expect(batchHandler.mock.calls[1][0]).toMatchObject({ completed: 1, total: 1 })
+    })
+
+    it('batchFinished accumulates counts across multiple in-flight appends', async () => {
+      installSlowDecryptor()
+      coordinator.setConcurrentVideos(3)  // so all 3 run in parallel
+      const batchHandler = vi.fn()
+      coordinator.on('batchFinished', batchHandler)
+
+      coordinator.appendJobs([mkJob('A')])
+      await new Promise(r => setTimeout(r, 20))
+      coordinator.appendJobs([mkJob('B')])
+      await new Promise(r => setTimeout(r, 20))
+      coordinator.appendJobs([mkJob('C')])
+
+      // Let all 3 finish.
+      await new Promise(r => setTimeout(r, 600))
+
+      // A single batchFinished reports the accumulated total.
+      expect(batchHandler).toHaveBeenCalledTimes(1)
+      expect(batchHandler.mock.calls[0][0]).toMatchObject({ completed: 3, total: 3 })
+    })
+
+    it('appendJobs accumulates the queue across multiple launches', async () => {
+      installSlowDecryptor()
+      coordinator.setConcurrentVideos(1)  // serial so only A runs; B, C, D stay Queued
+
+      const jobA = mkJob('A')
+      const jobB = mkJob('B')
+      coordinator.appendJobs([jobA, jobB])
+      await new Promise(r => setTimeout(r, 30))  // A runs; B queued
+
+      const jobC = mkJob('C')
+      const jobD = mkJob('D')
+      coordinator.appendJobs([jobC, jobD])        // append while A still runs
+      await new Promise(r => setTimeout(r, 30))
+
+      // Queue contains every job that hasn't finished — nothing was wiped when
+      // the second appendJobs fired mid-flight.
+      const queueIds = (coordinator as any).queue.map((j: DownloadJob) => j.id)
+      expect(queueIds).toEqual(expect.arrayContaining(['A', 'B', 'C', 'D']))
+    })
+
+    it('resetQueue clears queue, stats, and pending persistence', async () => {
+      const mockConfig = { addToDownloadHistory: vi.fn(), savePendingJobs: vi.fn(), clearPendingJobs: vi.fn() }
+      coordinator = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer, mockConfig)
+
+      coordinator.appendJobs([mkJob('A'), mkJob('B')])
+      coordinator.resetQueue()
+
+      expect((coordinator as any).queue).toEqual([])
+      expect((coordinator as any).batchStats).toEqual({ completed: 0, failed: 0, cancelled: 0, total: 0 })
+      expect(mockConfig.clearPendingJobs).toHaveBeenCalled()
+    })
+
+    it('cancelAll clears queue and leaves the coordinator ready for a fresh appendJobs', async () => {
+      installSlowDecryptor()
+      const batchHandler = vi.fn()
+      coordinator.on('batchFinished', batchHandler)
+
+      coordinator.appendJobs([mkJob('A')])
+      await new Promise(r => setTimeout(r, 20))
+      coordinator.cancelAll()
+      await new Promise(r => setTimeout(r, 50))
+
+      // After cancelAll the coordinator is idle; a new appendJobs starts a
+      // fresh batch with its own stats (completed/failed/cancelled reset).
+      coordinator.appendJobs([mkJob('B')])
+      await new Promise(r => setTimeout(r, 30))
+      coordinator.cancel('B')
+      await new Promise(r => setTimeout(r, 50))
+
+      const lastBatch = batchHandler.mock.calls.at(-1)?.[0]
+      expect(lastBatch).toMatchObject({ completed: 0, failed: 0, cancelled: 1, total: 1 })
     })
   })
 })

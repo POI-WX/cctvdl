@@ -21,8 +21,10 @@ export function registerIpcHandlers(
     if (wc && !wc.isDestroyed()) wc.send(channel, payload)
   }
   // Whether the *current* batch should auto-open the save folder when it finishes.
-  // Set per launch so partial downloads (下载选中 / 下载此集) and retries don't pop
-  // the folder — only 下载本月（全部）and single-video downloads do.
+  // OR-accumulates across appends within the same batch so a later "下载选中"
+  // (autoOpen=false) cannot wipe an earlier "下载本月" (autoOpen=true) that was
+  // appended while the batch was in flight. Reset to false when a fresh batch
+  // starts (coordinator is idle at launch time).
   let currentBatchAutoOpen = false
   ipcMain.handle('browse-program', async (_, url: string) => {
     const info = await browse.resolveColumnInfo(url)
@@ -117,7 +119,7 @@ export function registerIpcHandlers(
   })
 
   const launchBatch = (jobs: DownloadJob[], skipHistory: boolean, autoOpen = false): void => {
-    currentBatchAutoOpen = autoOpen
+    currentBatchAutoOpen = currentBatchAutoOpen || !!autoOpen
     // Pre-flight: make sure the target directory exists and is writable before
     // spawning any work. Throws so the renderer's catch surfaces the reason.
     const saveDir = jobs.length ? path.dirname(jobs[0].savePath) : ''
@@ -142,7 +144,7 @@ export function registerIpcHandlers(
       // Apply current concurrentVideos setting before starting
       const settings = config.getSettings()
       coordinator.setConcurrentVideos(settings.concurrentVideos ?? 1)
-      coordinator.startBatch(newJobs)
+      coordinator.appendJobs(newJobs)
     } else {
       // All jobs were already downloaded - send empty batch-finished to reset UI
       send('batch-finished', {

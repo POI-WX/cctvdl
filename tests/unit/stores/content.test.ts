@@ -160,10 +160,11 @@ describe('useContentStore', () => {
 
     it('allSelected 全选时为 true', () => {
       const store = useContentStore()
-      store.videos = [
-        { guid: 'G1', title: 'T1', brief: '', coverUrl: '', time: '', selected: true },
-        { guid: 'G2', title: 'T2', brief: '', coverUrl: '', time: '', selected: true },
-      ]
+      const v1 = { guid: 'G1', title: 'T1', brief: '', coverUrl: '', time: '' }
+      const v2 = { guid: 'G2', title: 'T2', brief: '', coverUrl: '', time: '' }
+      store.videos = [v1, v2]
+      store.toggleVideoSelection(v1)
+      store.toggleVideoSelection(v2)
       expect(store.allSelected).toBe(true)
     })
 
@@ -175,6 +176,126 @@ describe('useContentStore', () => {
       ]
       store.downloadedSet = new Set(['G1'])
       expect(store.downloadedCount).toBe(1)
+    })
+  })
+
+  describe('cross-month selection (selectedVideoMap)', () => {
+    const mkVideo = (guid: string, title = `T-${guid}`) =>
+      ({ guid, title, brief: '', coverUrl: '', time: '' })
+
+    it('isVideoSelected reflects the map, not any per-video flag', () => {
+      const store = useContentStore()
+      const v = mkVideo('G1')
+      expect(store.isVideoSelected(v)).toBe(false)
+      store.toggleVideoSelection(v)
+      expect(store.isVideoSelected(v)).toBe(true)
+    })
+
+    it('toggleVideoSelection is idempotent across two calls (toggle on → off)', () => {
+      const store = useContentStore()
+      const v = mkVideo('G1')
+      store.toggleVideoSelection(v)
+      store.toggleVideoSelection(v)
+      expect(store.isVideoSelected(v)).toBe(false)
+      expect(store.selectedCount).toBe(0)
+    })
+
+    it('selection accumulates across videos (cross-month simulation)', () => {
+      const store = useContentStore()
+      const v1 = mkVideo('G1')
+      const v2 = mkVideo('G2')
+      const v3 = mkVideo('G3')
+
+      store.toggleVideoSelection(v1)
+      store.toggleVideoSelection(v2)
+      store.videos = [v1, v2]                // month A
+      expect(store.selectedCount).toBe(2)
+
+      // Switch to month B (videos ref is replaced). Prior selections survive.
+      store.videos = [v3]
+      expect(store.selectedCount).toBe(2)
+      expect(store.allSelectedVideos.map(v => v.guid).sort()).toEqual(['G1', 'G2'])
+
+      // Select a video in month B; the total becomes 3.
+      store.toggleVideoSelection(v3)
+      expect(store.selectedCount).toBe(3)
+      expect(store.allSelectedVideos.map(v => v.guid).sort()).toEqual(['G1', 'G2', 'G3'])
+    })
+
+    it('selectedVideos returns only the intersection with the current videos list', () => {
+      const store = useContentStore()
+      const v1 = mkVideo('G1')
+      const v2 = mkVideo('G2')
+      const v3 = mkVideo('G3')
+
+      store.toggleVideoSelection(v1)
+      store.toggleVideoSelection(v2)
+      store.toggleVideoSelection(v3)
+
+      // Current month only shows G1 and G2 → selectedVideos is the slice.
+      store.videos = [v1, v2]
+      expect(store.selectedVideos.map(v => v.guid).sort()).toEqual(['G1', 'G2'])
+    })
+
+    it('toggleSelectAllFiltered(true) adds every filtered video; (false) removes them', () => {
+      const store = useContentStore()
+      const v1 = mkVideo('G1')
+      const v2 = mkVideo('G2')
+      const v3 = mkVideo('G3')
+      store.videos = [v1, v2, v3]
+
+      store.toggleSelectAllFiltered(true)
+      expect(store.selectedCount).toBe(3)
+
+      // Selecting only the visible list leaves no extras, so toggling off
+      // empties the whole map.
+      store.toggleSelectAllFiltered(false)
+      expect(store.selectedCount).toBe(0)
+    })
+
+    it('toggleSelectAllFiltered only affects the current filtered list, not off-screen selections', () => {
+      const store = useContentStore()
+      const v1 = mkVideo('G1')
+      const v2 = mkVideo('G2')
+      const vOff = mkVideo('G-OFF')
+
+      // Select something that is NOT in the current list.
+      store.toggleVideoSelection(vOff)
+      expect(store.selectedCount).toBe(1)
+
+      store.videos = [v1, v2]
+      store.toggleSelectAllFiltered(true)
+      expect(store.selectedCount).toBe(3)   // vOff + v1 + v2
+
+      store.toggleSelectAllFiltered(false)
+      // vOff was never in the current filtered list → unaffected.
+      expect(store.selectedCount).toBe(1)
+      expect(store.isVideoSelected(vOff)).toBe(true)
+    })
+
+    it('clearAllSelection empties the map', () => {
+      const store = useContentStore()
+      const v1 = mkVideo('G1')
+      const v2 = mkVideo('G2')
+      store.toggleVideoSelection(v1)
+      store.toggleVideoSelection(v2)
+      expect(store.selectedCount).toBe(2)
+
+      store.clearAllSelection()
+      expect(store.selectedCount).toBe(0)
+      expect(store.isVideoSelected(v1)).toBe(false)
+    })
+
+    it('clearAllSelection is a no-op when nothing is selected', () => {
+      const store = useContentStore()
+      expect(() => store.clearAllSelection()).not.toThrow()
+      expect(store.selectedCount).toBe(0)
+    })
+
+    it('allSelected is false when the filtered list is empty', () => {
+      const store = useContentStore()
+      store.videos = []
+      expect(store.allSelected).toBe(false)
     })
   })
 })
