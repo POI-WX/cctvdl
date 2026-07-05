@@ -269,6 +269,42 @@ describe('IPC Handlers', () => {
       await handlers['start-download']({}, jobs)
       expect(mockWindow.webContents.send).toHaveBeenCalledWith('batch-finished', expect.objectContaining({ total: 0 }))
     })
+
+    it('two consecutive start-download calls both append (no queue replace)', async () => {
+      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
+      const jobsA = [{ id: 'jA', guid: 'gA', title: 'A', savePath: '/tmp/a.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
+      const jobsB = [{ id: 'jB', guid: 'gB', title: 'B', savePath: '/tmp/b.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
+
+      await handlers['start-download']({}, jobsA)
+      await handlers['start-download']({}, jobsB)
+
+      // Both launches appended; neither call wiped the other's jobs.
+      expect(mockCoordinator.appendJobs).toHaveBeenCalledTimes(2)
+      expect(mockCoordinator.appendJobs).toHaveBeenNthCalledWith(1, jobsA)
+      expect(mockCoordinator.appendJobs).toHaveBeenNthCalledWith(2, jobsB)
+    })
+
+    it('currentBatchAutoOpen OR-accumulates: later autoOpen=false cannot wipe earlier autoOpen=true', async () => {
+      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
+      vi.mocked(mockConfig.getSettings).mockReturnValue({
+        savePath: '/tmp/save', autoOpenFolder: true, threadCount: 8,
+        quality: 'auto', logLevel: 'info', reencode: false
+      } as any)
+      const { shell } = await import('electron')
+      vi.mocked(shell.openPath).mockClear()
+
+      const batchFinishedHandler = vi.mocked(mockCoordinator.on).mock.calls
+        .find(c => c[0] === 'batchFinished')?.[1] as (r: any) => void
+
+      // First launch: "下载本月" (autoOpen=true)
+      await handlers['start-download']({}, [{ id: 'j1', guid: 'g1', title: 'A', savePath: '/tmp/save/a.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }], true)
+      // Second launch in the same batch: "下载选中" (autoOpen=false)
+      await handlers['start-download']({}, [{ id: 'j2', guid: 'g2', title: 'B', savePath: '/tmp/save/b.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }], false)
+
+      // Batch completes; the earlier autoOpen=true must still be in effect.
+      batchFinishedHandler({ completed: 2, failed: 0, cancelled: 0, total: 2, failedJobs: [] })
+      expect(shell.openPath).toHaveBeenCalledWith('/tmp/save')
+    })
   })
 
   describe('retry-job', () => {
