@@ -216,6 +216,13 @@ describe('IPC Handlers', () => {
       expect(mockBrowse.resolveSingleVideo).toHaveBeenCalledWith('https://tv.cctv.com/x.shtml')
       expect(result).toEqual({ guid: 'VIDE1', title: 'Movie', brief: '', coverUrl: '', time: '' })
     })
+    it('resolve-video-batch forwards the selected quality', async () => {
+      ;(mockBrowse as any).resolveSingleVideoBatch = vi.fn().mockResolvedValue([])
+      await handlers['resolve-video-batch']({}, 'https://content-static.cctvnews.cctv.com/snow-book/x.html?item_id=1', 'gaoqing')
+      expect((mockBrowse as any).resolveSingleVideoBatch).toHaveBeenCalledWith(
+        'https://content-static.cctvnews.cctv.com/snow-book/x.html?item_id=1', 'gaoqing'
+      )
+    })
     it('add-single-video delegates to config.addSingleVideo', async () => {
       const v = { guid: 'VIDE1', title: 'Movie', brief: '', coverUrl: '', time: '' }
       await handlers['add-single-video']({}, v)
@@ -270,6 +277,25 @@ describe('IPC Handlers', () => {
       expect(mockWindow.webContents.send).toHaveBeenCalledWith('batch-finished', expect.objectContaining({ total: 0 }))
     })
 
+    it('clears auto-open after an all-skipped full-set download', async () => {
+      vi.mocked(shell.openPath).mockClear()
+      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
+      vi.mocked(mockConfig.getSettings).mockReturnValue({
+        savePath: '/tmp/save', autoOpenFolder: true, threadCount: 8,
+        quality: 'auto', logLevel: 'info', reencode: false
+      } as any)
+      const finished = vi.mocked(mockCoordinator.on).mock.calls
+        .find(c => c[0] === 'batchFinished')?.[1] as (r: any) => void
+      const job = { id: 'skipped', guid: 'g', title: 'T', savePath: '/tmp/save/a.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }
+
+      await handlers['start-download']({}, [job], true)
+      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
+      await handlers['start-download']({}, [{ ...job, id: 'next' }], false)
+      finished({ completed: 1, failed: 0, cancelled: 0, total: 1, failedJobs: [] })
+
+      expect(shell.openPath).not.toHaveBeenCalled()
+    })
+
     it('two consecutive start-download calls both append (no queue replace)', async () => {
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
       const jobsA = [{ id: 'jA', guid: 'gA', title: 'A', savePath: '/tmp/a.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
@@ -304,6 +330,26 @@ describe('IPC Handlers', () => {
       // Batch completes; the earlier autoOpen=true must still be in effect.
       batchFinishedHandler({ completed: 2, failed: 0, cancelled: 0, total: 2, failedJobs: [] })
       expect(shell.openPath).toHaveBeenCalledWith('/tmp/save')
+    })
+
+    it('resets auto-open after a completed batch', async () => {
+      vi.mocked(mockConfig.getSettings).mockReturnValue({
+        savePath: '/tmp/save', autoOpenFolder: true, threadCount: 8,
+        quality: 'auto', logLevel: 'info', reencode: false
+      } as any)
+      const { shell } = await import('electron')
+      const finished = vi.mocked(mockCoordinator.on).mock.calls
+        .find(c => c[0] === 'batchFinished')?.[1] as (r: any) => void
+      const job = { id: 'reset-auto-open', guid: 'g', title: 'T', savePath: '/tmp/save/a.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }
+      const done = { completed: 1, failed: 0, cancelled: 0, total: 1, failedJobs: [] }
+      await handlers['start-download']({}, [job], true)
+      finished(done)
+      vi.mocked(shell.openPath).mockClear()
+
+      await handlers['start-download']({}, [job], false)
+      finished(done)
+
+      expect(shell.openPath).not.toHaveBeenCalled()
     })
   })
 

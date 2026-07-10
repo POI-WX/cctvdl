@@ -122,6 +122,7 @@ test.describe('真实用户流程', () => {
 
     await expect(page.locator('.month-row')).toHaveCount(0)
     await expect(page.locator('.single-mode-label')).toContainText('选集', { timeout: 15000 })
+    await expect(page.locator('button', { hasText: '下载本月' })).toHaveCount(0)
     await expect(page.locator('.video-item').first()).toBeVisible({ timeout: 20000 })
   })
 

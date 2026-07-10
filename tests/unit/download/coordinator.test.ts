@@ -338,7 +338,9 @@ describe('DownloadCoordinator', () => {
         state: 'Created', stage: 'None', progressPercent: 0
       }
       coordinator.appendJobs([job])
-      await new Promise(r => setTimeout(r, 200))
+      // The coordinator waits for the active worker to acknowledge abort before
+      // emitting the single final result.
+      await new Promise(r => setTimeout(r, 600))
 
       expect(finishedHandler).toHaveBeenCalledWith(expect.objectContaining({
         state: 'Completed',
@@ -432,10 +434,30 @@ describe('DownloadCoordinator', () => {
       coordinator.appendJobs([job])
       await new Promise(r => setTimeout(r, 50))
       coordinator.cancelAll()
-      await new Promise(r => setTimeout(r, 200))
+      // The coordinator waits for the active worker to acknowledge abort before
+      // emitting the single final result.
+      await new Promise(r => setTimeout(r, 600))
 
       // batchFinished should be emitted exactly once from cancelAll
       expect(batchHandler).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('pending-job persistence', () => {
+    it('removes completed jobs from the restart list before the batch ends', async () => {
+      const config = { addToDownloadHistory: vi.fn(), savePendingJobs: vi.fn(), clearPendingJobs: vi.fn() }
+      coordinator = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer, config)
+      coordinator.setConcurrentVideos(1)
+      ;(mockDecryptor.decryptAll as any).mockImplementation(async () => ({ completed: [0, 1], failed: [] }))
+
+      const first = { id: 'persist-first', guid: 'persist-first', sourceUrl: '', title: 'first', savePath: '/tmp/first.mp4', quality: 'auto' as const, threadCount: 1, reencode: false, state: 'Created' as const, stage: 'None' as const, progressPercent: 0 }
+      const second = { ...first, id: 'persist-second', guid: 'persist-second', title: 'second' }
+      coordinator.appendJobs([first, second])
+      await new Promise(r => setTimeout(r, 250))
+
+      const snapshots = config.savePendingJobs.mock.calls.map(call => call[0] as DownloadJob[])
+      expect(snapshots.some(list => list.some(job => job.id === 'persist-first'))).toBe(true)
+      expect(snapshots.at(-1)?.some(job => job.id === 'persist-first')).toBe(false)
     })
   })
 
@@ -727,9 +749,39 @@ describe('DownloadCoordinator', () => {
       expect(finished).toHaveBeenCalledWith(expect.objectContaining({ id: 'm3u8-1', state: 'Completed', outputPath: mergedOut }))
     })
 
+    it('resumes a cctvnews job without fetching segments already saved on disk', async () => {
+      const m3u8 = '#EXTM3U\n#EXTINF:10,\nseg1.ts\n#EXTINF:10,\nseg2.ts\n'
+      const fetchMock = buildFetchMock([
+        { match: u => u.endsWith('.m3u8'), body: m3u8 },
+        { match: u => u.includes('seg2.ts'), body: Buffer.from('second') }
+      ])
+      vi.stubGlobal('fetch', fetchMock.fn)
+      const guid = 'guid-m3u8-resume'
+      const workDir = path.join(outDir, `.cctvdl_${guid}`)
+      fs.mkdirSync(workDir)
+      fs.writeFileSync(path.join(workDir, 'segment_00000000.mp4'), 'first')
+      fs.writeFileSync(path.join(workDir, 'state.json'), JSON.stringify({
+        guid, segmentUrls: ['old-1', 'old-2'], completed: [0], pending: [1]
+      }))
+      ;(mockFinalizer as any).mergeCopy = writeOut('m3u8-resumed.mp4')
+
+      coordinator.appendJobs([{
+        id: 'm3u8-resume', guid, sourceUrl: 'https://x', title: 'M',
+        savePath: path.join(outDir, 'out.mp4'), quality: 'auto', threadCount: 2,
+        reencode: false, state: 'Created', stage: 'None', progressPercent: 0,
+        m3u8Url: 'https://res.example.com/v/foo.m3u8'
+      }])
+      await new Promise(r => setTimeout(r, 200))
+
+      expect(fetchMock.calls).toEqual([
+        'https://res.example.com/v/foo.m3u8',
+        'https://res.example.com/v/seg2.ts'
+      ])
+    })
+
     it('marks job Failed when m3u8 fetch fails', async () => {
       const fetchMock = buildFetchMock([
-        { match: u => u.endsWith('.m3u8'), body: '', ok: false, status: 503 }
+        { match: u => u.endsWith('.m3u8'), body: '', ok: false, status: 404 }
       ])
       vi.stubGlobal('fetch', fetchMock.fn)
       ;(mockFinalizer as any).mergeCopy = vi.fn()
@@ -748,7 +800,7 @@ describe('DownloadCoordinator', () => {
 
       expect(finished).toHaveBeenCalledWith(expect.objectContaining({
         id: 'm3u8-err', state: 'Failed',
-        errorMessage: expect.stringContaining('HTTP 503')
+        errorMessage: expect.stringContaining('HTTP 404')
       }))
       expect((mockFinalizer as any).mergeCopy).not.toHaveBeenCalled()
     })

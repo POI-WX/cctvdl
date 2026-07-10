@@ -248,6 +248,35 @@ describe('BrowseService', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1)
     })
 
+    it('loads every album page and deduplicates repeated videos', async () => {
+      const firstPage = Array.from({ length: 100 }, (_, i) => ({ guid: `album-${i}`, title: `Episode ${i}`, brief: '', image: '', time: '' }))
+      const secondPage = [
+        { guid: 'album-99', title: 'Episode 99', brief: '', image: '', time: '' },
+        { guid: 'album-100', title: 'Episode 100', brief: '', image: '', time: '' }
+      ]
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: { list: firstPage } }) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: { list: secondPage } }) })
+      const service = new BrowseService(mockFetch)
+
+      const videos = await service.getAlbumVideoList('album123', 1, '')
+
+      expect(videos).toHaveLength(101)
+      expect(videos.at(-1)?.guid).toBe('album-100')
+      expect(mockFetch.mock.calls[1][0]).toContain('p=2')
+    })
+
+    it('stops when an upstream page repeats without adding videos', async () => {
+      const fullPage = Array.from({ length: 100 }, (_, i) => ({ guid: `g${i}`, title: `E${i}`, brief: '', image: '', time: '' }))
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ data: { list: fullPage } }) })
+      const service = new BrowseService(mockFetch)
+
+      const videos = await service.getAlbumVideoList('album123', 1, '')
+
+      expect(videos).toHaveLength(100)
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+    })
+
     it('returns empty array when list is missing', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,

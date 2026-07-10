@@ -22,11 +22,8 @@ export const useContentStore = defineStore('content', () => {
   const downloadedSet = ref<Set<string>>(new Set())
   const newContentMap = ref<Map<string, number>>(new Map())
   const emptyMonths = ref<Set<string>>(new Set())
-  // Cross-month selection (scoped to the current column). Keyed by guid so
-  // the same video can be selected in June and still be remembered when the
-  // user switches to July and back. Cleared on column switch — cross-column
-  // selection is deliberately not supported (different programs, different
-  // user intent).
+  // Cross-month and cross-program selection. Keyed by guid so selections stay
+  // intact while users switch months or programs before batch downloading.
   const selectedVideoMap = ref<Map<string, VideoInfo>>(new Map())
   const programQuery = ref('')
   const searchQuery = ref('')
@@ -64,13 +61,8 @@ export const useContentStore = defineStore('content', () => {
   // a video checked in June still renders as checked after the user visits
   // July and returns to June.
   const isVideoSelected = (v: VideoInfo) => selectedVideoMap.value.has(v.guid)
-  // Current-month selection (subset of allSelectedVideos that's visible in
-  // the current video list). Drives the "全选" checkbox.
-  const selectedVideos = computed(() =>
-    videos.value.filter(v => selectedVideoMap.value.has(v.guid))
-  )
-  // Cross-month accumulation. Drives "下载选中" — this is what actually gets
-  // sent to the download pipeline.
+  // Cross-month / cross-program accumulation. Drives "下载选中" — this is what
+  // actually gets sent to the download pipeline.
   const allSelectedVideos = computed(() => Array.from(selectedVideoMap.value.values()))
   const selectedCount = computed(() => selectedVideoMap.value.size)
   const allSelected = computed(() =>
@@ -79,7 +71,7 @@ export const useContentStore = defineStore('content', () => {
   )
   const downloadedCount = computed(() => videos.value.filter(v => downloadedSet.value.has(v.guid)).length)
   const allSelectedDownloaded = computed(() =>
-    selectedVideos.value.length > 0 && selectedVideos.value.every(v => downloadedSet.value.has(v.guid))
+    allSelectedVideos.value.length > 0 && allSelectedVideos.value.every(v => downloadedSet.value.has(v.guid))
   )
   const emptyHint = computed(() => {
     if (viewMode.value === 'single') return videos.value.length ? '没有匹配的视频' : '粘贴单个视频链接添加'
@@ -149,12 +141,18 @@ export const useContentStore = defineStore('content', () => {
     selectedVideoMap.value = next
   }
 
-  // Drop every entry from the selection map. Called on column switch (where
-  // cross-column selection would be semantically meaningless) and can also
-  // be exposed as a "清空选择" action in the UI.
+  // Drop every entry from the selection map. Called when entering the separate
+  // single-video collection and can also be exposed as a "清空选择" action.
   function clearAllSelection() {
     if (selectedVideoMap.value.size === 0) return
     selectedVideoMap.value = new Map()
+  }
+
+  function markDownloaded(guid: string) {
+    if (!guid || downloadedSet.value.has(guid)) return
+    const next = new Set(downloadedSet.value)
+    next.add(guid)
+    downloadedSet.value = next
   }
 
   return {
@@ -162,10 +160,10 @@ export const useContentStore = defineStore('content', () => {
     selectedMonth, downloadedSet, newContentMap, emptyMonths, selectedVideoMap,
     programQuery, searchQuery, debouncedSearch,
     isFav, filteredPrograms, displayRows,
-    filteredVideos, isVideoSelected, selectedVideos, allSelectedVideos, selectedCount,
+    filteredVideos, isVideoSelected, allSelectedVideos, selectedCount,
     allSelected, downloadedCount, allSelectedDownloaded,
     emptyHint, groupedVideos,
     refreshDownloadedSet, recordVideosLoaded, clearEmptyMonths, applyNewContent, clearNewContent,
-    toggleVideoSelection, toggleSelectAllFiltered, clearAllSelection
+    toggleVideoSelection, toggleSelectAllFiltered, clearAllSelection, markDownloaded
   }
 })

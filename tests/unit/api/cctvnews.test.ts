@@ -266,6 +266,8 @@ describe('CctvNewsService.resolveFromUrl', () => {
     expect(videos[0].title).toBe('视频标题')
     expect(videos[0].coverUrl).toBe('https://x/c.jpg')
     expect(videos[0].m3u8Url).toBe('https://res/hd.m3u8')
+    expect(videos[0].sourceUrl).toContain('item_id=15184105708774284671')
+    expect(videos[0].sourceVideoIndex).toBe(0)
     expect(videos[0].time).toBe('2025-01-14 14:18:43')
   })
 
@@ -307,6 +309,7 @@ describe('CctvNewsService.resolveFromUrl', () => {
       .resolveFromUrl('https://cctvnews.cctv.com/?item_id=M')
     expect(videos.map(v => v.guid)).toEqual(['cctvnews_M_0', 'cctvnews_M_1'])
     expect(videos.map(v => v.m3u8Url)).toEqual(['https://res/1.m3u8', 'https://res/2.m3u8'])
+    expect(videos.map(v => v.sourceVideoIndex)).toEqual([0, 1])
   })
 
   it('throws when URL has no item_id', async () => {

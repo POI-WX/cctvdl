@@ -268,13 +268,18 @@
           <span class="video-count" v-if="videos.length">
             {{ filteredVideos.length }} 个{{ debouncedSearch ? '（过滤）' : '' }}
             <span v-if="downloadedCount" class="video-downloaded-count"> · ✓{{ downloadedCount }}</span>
-            <span v-if="selectedCount" class="video-selected-count"> · 已选 {{ selectedCount }}<template v-if="currentMonthSelectedCount && currentMonthSelectedCount !== selectedCount">（本月 {{ currentMonthSelectedCount }}）</template></span>
+            <span v-if="selectedCount" class="video-selected-count"> · 已选 {{ selectedCount }}<template v-if="currentListSelectedCount && currentListSelectedCount !== selectedCount">（当前列表 {{ currentListSelectedCount }}）</template></span>
           </span>
           <button
-            v-if="viewMode === 'column' && filteredVideos.length"
+            v-if="viewMode === 'column' && !selectedIsAlbum && videos.length"
             class="footer-btn footer-btn-ghost"
             @click="downloadAll"
           >下载本月</button>
+          <button
+            v-if="selectedCount"
+            class="footer-btn footer-btn-ghost"
+            @click="contentStore.clearAllSelection()"
+          >清空已选</button>
           <button
             v-if="viewMode === 'column'"
             class="footer-btn"
@@ -356,15 +361,15 @@
                 class="preview-download-btn"
                 :class="{
                   downloaded: downloadedSet.has(selectedVideo.guid),
-                  dimmed: currentMonthSelectedCount > 0 && !downloadedSet.has(selectedVideo.guid)
+                  dimmed: currentListSelectedCount > 0 && !downloadedSet.has(selectedVideo.guid)
                 }"
                 @click="downloadVideos([selectedVideo], viewMode === 'single')"
               >
                 <span>⬇</span>
                 {{ downloadedSet.has(selectedVideo.guid) ? '重新下载' : (viewMode === 'single' ? '下载此视频' : '下载此集') }}
               </button>
-              <span v-if="currentMonthSelectedCount > 0" class="preview-download-hint">
-                已选 {{ selectedCount }}<template v-if="currentMonthSelectedCount !== selectedCount">（本月 {{ currentMonthSelectedCount }}）</template> 个，可在下方批量下载
+              <span v-if="currentListSelectedCount > 0" class="preview-download-hint">
+                已选 {{ selectedCount }}<template v-if="currentListSelectedCount !== selectedCount">（当前列表 {{ currentListSelectedCount }}）</template> 个，可在下方批量下载
               </span>
             </div>
           </div>
@@ -424,7 +429,7 @@ import { Search } from '@element-plus/icons-vue'
 import type { ProgramInfo, VideoInfo, DownloadJob } from '../../shared/types'
 import { isProgramDeleteKey } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
-import { buildOutputPath } from '../../shared/filename'
+import { buildOutputPath, safeFilename } from '../../shared/filename'
 import { useContentStore } from '../stores/content'
 
 const contentStore = useContentStore()
@@ -441,10 +446,9 @@ const isFav = contentStore.isFav
 const isVideoSelected = contentStore.isVideoSelected
 const toggleVideoSelection = contentStore.toggleVideoSelection
 const selectedIsAlbum = computed(() => (selectedProgram.value?.kind ?? 'column') === 'album')
-// How many videos in the *currently visible* list are selected. Shown in the
-// footer next to the cross-month `selectedCount` so users can see both scopes
-// (e.g. "本月 3 / 累计 7").
-const currentMonthSelectedCount = computed(() =>
+// How many videos in the current program/month (or album) are selected. Shown
+// next to the cross-program `selectedCount` so users can see both scopes.
+const currentListSelectedCount = computed(() =>
   videos.value.filter(v => contentStore.isVideoSelected(v)).length
 )
 
@@ -466,6 +470,7 @@ const importPlaceholder = ref(IMPORT_PLACEHOLDERS[0])
 let placeholderTimer: ReturnType<typeof setInterval> | null = null
 let placeholderIdx = 0
 const loadingVideos = ref(false)
+let videoLoadRequestId = 0
 const coverError = ref(false)
 const coverLoading = ref(false)
 const coverDownloading = ref(false)
@@ -529,6 +534,7 @@ function onSearchInput(val: string) {
 let cleanupSkipped: (() => void) | null = null
 let cleanupClipboard: (() => void) | null = null
 let cleanupNewContent: (() => void) | null = null
+let cleanupJobFinished: (() => void) | null = null
 let lastClipboardUrl = ''
 function onHistoryCleared() { contentStore.refreshDownloadedSet() }
 
@@ -594,6 +600,9 @@ onMounted(async () => {
   cleanupNewContent = window.cctvdlApi.onNewContent(({ columnId, count }) => {
     contentStore.applyNewContent(columnId, count)
   })
+  cleanupJobFinished = window.cctvdlApi.onJobFinished((job) => {
+    if (job.state === 'Completed') contentStore.markDownloaded(job.guid)
+  })
 
   // 设置页清除历史后刷新已下载标记
   window.addEventListener('cctvdl:history-cleared', onHistoryCleared)
@@ -603,6 +612,7 @@ onUnmounted(() => {
   cleanupSkipped?.()
   cleanupClipboard?.()
   cleanupNewContent?.()
+  cleanupJobFinished?.()
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('cctvdl:history-cleared', onHistoryCleared)
   if (placeholderTimer) clearInterval(placeholderTimer)
@@ -661,7 +671,8 @@ async function doImport(url: string) {
       // snow-book URL) — fall back to resolving it as single video(s). cctvnews
       // articles may return multiple videos; regular pages return one.
       try {
-        const videos = await window.cctvdlApi.resolveVideoBatch(url)
+        const settings = await window.cctvdlApi.getSettings()
+        const videos = await window.cctvdlApi.resolveVideoBatch(url, settings.quality)
         if (videos.length === 0) throw columnErr
         if (videos.length === 1) {
           await addAndShowSingleVideo(videos[0])
@@ -716,7 +727,6 @@ function onProgramClick(row: ProgramInfo) {
   selectedProgram.value = row
   contentStore.clearEmptyMonths()
   contentStore.clearNewContent(row.columnId)
-  contentStore.clearAllSelection()
   selectedVideo.value = null
   loadVideos()
 }
@@ -763,6 +773,7 @@ async function deleteProgram(row: ProgramInfo) {
     })
     await window.cctvdlApi.deleteProgram(row.columnId)
     programs.value = await window.cctvdlApi.getPrograms()
+    contentStore.clearAllSelection()
     if (selectedProgram.value?.columnId === row.columnId) { selectedProgram.value = null; videos.value = [] }
     ElMessage.success('已删除')
   } catch { /* cancelled */ }
@@ -794,17 +805,20 @@ async function clearAllPrograms() {
     programs.value = []
     selectedProgram.value = null
     videos.value = []
+    contentStore.clearAllSelection()
     ElMessage.success('已清空')
   } catch { /* cancelled */ }
 }
 
 async function loadVideos() {
   if (!selectedProgram.value) return
+  const requestId = ++videoLoadRequestId
   loadingVideos.value = true
   contentStore.refreshDownloadedSet()
   try {
     const program = { ...selectedProgram.value }
     const list = await window.cctvdlApi.listVideos(program, selectedIsAlbum.value ? '' : selectedMonth.value)
+    if (requestId !== videoLoadRequestId) return
     videos.value = list
     // Only drop the preview if its video is no longer in the freshly loaded
     // list (e.g. deleted from the server). Otherwise preserve so users can
@@ -813,8 +827,11 @@ async function loadVideos() {
       selectedVideo.value = null
     }
     if (!selectedIsAlbum.value) contentStore.recordVideosLoaded(selectedMonth.value, list)
-  } catch (err) { ElMessage.error(`加载失败：${humanizeError(String(err))}`) }
-  finally { loadingVideos.value = false }
+  } catch (err) {
+    if (requestId === videoLoadRequestId) ElMessage.error(`加载失败：${humanizeError(String(err))}`)
+  } finally {
+    if (requestId === videoLoadRequestId) loadingVideos.value = false
+  }
 }
 
 function onVideoClick(row: VideoInfo) {
@@ -866,7 +883,6 @@ async function downloadCoverImage() {
   if (!settings.coverSavePath) { ElMessage.warning('请先在设置中配置图片保存目录'); return }
   coverDownloading.value = true
   try {
-    const { safeFilename } = await import('../../shared/filename')
     const { savedPath } = await window.cctvdlApi.downloadCover(
       selectedVideo.value.coverUrl,
       settings.coverSavePath,
@@ -883,11 +899,10 @@ async function downloadCoverImage() {
 // Selected items: auto-open only for single videos (column partial selections don't).
 async function downloadSelected() { await downloadVideos(allSelectedVideos.value, viewMode.value === 'single') }
 
-// 下载本月（仅栏目）：先把当前列表的全部期数加入跨月选择，再整批下载；
-// 这是「全量下载」意图，会触发自动打开文件夹。
+// 下载本月（仅栏目）：始终下载当前月份的完整列表，不受搜索过滤或其他
+// 栏目、月份的已选项影响；这是「全量下载」意图，会触发自动打开文件夹。
 async function downloadAll() {
-  contentStore.toggleSelectAllFiltered(true)
-  await downloadVideos(allSelectedVideos.value, true)
+  await downloadVideos(videos.value, true)
 }
 
 async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
@@ -898,13 +913,14 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
     const settings = await window.cctvdlApi.getSettings()
     const jobs: DownloadJob[] = validVideos.map(v => {
       const job: DownloadJob = {
-        id: crypto.randomUUID(), guid: v.guid, sourceUrl: v.guid, title: v.title,
+        id: crypto.randomUUID(), guid: v.guid, sourceUrl: v.sourceUrl ?? v.guid, title: v.title,
         savePath: buildOutputPath(settings.savePath, v.title),
         quality: settings.quality, threadCount: settings.threadCount,
         reencode: settings.reencode ?? false,
         state: 'Created' as const, stage: 'None' as const, progressPercent: 0
       }
       if (v.m3u8Url) job.m3u8Url = v.m3u8Url
+      if (v.sourceVideoIndex != null) job.sourceVideoIndex = v.sourceVideoIndex
       return job
     })
     await window.cctvdlApi.startDownload(jobs, autoOpen)

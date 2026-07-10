@@ -221,7 +221,9 @@ export class CctvNewsService {
         brief: '',
         coverUrl: v.coverUrl,
         time,
-        m3u8Url: picked.url
+        m3u8Url: picked.url,
+        sourceUrl: pageUrl,
+        sourceVideoIndex: idx
       }
     })
   }

@@ -222,19 +222,20 @@ describe('useContentStore', () => {
       expect(store.allSelectedVideos.map(v => v.guid).sort()).toEqual(['G1', 'G2', 'G3'])
     })
 
-    it('selectedVideos returns only the intersection with the current videos list', () => {
+    it('selection persists across programs and download state covers the whole batch', () => {
       const store = useContentStore()
-      const v1 = mkVideo('G1')
-      const v2 = mkVideo('G2')
-      const v3 = mkVideo('G3')
+      const columnAVideo = mkVideo('COLUMN-A-1')
+      const columnBVideo = mkVideo('COLUMN-B-1')
 
-      store.toggleVideoSelection(v1)
-      store.toggleVideoSelection(v2)
-      store.toggleVideoSelection(v3)
+      store.toggleVideoSelection(columnAVideo)
+      store.videos = [columnBVideo] // Simulates switching to another program.
+      store.toggleVideoSelection(columnBVideo)
 
-      // Current month only shows G1 and G2 → selectedVideos is the slice.
-      store.videos = [v1, v2]
-      expect(store.selectedVideos.map(v => v.guid).sort()).toEqual(['G1', 'G2'])
+      expect(store.allSelectedVideos.map(v => v.guid).sort()).toEqual(['COLUMN-A-1', 'COLUMN-B-1'])
+      store.downloadedSet = new Set([columnBVideo.guid])
+      expect(store.allSelectedDownloaded).toBe(false)
+      store.downloadedSet = new Set([columnAVideo.guid, columnBVideo.guid])
+      expect(store.allSelectedDownloaded).toBe(true)
     })
 
     it('toggleSelectAllFiltered(true) adds every filtered video; (false) removes them', () => {

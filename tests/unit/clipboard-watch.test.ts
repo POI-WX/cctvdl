@@ -13,8 +13,14 @@ describe('isCctvLink', () => {
     expect(isCctvLink('  https://tv.cctv.com/x  ')).toBe(true)
   })
 
+  it('matches every supported CCTV host', () => {
+    expect(isCctvLink('https://tv.cctv.cn/2026/01/01/VIDE.shtml')).toBe(true)
+    expect(isCctvLink('https://news.cctv.com/2026/01/01/ARTI.shtml')).toBe(true)
+    expect(isCctvLink('https://content-static.cctvnews.cctv.com/snow-book/video.html?item_id=1')).toBe(true)
+  })
+
   it('rejects non-CCTV / non-URL text', () => {
-    for (const t of ['', 'hello world', 'https://example.com/x', 'tv.cctv.com/x', 'https://news.cctv.com/x']) {
+    for (const t of ['', 'hello world', 'https://example.com/x', 'tv.cctv.com/x', 'ftp://tv.cctv.com/x']) {
       expect(isCctvLink(t)).toBe(false)
     }
   })

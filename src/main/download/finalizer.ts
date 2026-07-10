@@ -4,9 +4,9 @@ import path from 'path'
 import { segmentFileName } from './decryptor'
 import { ffmpegPath } from './ffmpeg'
 
-export type SpawnFn = (bin: string, args: string[]) => Promise<{ exitCode: number; stderr: string }>
+export type SpawnFn = (bin: string, args: string[], signal?: AbortSignal) => Promise<{ exitCode: number; stderr: string }>
 
-function defaultSpawn(bin: string, args: string[]): Promise<{ exitCode: number; stderr: string }> {
+function defaultSpawn(bin: string, args: string[], signal?: AbortSignal): Promise<{ exitCode: number; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = cpSpawn(bin, args, {
       stdio: ['ignore', 'ignore', 'pipe'],
@@ -17,7 +17,13 @@ function defaultSpawn(bin: string, args: string[]): Promise<{ exitCode: number; 
     child.stderr?.on('data', (d: Buffer) => {
       stderr += d.toString()
     })
-    child.once('close', (code) => resolve({ exitCode: code ?? 1, stderr }))
+    const onAbort = () => child.kill()
+    if (signal?.aborted) onAbort()
+    else signal?.addEventListener('abort', onAbort, { once: true })
+    child.once('close', (code) => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve({ exitCode: code ?? 1, stderr })
+    })
     child.once('error', reject)
   })
 }
@@ -48,13 +54,13 @@ export class Finalizer {
    * Pass `reencode: true` to fall back to libx264 for the rare clip that still
    * misbehaves on copy.
    */
-  async merge(listPath: string, outputPath: string, reencode = false): Promise<string> {
+  async merge(listPath: string, outputPath: string, reencode = false, signal?: AbortSignal): Promise<string> {
     return reencode
-      ? this.mergeReencode(listPath, outputPath)
-      : this.mergeCopy(listPath, outputPath)
+      ? this.mergeReencode(listPath, outputPath, signal)
+      : this.mergeCopy(listPath, outputPath, signal)
   }
 
-  async mergeCopy(listPath: string, outputPath: string): Promise<string> {
+  async mergeCopy(listPath: string, outputPath: string, signal?: AbortSignal): Promise<string> {
     const finalPath = this.uniquePath(outputPath)
     const result = await this.spawn(this.ffmpeg, [
       '-y',
@@ -65,14 +71,14 @@ export class Finalizer {
       '-c', 'copy',
       '-movflags', '+faststart',
       finalPath
-    ])
+    ], signal)
     if (result.exitCode !== 0) {
       throw new Error(`ffmpeg copy exit ${result.exitCode}: ${result.stderr.slice(-500)}`)
     }
     return finalPath
   }
 
-  async mergeReencode(listPath: string, outputPath: string): Promise<string> {
+  async mergeReencode(listPath: string, outputPath: string, signal?: AbortSignal): Promise<string> {
     const finalPath = this.uniquePath(outputPath)
     const result = await this.spawn(this.ffmpeg, [
       '-y',
@@ -85,7 +91,7 @@ export class Finalizer {
       '-movflags', '+faststart',
       '-vsync', '0',
       finalPath
-    ])
+    ], signal)
     if (result.exitCode !== 0) {
       throw new Error(`ffmpeg exit ${result.exitCode}: ${result.stderr.slice(-500)}`)
     }

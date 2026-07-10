@@ -4,7 +4,7 @@ import type { BrowseService } from './api/browse'
 import type { ConfigStore } from './config'
 import path from 'path'
 import fs from 'fs'
-import { appendFailures, logger } from './logger'
+import { appendFailures, logger, setLogLevel, setLogPath } from './logger'
 import { downloadCoverToDir } from './api/cover'
 import { checkSaveDir } from './preflight'
 import type { ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult } from '../shared/types'
@@ -66,7 +66,8 @@ export function registerIpcHandlers(
 
   // Standalone (non-column) videos: resolve a video page → persist/list/remove.
   ipcMain.handle('resolve-single-video', (_, url: string) => browse.resolveSingleVideo(url))
-  ipcMain.handle('resolve-video-batch', (_, url: string) => browse.resolveSingleVideoBatch(url))
+  ipcMain.handle('resolve-video-batch', (_, url: string, quality?: Settings['quality']) =>
+    browse.resolveSingleVideoBatch(url, quality))
   ipcMain.handle('get-single-videos', () => config.getSingleVideos())
   ipcMain.handle('add-single-video', (_, v: VideoInfo) => config.addSingleVideo(v))
   ipcMain.handle('delete-single-video', (_, guid: string) => config.deleteSingleVideo(guid))
@@ -119,7 +120,6 @@ export function registerIpcHandlers(
   })
 
   const launchBatch = (jobs: DownloadJob[], skipHistory: boolean, autoOpen = false): void => {
-    currentBatchAutoOpen = currentBatchAutoOpen || !!autoOpen
     // Pre-flight: make sure the target directory exists and is writable before
     // spawning any work. Throws so the renderer's catch surfaces the reason.
     const saveDir = jobs.length ? path.dirname(jobs[0].savePath) : ''
@@ -137,6 +137,7 @@ export function registerIpcHandlers(
           return true
         })
     if (newJobs.length > 0) {
+      currentBatchAutoOpen = currentBatchAutoOpen || !!autoOpen
       send('batch-started', {
         total: newJobs.length,
         jobs: newJobs.map(j => ({ id: j.id, title: j.title, guid: j.guid }))
@@ -147,6 +148,7 @@ export function registerIpcHandlers(
       coordinator.appendJobs(newJobs)
     } else {
       // All jobs were already downloaded - send empty batch-finished to reset UI
+      currentBatchAutoOpen = false
       send('batch-finished', {
         completed: 0, failed: 0, cancelled: 0, total: 0, failedJobs: []
       })
@@ -174,6 +176,9 @@ export function registerIpcHandlers(
   ipcMain.handle('save-settings', (_, settings: Settings) => {
     logger.info(`save-settings: savePath=${settings.savePath}, threadCount=${settings.threadCount}`)
     config.saveSettings(settings)
+    const saved = config.getSettings()
+    setLogLevel(saved.logLevel)
+    setLogPath(saved.logPath ?? '')
     return true
   })
 
@@ -192,7 +197,11 @@ export function registerIpcHandlers(
 
   ipcMain.handle('open-path', (_, p: string) => shell.openPath(p))
 
-  ipcMain.handle('open-url', (_, url: string) => shell.openExternal(url))
+  ipcMain.handle('open-url', (_, url: string) => {
+    const parsed = new URL(url)
+    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('仅支持打开 HTTP(S) 链接')
+    return shell.openExternal(parsed.href)
+  })
 
   ipcMain.handle('reveal-file', (_, p: string) => shell.showItemInFolder(p))
   ipcMain.handle('download-cover', async (_, url: string, saveDir: string, baseName: string) => {
@@ -212,13 +221,15 @@ export function registerIpcHandlers(
   })
 
   coordinator.on('batchFinished', (result: BatchResult) => {
+    const shouldAutoOpen = currentBatchAutoOpen
+    currentBatchAutoOpen = false
     send('batch-finished', result)
     if (result.failedJobs.length > 0) {
       appendFailures(new Date().toISOString(), result.failedJobs)
     }
     // Auto-open the save folder only for full-set downloads (flagged at launch),
     // when the user enabled it and something actually completed.
-    if (currentBatchAutoOpen && result.completed > 0 && config.getSettings().autoOpenFolder) {
+    if (shouldAutoOpen && result.completed > 0 && config.getSettings().autoOpenFolder) {
       const dir = config.getSettings().savePath
       if (dir) shell.openPath(dir)
     }

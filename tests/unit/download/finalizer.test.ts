@@ -78,6 +78,18 @@ describe('Finalizer', () => {
       expect(args[cvIndex + 1]).toBe('libx264')
     })
 
+    it('forwards cancellation to the ffmpeg runner', async () => {
+      const mockSpawn = vi.fn().mockResolvedValue({ exitCode: 0, stderr: '' })
+      const finalizer = new Finalizer(mockSpawn, '/mock/ffmpeg')
+      const controller = new AbortController()
+      const listPath = path.join(tempDir, 'concat.txt')
+      fs.writeFileSync(listPath, "file 'test.mp4'\n")
+
+      await finalizer.merge(listPath, path.join(tempDir, 'output.mp4'), false, controller.signal)
+
+      expect(mockSpawn.mock.calls[0][2]).toBe(controller.signal)
+    })
+
     it('throws error on ffmpeg failure (copy)', async () => {
       const mockSpawn = vi.fn().mockResolvedValue({ exitCode: 1, stderr: 'Error message' })
       const finalizer = new Finalizer(mockSpawn, '/mock/ffmpeg')

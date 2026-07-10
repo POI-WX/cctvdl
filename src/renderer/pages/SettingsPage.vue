@@ -325,6 +325,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Settings } from '../../shared/types'
 import { MIN_THREADS, MAX_THREADS, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS, QUALITIES } from '../../shared/settings'
 import { applyAccentColor } from '../utils/accent'
+import { buildOutputPath } from '../../shared/filename'
 import { applyDarkMode } from '../utils/dark-mode'
 import { displayPath } from '../../shared/path-display'
 import { relativeTime, formatFileSize } from '../../shared/format'
@@ -441,13 +442,23 @@ function revealHistoryFile(outputPath: string) {
 async function redownload(entry: import('../../shared/types').HistoryEntry) {
   const settings = await window.cctvdlApi.getSettings()
   if (!settings.savePath) { ElMessage.warning('请先在设置中配置视频保存目录'); return }
-  const { buildOutputPath } = await import('../../shared/filename')
+  let guid = entry.guid
+  let title = entry.title || entry.guid
+  let m3u8Url: string | undefined
+  if (entry.sourceVideoIndex != null && entry.sourceUrl) {
+    const videos = await window.cctvdlApi.resolveVideoBatch(entry.sourceUrl, settings.quality)
+    const source = videos[entry.sourceVideoIndex]
+    if (!source?.m3u8Url) { ElMessage.error('无法重新解析央视新闻视频，请确认原内容仍可访问'); return }
+    guid = source.guid
+    title = source.title || title
+    m3u8Url = source.m3u8Url
+  }
   const job: import('../../shared/types').DownloadJob = {
     id: crypto.randomUUID(),
-    guid: entry.guid,
-    sourceUrl: entry.guid,
-    title: entry.title || entry.guid,
-    savePath: buildOutputPath(settings.savePath, entry.title || entry.guid),
+    guid,
+    sourceUrl: entry.sourceUrl || guid,
+    title,
+    savePath: buildOutputPath(settings.savePath, title),
     quality: settings.quality,
     threadCount: settings.threadCount,
     reencode: settings.reencode ?? false,
@@ -455,6 +466,7 @@ async function redownload(entry: import('../../shared/types').HistoryEntry) {
     stage: 'None',
     progressPercent: 0
   }
+  if (m3u8Url) { job.m3u8Url = m3u8Url; job.sourceVideoIndex = entry.sourceVideoIndex }
   // Use retryJob (skipHistory=true) so the history dedup filter is bypassed —
   // startDownload would silently skip it if the guid is still in history.
   await window.cctvdlApi.retryJob(job)

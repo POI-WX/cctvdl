@@ -60,7 +60,7 @@ export class BrowseService {
   async getColumnVideoList(columnId: string, page: number, month: string): Promise<VideoInfo[]> {
     const params = new URLSearchParams({
       id: columnId, n: '100', p: String(page), d: month,
-      mode: '0', serviceId: 'tvcctv', sort: 'desc'
+      mode: '0', serviceId: 'tvcctv', sort: 'asc'
     })
     const url = `https://api.cntv.cn/NewVideo/getVideoListByColumn?${params}`
     const resp = await this.fetch(url, uaInit())
@@ -73,23 +73,40 @@ export class BrowseService {
 
   // `_month` is part of the symmetric signature with getColumnVideoList but the
   // album endpoint doesn't filter by month, so it's intentionally unused.
+  // Albums can contain more than the API's 100-item page size, so keep fetching
+  // consecutive pages until the final short page and dedupe by guid.
   async getAlbumVideoList(albumId: string, page: number, _month: string, serviceId: CctvServiceId = 'tvcctv'): Promise<VideoInfo[]> {
-    const params = new URLSearchParams({
-      id: albumId,
-      pub: serviceId === 'cctv4k' ? '2' : '1',
-      sort: 'asc',
-      mode: '0',
-      p: String(page),
-      n: '100',
-      serviceId
-    })
-    const url = `https://api.cntv.cn/NewVideo/getVideoListByAlbumIdNew?${params}`
-    const resp = await this.fetch(url, uaInit())
-    if (!resp.ok) throw new Error(`HTTP ${resp.status} from getVideoListByAlbumIdNew`)
-    const data = await resp.json() as Record<string, unknown>
-    const dataObj = data['data'] as Record<string, unknown> | undefined
-    const list = (dataObj?.['list'] as Array<Record<string, unknown>>) || []
-    return list.map(mapVideoItem)
+    const pageSize = 100
+    const maxPages = 100
+    const seen = new Set<string>()
+    const videos: VideoInfo[] = []
+    for (let currentPage = page; currentPage < page + maxPages; currentPage++) {
+      const params = new URLSearchParams({
+        id: albumId,
+        pub: serviceId === 'cctv4k' ? '2' : '1',
+        sort: 'asc',
+        mode: '0',
+        p: String(currentPage),
+        n: String(pageSize),
+        serviceId
+      })
+      const url = `https://api.cntv.cn/NewVideo/getVideoListByAlbumIdNew?${params}`
+      const resp = await this.fetch(url, uaInit())
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} from getVideoListByAlbumIdNew`)
+      const data = await resp.json() as Record<string, unknown>
+      const dataObj = data['data'] as Record<string, unknown> | undefined
+      const list = (dataObj?.['list'] as Array<Record<string, unknown>>) || []
+      let addedOnPage = 0
+      for (const item of list) {
+        const video = mapVideoItem(item)
+        const key = video.guid || `${video.title}\u0000${video.time}`
+        if (!seen.has(key)) { seen.add(key); videos.push(video); addedOnPage++ }
+      }
+      // Some upstream responses ignore `p` and repeat the same full page. Stop
+      // as soon as that happens instead of needlessly requesting all 100 pages.
+      if (list.length < pageSize || addedOnPage === 0) break
+    }
+    return videos
   }
 
   async resolveColumnInfo(pageUrl: string): Promise<ProgramInfo> {

@@ -22,6 +22,9 @@ export interface VideoInfo {
   // flash-client signature). Used by cctvnews.cctv.com snow-book videos whose
   // segments are unencrypted and can be fetched directly.
   m3u8Url?: string
+  // Re-resolvable origin for pre-resolved sources such as cctvnews articles.
+  sourceUrl?: string
+  sourceVideoIndex?: number
 }
 
 export interface DownloadJob {
@@ -44,6 +47,7 @@ export interface DownloadJob {
   // When set, coordinator downloads this variant m3u8 directly (no CCTV API
   // segment resolution, no decryption) and merges the plain .ts segments.
   m3u8Url?: string
+  sourceVideoIndex?: number
 }
 
 export type Quality = 'auto' | 'bluray' | 'chaoqing' | 'gaoqing' | 'biaoqing' | 'liuchang'
@@ -121,6 +125,9 @@ export interface HistoryEntry {
   outputPath: string  // actual written file path
   fileSize: number    // bytes, 0 = unknown
   completedAt: number // epoch ms
+  // Optional origin metadata needed to recreate cctvnews jobs after restart.
+  sourceUrl?: string
+  sourceVideoIndex?: number
 }
 
 export interface CctvdlApi {
@@ -135,7 +142,7 @@ export interface CctvdlApi {
   resolveSingleVideo(url: string): Promise<VideoInfo>
   // Returns all videos reachable from a single URL. Regular pages yield a
   // single-element array; cctvnews snow-book articles may yield N.
-  resolveVideoBatch(url: string): Promise<VideoInfo[]>
+  resolveVideoBatch(url: string, quality?: Quality): Promise<VideoInfo[]>
   getSingleVideos(): Promise<VideoInfo[]>
   addSingleVideo(v: VideoInfo): Promise<boolean>
   deleteSingleVideo(guid: string): Promise<void>

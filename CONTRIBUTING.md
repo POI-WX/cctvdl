@@ -122,10 +122,7 @@ npm run test:gui    # GUI 自动化（Playwright，需先 build）
 npm run test:e2e    # 端到端联网管线（解析→解密→合并；仅需网络，手动跑）
 ```
 
-> **联网 GUI 测试**（`flow.spec.ts`、`single-video.spec.ts` 中的联网用例）需要访问 CCTV。如需跳过，可在运行 `test:gui` 时追加 `--grep-invert "联网"`。
-
-```bash
-```
+> **联网 GUI 测试**（`flow.spec.ts`、`single-video.spec.ts` 中的联网用例）需要访问 CCTV。
 
 ## 打包安装包
 
