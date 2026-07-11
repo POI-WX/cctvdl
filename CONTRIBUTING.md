@@ -124,6 +124,16 @@ npm run test:e2e    # 端到端联网管线（解析→解密→合并；仅需�
 
 > **联网 GUI 测试**（`flow.spec.ts`、`single-video.spec.ts` 中的联网用例）需要访问 CCTV。
 
+### 更新文档截图
+
+README 引用的界面图由脚本统一生成。界面或文案改动后，运行下面的命令更新 `docs/assets/`：
+
+```bash
+npm run docs:screenshots
+```
+
+脚本会在临时应用数据目录中导入真实的 CCTV 栏目、节目集和单视频页，再生成首页、节目集、单视频预览、封面大图、已选内容、下载页、队列、设置和深色模式截图。它需要访问 CCTV，但不会读取或修改本机的真实应用数据，也不会下载视频文件。页面链接集中在 `scripts/capture-docs-screenshots.mjs` 文件开头；如原页面失效，可通过同名 `CCTV_DOCS_*_URL` 环境变量临时替换。
+
 ## 打包安装包
 
 ```bash

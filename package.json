@@ -43,6 +43,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:gui": "electron-vite build && playwright test --config=tests/gui/playwright.config.ts",
+    "docs:screenshots": "electron-vite build && node scripts/capture-docs-screenshots.mjs",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:all": "npm run test && npm run test:gui && npm run test:e2e"
   },
