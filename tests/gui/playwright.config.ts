@@ -8,8 +8,9 @@ export default defineConfig({
   // window is open at a time (avoids two windows + resource contention).
   workers: 1,
   fullyParallel: false,
+  outputDir: '../../test-results/gui',
   use: {
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
 })

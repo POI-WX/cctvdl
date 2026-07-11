@@ -41,6 +41,7 @@ describe('useDownloadStore', () => {
       ]})
       expect(store.jobs).toHaveLength(3)
       expect(store.jobs.map(j => j.id)).toEqual(['j1', 'j2', 'j3'])
+      expect(store.batchJobs.map(j => j.id)).toEqual(['j1', 'j2', 'j3'])
     })
 
     it('duplicate id is overwritten (e.g. retry of a queued job) rather than duplicated', () => {
@@ -140,6 +141,34 @@ describe('useDownloadStore', () => {
       store.jobs[0].percent = 60
       store.jobs[1].percent = 40
       expect(store.batchPercent).toBe(50)
+    })
+
+    it('starts a fresh batch progress calculation after the previous batch ends', () => {
+      const store = useDownloadStore()
+      store.applyBatchStarted({ total: 2, jobs: [
+        { id: 'old-1', title: 'A', guid: 'G1' },
+        { id: 'old-2', title: 'B', guid: 'G2' },
+      ]})
+      store.jobs.forEach(job => { job.state = 'Completed'; job.percent = 100 })
+      store.applyBatchFinished({ completed: 2, failed: 0, cancelled: 0, total: 2, failedJobs: [] })
+      store.applyBatchStarted({ total: 1, jobs: [{ id: 'new-1', title: 'C', guid: 'G3' }] })
+
+      expect(store.batchJobs.map(j => j.id)).toEqual(['new-1'])
+      expect(store.batchPercent).toBe(0)
+    })
+
+    it('counts failed and cancelled jobs as complete for batch progress', () => {
+      const store = useDownloadStore()
+      store.applyBatchStarted({ total: 3, jobs: [
+        { id: 'complete', title: 'A', guid: 'G1' },
+        { id: 'failed', title: 'B', guid: 'G2' },
+        { id: 'cancelled', title: 'C', guid: 'G3' },
+      ]})
+      store.jobs[0].state = 'Completed'; store.jobs[0].percent = 100
+      store.jobs[1].state = 'Failed'; store.jobs[1].percent = 40
+      store.jobs[2].state = 'Cancelled'; store.jobs[2].percent = 10
+
+      expect(store.batchPercent).toBe(100)
     })
 
     it('downloadBadge 有活跃任务时返回数字字符串', () => {

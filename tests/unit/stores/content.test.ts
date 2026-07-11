@@ -238,6 +238,18 @@ describe('useContentStore', () => {
       expect(store.allSelectedDownloaded).toBe(true)
     })
 
+    it('groups selected videos by their source program', () => {
+      const store = useContentStore()
+      store.toggleVideoSelection(mkVideo('A1'), '栏目 A')
+      store.toggleVideoSelection(mkVideo('B1'), '栏目 B')
+      store.toggleVideoSelection(mkVideo('A2'), '栏目 A')
+
+      expect(store.selectedVideoGroups).toEqual([
+        { name: '栏目 A', videos: [expect.objectContaining({ guid: 'A1' }), expect.objectContaining({ guid: 'A2' })] },
+        { name: '栏目 B', videos: [expect.objectContaining({ guid: 'B1' })] }
+      ])
+    })
+
     it('toggleSelectAllFiltered(true) adds every filtered video; (false) removes them', () => {
       const store = useContentStore()
       const v1 = mkVideo('G1')
@@ -285,6 +297,17 @@ describe('useContentStore', () => {
       store.clearAllSelection()
       expect(store.selectedCount).toBe(0)
       expect(store.isVideoSelected(v1)).toBe(false)
+    })
+
+    it('removeVideoSelection removes only the requested cross-program item', () => {
+      const store = useContentStore()
+      const v1 = mkVideo('G1')
+      const v2 = mkVideo('G2')
+      store.toggleVideoSelection(v1)
+      store.toggleVideoSelection(v2)
+
+      store.removeVideoSelection('G1')
+      expect(store.allSelectedVideos.map(v => v.guid)).toEqual(['G2'])
     })
 
     it('clearAllSelection is a no-op when nothing is selected', () => {

@@ -45,9 +45,19 @@ export function registerIpcHandlers(
     return info
   })
 
-  ipcMain.handle('list-videos', async (_, program: ProgramInfo, month: string) => {
+  ipcMain.handle('list-videos', async (_, program: ProgramInfo, month: string, requestId?: number) => {
     if ((program.kind ?? 'column') === 'album') {
-      return browse.getAlbumVideoList(program.columnId, 1, month, program.serviceId ?? 'tvcctv')
+      return browse.getAlbumVideoList(
+        program.columnId,
+        1,
+        month,
+        program.serviceId ?? 'tvcctv',
+        videos => send('album-load-progress', {
+          columnId: program.columnId,
+          ...(requestId == null ? {} : { requestId }),
+          videos
+        })
+      )
     }
     return browse.getColumnVideoList(program.columnId, 1, month)
   })
@@ -81,8 +91,7 @@ export function registerIpcHandlers(
       filters: [{ name: 'JSON', extensions: ['json'] }]
     })
     if (result.canceled || !result.filePaths[0]) return -1
-    const raw = fs.readFileSync(result.filePaths[0], 'utf-8')
-    return config.importPrograms(JSON.parse(raw))
+    return config.importPrograms(readJsonFile(result.filePaths[0]))
   })
 
   ipcMain.handle('export-programs', async () => {
@@ -103,8 +112,7 @@ export function registerIpcHandlers(
       filters: [{ name: 'JSON', extensions: ['json'] }]
     })
     if (result.canceled || !result.filePaths[0]) return -1
-    const raw = fs.readFileSync(result.filePaths[0], 'utf-8')
-    return config.importSingleVideos(JSON.parse(raw))
+    return config.importSingleVideos(readJsonFile(result.filePaths[0]))
   })
 
   ipcMain.handle('export-single-videos', async () => {
@@ -137,15 +145,21 @@ export function registerIpcHandlers(
           return true
         })
     if (newJobs.length > 0) {
-      currentBatchAutoOpen = currentBatchAutoOpen || !!autoOpen
-      send('batch-started', {
-        total: newJobs.length,
-        jobs: newJobs.map(j => ({ id: j.id, title: j.title, guid: j.guid }))
-      })
       // Apply current concurrentVideos setting before starting
       const settings = config.getSettings()
       coordinator.setConcurrentVideos(settings.concurrentVideos ?? 1)
-      coordinator.appendJobs(newJobs)
+      const addedJobs = coordinator.appendJobs(newJobs)
+      const addedIds = new Set(addedJobs.map(job => job.id))
+      for (const job of newJobs) {
+        if (!addedIds.has(job.id)) send('download-skipped', { guid: job.guid, title: job.title, reason: '已在下载队列中' })
+      }
+      if (addedJobs.length > 0) {
+        currentBatchAutoOpen = currentBatchAutoOpen || !!autoOpen
+        send('batch-started', {
+          total: addedJobs.length,
+          jobs: addedJobs.map(j => ({ id: j.id, title: j.title, guid: j.guid }))
+        })
+      }
     } else {
       // All jobs were already downloaded - send empty batch-finished to reset UI
       currentBatchAutoOpen = false
@@ -234,4 +248,13 @@ export function registerIpcHandlers(
       if (dir) shell.openPath(dir)
     }
   })
+}
+
+function readJsonFile(filePath: string): unknown {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error('JSON 文件格式不正确')
+    throw error
+  }
 }

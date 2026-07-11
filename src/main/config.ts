@@ -5,6 +5,9 @@ import { normalizeSettings } from '../shared/settings'
 import type { WindowBounds } from '../shared/window-bounds'
 
 const MAX_HISTORY_SIZE = 1000
+const QUALITIES = new Set<DownloadJob['quality']>(['auto', 'bluray', 'chaoqing', 'gaoqing', 'biaoqing', 'liuchang'])
+const JOB_STATES = new Set<DownloadJob['state']>(['Created', 'Queued', 'ResolvingM3u8', 'Downloading', 'Merging', 'Completed', 'Failed', 'Cancelled'])
+const JOB_STAGES = new Set<DownloadJob['stage']>(['None', 'FetchingPlaylist', 'DownloadingShards', 'MergingShards', 'PublishingOutput'])
 
 interface StoreSchema {
   settings: Settings
@@ -60,7 +63,17 @@ export class ConfigStore {
   }
 
   getPrograms(): ProgramInfo[] {
-    return this.store.get('programs')
+    const raw = this.store.get('programs') as unknown
+    if (!Array.isArray(raw)) return []
+    return raw.flatMap(item => {
+      const p = item as Partial<ProgramInfo>
+      if (!p || typeof p.name !== 'string' || !p.name || typeof p.columnId !== 'string' || !p.columnId) return []
+      const program: ProgramInfo = { name: p.name, columnId: p.columnId, itemId: typeof p.itemId === 'string' ? p.itemId : '' }
+      if (p.kind === 'album' || p.kind === 'column') program.kind = p.kind
+      if (p.serviceId === 'tvcctv' || p.serviceId === 'cctv4k') program.serviceId = p.serviceId
+      if (typeof p.favoritedAt === 'number' && Number.isFinite(p.favoritedAt)) program.favoritedAt = p.favoritedAt
+      return [program]
+    })
   }
 
   addProgram(p: ProgramInfo): boolean {
@@ -116,7 +129,12 @@ export class ConfigStore {
   }
 
   getSingleVideos(): VideoInfo[] {
-    return this.store.get('singleVideos')
+    const raw = this.store.get('singleVideos') as unknown
+    if (!Array.isArray(raw)) return []
+    return raw.flatMap(item => {
+      const video = normalizeVideo(item)
+      return video ? [video] : []
+    })
   }
 
   // Add a standalone video to the persisted collection (newest first); dedupe by guid.
@@ -144,9 +162,8 @@ export class ConfigStore {
     if (!Array.isArray(data)) throw new Error('JSON 格式不正确（应为单视频数组）')
     let added = 0
     for (const item of data) {
-      if (item && typeof item.guid === 'string' && item.guid) {
-        if (this.addSingleVideo(item as VideoInfo)) added++
-      }
+      const video = normalizeVideo(item)
+      if (video && this.addSingleVideo(video)) added++
     }
     return added
   }
@@ -155,11 +172,19 @@ export class ConfigStore {
     const raw = this.store.get('downloadHistory') as unknown
     if (!Array.isArray(raw)) return []
     // Migrate legacy format: string[] → HistoryEntry[]
-    return (raw as Array<string | HistoryEntry>).map(item =>
-      typeof item === 'string'
-        ? { guid: item, title: '', outputPath: '', fileSize: 0, completedAt: 0 }
-        : item
-    )
+    return (raw as Array<string | HistoryEntry>).flatMap(item => {
+      if (typeof item === 'string') return item ? [{ guid: item, title: '', outputPath: '', fileSize: 0, completedAt: 0 }] : []
+      if (!item || typeof item.guid !== 'string' || !item.guid) return []
+      return [{
+        guid: item.guid,
+        title: typeof item.title === 'string' ? item.title : '',
+        outputPath: typeof item.outputPath === 'string' ? item.outputPath : '',
+        fileSize: typeof item.fileSize === 'number' && Number.isFinite(item.fileSize) ? item.fileSize : 0,
+        completedAt: typeof item.completedAt === 'number' && Number.isFinite(item.completedAt) ? item.completedAt : 0,
+        ...(typeof item.sourceUrl === 'string' ? { sourceUrl: item.sourceUrl } : {}),
+        ...(typeof item.sourceVideoIndex === 'number' && Number.isInteger(item.sourceVideoIndex) ? { sourceVideoIndex: item.sourceVideoIndex } : {})
+      }]
+    })
   }
 
   addToDownloadHistory(entry: HistoryEntry): void {
@@ -186,7 +211,12 @@ export class ConfigStore {
   }
 
   getPendingJobs(): DownloadJob[] {
-    return this.store.get('pendingJobs')
+    const raw = this.store.get('pendingJobs') as unknown
+    if (!Array.isArray(raw)) return []
+    return raw.flatMap(item => {
+      const job = normalizePendingJob(item)
+      return job ? [job] : []
+    })
   }
 
   savePendingJobs(jobs: DownloadJob[]): void {
@@ -195,5 +225,44 @@ export class ConfigStore {
 
   clearPendingJobs(): void {
     this.store.set('pendingJobs', [])
+  }
+}
+
+function normalizeVideo(value: unknown): VideoInfo | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const video = value as Partial<VideoInfo>
+  if (typeof video.guid !== 'string' || !video.guid || typeof video.title !== 'string') return undefined
+  return {
+    guid: video.guid,
+    title: video.title,
+    brief: typeof video.brief === 'string' ? video.brief : '',
+    coverUrl: typeof video.coverUrl === 'string' ? video.coverUrl : '',
+    time: typeof video.time === 'string' ? video.time : '',
+    ...(typeof video.m3u8Url === 'string' ? { m3u8Url: video.m3u8Url } : {}),
+    ...(typeof video.sourceUrl === 'string' ? { sourceUrl: video.sourceUrl } : {}),
+    ...(typeof video.sourceVideoIndex === 'number' && Number.isInteger(video.sourceVideoIndex) ? { sourceVideoIndex: video.sourceVideoIndex } : {})
+  }
+}
+
+function normalizePendingJob(value: unknown): DownloadJob | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const job = value as Partial<DownloadJob>
+  if (
+    typeof job.id !== 'string' || !job.id || typeof job.guid !== 'string' || !job.guid ||
+    typeof job.sourceUrl !== 'string' || typeof job.title !== 'string' || typeof job.savePath !== 'string' || !job.savePath ||
+    !QUALITIES.has(job.quality as DownloadJob['quality']) || !JOB_STATES.has(job.state as DownloadJob['state']) || !JOB_STAGES.has(job.stage as DownloadJob['stage']) ||
+    typeof job.threadCount !== 'number' || !Number.isInteger(job.threadCount) || job.threadCount < 1 ||
+    typeof job.reencode !== 'boolean' || typeof job.progressPercent !== 'number' || !Number.isFinite(job.progressPercent)
+  ) return undefined
+  return {
+    id: job.id, guid: job.guid, sourceUrl: job.sourceUrl, title: job.title, savePath: job.savePath,
+    quality: job.quality as DownloadJob['quality'], threadCount: job.threadCount, reencode: job.reencode,
+    state: job.state as DownloadJob['state'], stage: job.stage as DownloadJob['stage'],
+    progressPercent: Math.max(0, Math.min(100, job.progressPercent)),
+    ...(typeof job.errorMessage === 'string' ? { errorMessage: job.errorMessage } : {}),
+    ...(typeof job.errorSegmentIndex === 'number' && Number.isInteger(job.errorSegmentIndex) ? { errorSegmentIndex: job.errorSegmentIndex } : {}),
+    ...(typeof job.outputPath === 'string' ? { outputPath: job.outputPath } : {}),
+    ...(typeof job.m3u8Url === 'string' ? { m3u8Url: job.m3u8Url } : {}),
+    ...(typeof job.sourceVideoIndex === 'number' && Number.isInteger(job.sourceVideoIndex) ? { sourceVideoIndex: job.sourceVideoIndex } : {})
   }
 }

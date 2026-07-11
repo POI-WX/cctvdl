@@ -72,6 +72,15 @@ describe('ConfigStore', () => {
       expect(store.getPrograms()).toEqual([])
     })
 
+    it('ignores malformed persisted programs and normalizes optional fields', () => {
+      ;(store as any).store.set('programs', [
+        { name: '有效栏目', columnId: 'TOPC1', itemId: 1, kind: 'invalid', favoritedAt: Number.NaN },
+        { name: '', columnId: 'TOPC2', itemId: '' },
+        { name: '缺少 ID' }
+      ])
+      expect(store.getPrograms()).toEqual([{ name: '有效栏目', columnId: 'TOPC1', itemId: '' }])
+    })
+
     it('addProgram adds program and returns true', () => {
       const program: ProgramInfo = { name: '新闻联播', columnId: 'TOPC001', itemId: '' }
       const result = store.addProgram(program)
@@ -321,6 +330,12 @@ describe('ConfigStore', () => {
 
     it('getPendingJobs returns empty initially', () => {
       expect(store.getPendingJobs()).toEqual([])
+    })
+
+    it('ignores invalid persisted jobs and clamps a legacy out-of-range progress value', () => {
+      const valid = { ...mkJob('valid'), progressPercent: 120 }
+      ;(store as any).store.set('pendingJobs', [valid, { id: 'broken', guid: 'g' }, 'not-a-job'])
+      expect(store.getPendingJobs()).toEqual([{ ...valid, progressPercent: 100 }])
     })
 
     it('savePendingJobs persists jobs', () => {

@@ -124,6 +124,11 @@ test.describe('真实用户流程', () => {
     await expect(page.locator('.single-mode-label')).toContainText('选集', { timeout: 15000 })
     await expect(page.locator('button', { hasText: '下载本月' })).toHaveCount(0)
     await expect(page.locator('.video-item').first()).toBeVisible({ timeout: 20000 })
+
+    await page.locator('.video-item').first().locator('.el-checkbox__inner').click()
+    await page.locator('button', { hasText: '查看已选' }).click()
+    await expect(page.locator('.selected-videos-panel')).toBeVisible()
+    await expect(page.locator('.selected-video-group-name', { hasText: /跟着唐诗去旅行|唐诗/ })).toBeVisible()
   })
 
   test('设置页修改并发数后保存，下载任务使用新并发数', async () => {

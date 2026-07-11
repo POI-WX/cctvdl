@@ -75,7 +75,13 @@ export class BrowseService {
   // album endpoint doesn't filter by month, so it's intentionally unused.
   // Albums can contain more than the API's 100-item page size, so keep fetching
   // consecutive pages until the final short page and dedupe by guid.
-  async getAlbumVideoList(albumId: string, page: number, _month: string, serviceId: CctvServiceId = 'tvcctv'): Promise<VideoInfo[]> {
+  async getAlbumVideoList(
+    albumId: string,
+    page: number,
+    _month: string,
+    serviceId: CctvServiceId = 'tvcctv',
+    onProgress?: (newVideos: VideoInfo[]) => void
+  ): Promise<VideoInfo[]> {
     const pageSize = 100
     const maxPages = 100
     const seen = new Set<string>()
@@ -97,16 +103,39 @@ export class BrowseService {
       const dataObj = data['data'] as Record<string, unknown> | undefined
       const list = (dataObj?.['list'] as Array<Record<string, unknown>>) || []
       let addedOnPage = 0
+      const newVideos: VideoInfo[] = []
       for (const item of list) {
         const video = mapVideoItem(item)
         const key = video.guid || `${video.title}\u0000${video.time}`
-        if (!seen.has(key)) { seen.add(key); videos.push(video); addedOnPage++ }
+        if (!seen.has(key)) { seen.add(key); videos.push(video); newVideos.push(video); addedOnPage++ }
       }
+      if (newVideos.length) onProgress?.(newVideos)
       // Some upstream responses ignore `p` and repeat the same full page. Stop
       // as soon as that happens instead of needlessly requesting all 100 pages.
       if (list.length < pageSize || addedOnPage === 0) break
     }
     return videos
+  }
+
+  // Used by background notification checks. Unlike the preview loader this
+  // deliberately asks for only the newest API page, avoiding a full traversal
+  // of long-running programmes at every application startup.
+  async getLatestAlbumVideos(albumId: string, serviceId: CctvServiceId = 'tvcctv'): Promise<VideoInfo[]> {
+    const params = new URLSearchParams({
+      id: albumId,
+      pub: serviceId === 'cctv4k' ? '2' : '1',
+      sort: 'desc',
+      mode: '0',
+      p: '1',
+      n: '100',
+      serviceId
+    })
+    const resp = await this.fetch(`https://api.cntv.cn/NewVideo/getVideoListByAlbumIdNew?${params}`, uaInit())
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} from getVideoListByAlbumIdNew`)
+    const data = await resp.json() as Record<string, unknown>
+    const dataObj = data['data'] as Record<string, unknown> | undefined
+    const list = (dataObj?.['list'] as Array<Record<string, unknown>>) || []
+    return list.map(mapVideoItem)
   }
 
   async resolveColumnInfo(pageUrl: string): Promise<ProgramInfo> {
@@ -124,12 +153,24 @@ export class BrowseService {
       const serviceId = detectTvServiceId(pageUrl, html)
       const videoInfo = await this.fetchVideoInfoByGuid(guid, serviceId).catch(() => null)
       if (videoInfo && isClipVideoInfo(videoInfo)) throw new Error('无法解析节目信息')
-      if (videoInfo && isAlbumProgram(videoInfo, serviceId)) {
-        const albumId = String(videoInfo['album_id'] || '')
-        const name = cleanProgramName(String(videoInfo['vset_title'] || '')) || extractTitle(html)
-        const itemId = String(videoInfo['cvid'] || extractItemId(html))
-        if (albumId && name) {
-          return { name, columnId: albumId, itemId, kind: 'album', serviceId }
+      const album = videoInfo && this.albumProgramFromVideoInfo(videoInfo, serviceId, extractTitle(html), extractItemId(html))
+      if (album) return album
+    }
+
+    // Some programme overview pages list episodes but do not expose their own
+    // playable guid or a column id. Resolve one linked episode through the same
+    // metadata path as a directly pasted episode, then identify its album.
+    const episodeUrl = extractRepresentativeEpisodeUrl(pageUrl, html)
+    if (episodeUrl) {
+      const episodeResp = await this.fetch(episodeUrl, uaInit())
+      if (episodeResp.ok) {
+        const episodeHtml = await episodeResp.text()
+        const episodeGuid = extractPageGuid(episodeHtml)
+        if (episodeGuid) {
+          const serviceId = detectTvServiceId(episodeUrl, episodeHtml)
+          const videoInfo = await this.fetchVideoInfoByGuid(episodeGuid, serviceId).catch(() => null)
+          const album = videoInfo && this.albumProgramFromVideoInfo(videoInfo, serviceId, extractTitle(html), extractItemId(html))
+          if (album) return album
         }
       }
     }
@@ -288,6 +329,16 @@ export class BrowseService {
     if (!infoResp.ok) throw new Error(`HTTP ${infoResp.status} from videoinfoByGuid`)
     return await infoResp.json() as Record<string, unknown>
   }
+
+  private albumProgramFromVideoInfo(
+    info: Record<string, unknown>, serviceId: CctvServiceId, fallbackName: string, fallbackItemId: string
+  ): ProgramInfo | null {
+    if (!isAlbumProgram(info, serviceId)) return null
+    const columnId = String(info['album_id'] || '')
+    const name = cleanProgramName(String(info['vset_title'] || '')) || fallbackName
+    if (!columnId || !name) return null
+    return { name, columnId, itemId: String(info['cvid'] || fallbackItemId), kind: 'album', serviceId }
+  }
 }
 
 function mapVideoItem(item: Record<string, unknown>): VideoInfo {
@@ -364,6 +415,24 @@ function isClipVideoInfo(info: Record<string, unknown>): boolean {
 
 function cleanProgramName(name: string): string {
   return name.trim().replace(/^《([^》]+)》(.*)$/, '$1$2')
+}
+
+function extractPageGuid(html: string): string {
+  return html.match(/var\s+guid\s*=\s*["']([^"']+)["']/)?.[1] || ''
+}
+
+function extractRepresentativeEpisodeUrl(pageUrl: string, html: string): string {
+  const candidates = new Set<string>()
+  const hrefPattern = /href=["']([^"']*VIDE[A-Za-z0-9]+[^"']*\.shtml[^"']*)["']/gi
+  for (const match of html.matchAll(hrefPattern)) {
+    try {
+      const url = new URL(match[1].replace(/&amp;/g, '&'), pageUrl)
+      if (url.hostname === 'tv.cctv.com' || url.hostname === 'tv.cctv.cn') candidates.add(url.href)
+    } catch { /* ignore malformed links */ }
+  }
+  // Requiring several episode links avoids turning a page with one related-video
+  // link into a programme set.
+  return candidates.size >= 2 ? [...candidates][0] : ''
 }
 
 function formatVideoTime(value: unknown): string {

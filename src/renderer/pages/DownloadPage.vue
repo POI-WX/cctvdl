@@ -4,8 +4,8 @@
     <div class="dl-toolbar">
       <div class="dl-overview">
         <span class="dl-overview-title">下载队列</span>
-        <span v-if="jobs.length" class="dl-overview-sub">
-          {{ doneCount }}/{{ jobs.length }} 完成
+        <span v-if="batchJobs.length" class="dl-overview-sub">
+          本批次 {{ batchDoneCount }}/{{ batchJobs.length }} 完成
           <span v-if="stats.failed" class="text-danger"> · {{ stats.failed }} 失败</span>
           <span v-if="stats.cancelled" class="text-muted"> · {{ stats.cancelled }} 取消</span>
         </span>
@@ -15,16 +15,16 @@
         <button v-if="!running && failedCount > 0" class="dl-action-btn primary" @click="retryAllFailed">
           ↺ 重试失败 ({{ failedCount }})
         </button>
-        <button v-if="!running && finishedCount > 0" class="dl-action-btn" @click="dlStore.clearFinished()">清除完成</button>
+        <button v-if="!running && finishedCount > 0" class="dl-action-btn" @click="dlStore.clearFinished()">清除已结束</button>
         <button class="dl-action-btn" @click="openFolder">📂 打开文件夹</button>
       </div>
     </div>
 
     <!-- batch progress bar -->
-    <div v-if="jobs.length > 1" class="dl-batch-bar">
+    <div v-if="batchJobs.length > 1" class="dl-batch-bar">
       <div class="dl-batch-info">
         <span class="dl-batch-label">批次进度</span>
-        <span class="dl-batch-desc">{{ doneCount }}/{{ jobs.length }} 完成</span>
+        <span class="dl-batch-desc">{{ batchDoneCount }}/{{ batchJobs.length }} 完成</span>
       </div>
       <div class="dl-batch-track">
         <div
@@ -226,7 +226,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { ElMessage, ElNotification } from 'element-plus'
 import { storeToRefs } from 'pinia'
 import { useDownloadStore } from '../stores/download'
@@ -237,8 +237,10 @@ import { humanizeError } from '../../shared/errors'
 import { buildOutputPath } from '../../shared/filename'
 
 const dlStore = useDownloadStore()
-const { jobs, running, stats, doneCount, finishedCount, failedCount, batchPercent,
+const { jobs, running, stats, finishedCount, failedCount, batchPercent, batchJobs,
         activeJobs, completedJobs, failedCancelledJobs } = storeToRefs(dlStore)
+
+const batchDoneCount = computed(() => batchJobs.value.filter(j => j.state === 'Completed').length)
 
 // ─── 拖拽排序 ──────────────────────────────────────────────────────────────
 const dragOverId = ref<string | null>(null)

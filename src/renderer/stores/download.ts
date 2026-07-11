@@ -17,6 +17,7 @@ export const useDownloadStore = defineStore('download', () => {
   const stats = ref({ completed: 0, failed: 0, cancelled: 0 })
   const activeDownloads = ref(0)
   const updateVersion = ref('')
+  const batchJobIds = ref<Set<string>>(new Set())
 
   const ACTIVE_STATES: JobState[] = ['Queued', 'ResolvingM3u8', 'Downloading', 'Merging']
   function isActive(s: JobState) { return ACTIVE_STATES.includes(s) }
@@ -27,10 +28,12 @@ export const useDownloadStore = defineStore('download', () => {
   const doneCount = computed(() => completedJobs.value.length)
   const finishedCount = computed(() => completedJobs.value.length + failedCancelledJobs.value.length)
   const failedCount = computed(() => jobs.value.filter(j => j.state === 'Failed').length)
+  const batchJobs = computed(() => jobs.value.filter(j => batchJobIds.value.has(j.id)))
   const batchPercent = computed(() => {
-    if (!jobs.value.length) return 0
-    const total = jobs.value.reduce((s, j) => s + j.percent, 0)
-    return Math.round(total / jobs.value.length)
+    if (!batchJobs.value.length) return 0
+    const total = batchJobs.value.reduce((s, j) =>
+      s + (isActive(j.state) ? j.percent : 100), 0)
+    return Math.round(total / batchJobs.value.length)
   })
   const downloadBadge = computed(() => activeDownloads.value > 0 ? String(activeDownloads.value) : '')
   // Sum of speeds of all actively downloading jobs (bytes/sec)
@@ -72,6 +75,7 @@ export const useDownloadStore = defineStore('download', () => {
     // Append new jobs, dedup by id. With the coordinator's appendJobs semantics
     // the same id can only appear if the user retried a job that was already
     // on the queue (rare); in that case the later record wins.
+    const continuingBatch = running.value || jobs.value.some(j => isActive(j.state))
     const existing = new Map(jobs.value.map(j => [j.id, j]))
     for (const j of info.jobs) {
       existing.set(j.id, {
@@ -82,11 +86,15 @@ export const useDownloadStore = defineStore('download', () => {
       })
     }
     jobs.value = Array.from(existing.values())
+    const nextBatchIds = continuingBatch ? new Set(batchJobIds.value) : new Set<string>()
+    for (const job of info.jobs) nextBatchIds.add(job.id)
+    batchJobIds.value = nextBatchIds
     running.value = true
   }
 
   function clearFinished() {
     jobs.value = jobs.value.filter(j => isActive(j.state))
+    batchJobIds.value = new Set([...batchJobIds.value].filter(id => jobs.value.some(j => j.id === id)))
   }
 
   function reorderJobs(ids: string[]) {
@@ -100,7 +108,7 @@ export const useDownloadStore = defineStore('download', () => {
 
   return {
     jobs, running, stats, activeDownloads, updateVersion,
-    activeJobs, completedJobs, failedCancelledJobs,
+    activeJobs, completedJobs, failedCancelledJobs, batchJobs,
     doneCount, finishedCount, failedCount, batchPercent, totalSpeed,
     downloadBadge,
     isActive, applyProgress, applyJobFinished, applyBatchFinished, applyBatchStarted,

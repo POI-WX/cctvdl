@@ -79,10 +79,10 @@ jobs:
         if: runner.os != 'Linux'
         run: npm run test:gui
 
-      - name: Upload screenshots
+      - name: Upload GUI failure diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gui-screenshots-${{ matrix.os }}
-          path: tests/gui/screenshots/
+          name: gui-diagnostics-${{ matrix.os }}
+          path: test-results/gui/
           if-no-files-found: ignore

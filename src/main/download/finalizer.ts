@@ -31,7 +31,8 @@ function defaultSpawn(bin: string, args: string[], signal?: AbortSignal): Promis
 export class Finalizer {
   constructor(
     private readonly spawn: SpawnFn = defaultSpawn,
-    private readonly ffmpeg: string = ffmpegPath()
+    private readonly ffmpeg: string = ffmpegPath(),
+    private readonly maxDuplicateSuffix = 999
   ) {}
 
   writeConcatList(workDir: string, segmentCount: number): string {
@@ -62,25 +63,20 @@ export class Finalizer {
 
   async mergeCopy(listPath: string, outputPath: string, signal?: AbortSignal): Promise<string> {
     const finalPath = this.uniquePath(outputPath)
-    const result = await this.spawn(this.ffmpeg, [
+    return this.runMerge(listPath, finalPath, [
       '-y',
       '-fflags', '+genpts',
       '-f', 'concat', '-safe', '0', '-i', listPath,
       '-avoid_negative_ts', 'make_zero',
       '-map', '0:v:0', '-map', '0:a?',
       '-c', 'copy',
-      '-movflags', '+faststart',
-      finalPath
-    ], signal)
-    if (result.exitCode !== 0) {
-      throw new Error(`ffmpeg copy exit ${result.exitCode}: ${result.stderr.slice(-500)}`)
-    }
-    return finalPath
+      '-movflags', '+faststart'
+    ], signal, 'ffmpeg copy')
   }
 
   async mergeReencode(listPath: string, outputPath: string, signal?: AbortSignal): Promise<string> {
     const finalPath = this.uniquePath(outputPath)
-    const result = await this.spawn(this.ffmpeg, [
+    return this.runMerge(listPath, finalPath, [
       '-y',
       '-fflags', '+genpts',
       '-f', 'concat', '-safe', '0', '-i', listPath,
@@ -89,13 +85,25 @@ export class Finalizer {
       '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
       '-c:a', 'aac',
       '-movflags', '+faststart',
-      '-vsync', '0',
-      finalPath
-    ], signal)
-    if (result.exitCode !== 0) {
-      throw new Error(`ffmpeg exit ${result.exitCode}: ${result.stderr.slice(-500)}`)
+      '-vsync', '0'
+    ], signal, 'ffmpeg')
+  }
+
+  private async runMerge(listPath: string, finalPath: string, args: string[], signal: AbortSignal | undefined, label: string): Promise<string> {
+    const ext = path.extname(finalPath)
+    const base = path.basename(finalPath, ext)
+    const tempPath = path.join(path.dirname(finalPath), `.${base}.${crypto.randomUUID()}.part${ext}`)
+    try {
+      const result = await this.spawn(this.ffmpeg, [...args, tempPath], signal)
+      if (result.exitCode !== 0) {
+        throw new Error(`${label} exit ${result.exitCode}: ${result.stderr.slice(-500)}`)
+      }
+      if (!fs.existsSync(tempPath)) throw new Error(`${label} did not create an output file`)
+      fs.renameSync(tempPath, finalPath)
+      return finalPath
+    } finally {
+      try { fs.rmSync(tempPath, { force: true }) } catch { /* best-effort */ }
     }
-    return finalPath
   }
 
   uniquePath(p: string): string {
@@ -103,10 +111,10 @@ export class Finalizer {
     const dir = path.dirname(p)
     const ext = path.extname(p)
     const base = path.basename(p, ext)
-    for (let i = 1; i < 1000; i++) {
+    for (let i = 1; i <= this.maxDuplicateSuffix; i++) {
       const candidate = path.join(dir, `${base} (${i})${ext}`)
       if (!fs.existsSync(candidate)) return candidate
     }
-    return p
+    throw new Error(`too many files with the same name: ${path.basename(p)}`)
   }
 }

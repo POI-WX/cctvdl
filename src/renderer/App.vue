@@ -128,6 +128,7 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { storeToRefs } from 'pinia'
+import { isCctvLink } from '../shared/cctv-link'
 import HomePage from './pages/HomePage.vue'
 import DownloadPage from './pages/DownloadPage.vue'
 import SettingsPage from './pages/SettingsPage.vue'
@@ -210,7 +211,7 @@ function onDrop(e: DragEvent) {
   e.preventDefault()
   isDragging.value = false
   const text = e.dataTransfer?.getData('text/plain') || e.dataTransfer?.getData('text/uri-list') || ''
-  if (/cctv\.com|cntv\.cn/i.test(text)) {
+  if (isCctvLink(text)) {
     activeTab.value = 'home'
     nextTick(() => homePageRef.value?.handleDropImport(text.trim()))
   } else {

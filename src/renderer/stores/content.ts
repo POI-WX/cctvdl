@@ -5,6 +5,11 @@ import { sortPrograms } from '../../shared/programs'
 import { filterVideos } from '../../shared/video-filter'
 import { recordMonthResult } from '../../shared/month-tracker'
 
+interface SelectedVideoEntry {
+  video: VideoInfo
+  source: string
+}
+
 export const useContentStore = defineStore('content', () => {
   // ─── Persisted / long-lived refs ───────────────────────────────────────
   const programs = ref<ProgramInfo[]>([])
@@ -24,7 +29,7 @@ export const useContentStore = defineStore('content', () => {
   const emptyMonths = ref<Set<string>>(new Set())
   // Cross-month and cross-program selection. Keyed by guid so selections stay
   // intact while users switch months or programs before batch downloading.
-  const selectedVideoMap = ref<Map<string, VideoInfo>>(new Map())
+  const selectedVideoMap = ref<Map<string, SelectedVideoEntry>>(new Map())
   const programQuery = ref('')
   const searchQuery = ref('')
   const debouncedSearch = ref('')
@@ -63,7 +68,16 @@ export const useContentStore = defineStore('content', () => {
   const isVideoSelected = (v: VideoInfo) => selectedVideoMap.value.has(v.guid)
   // Cross-month / cross-program accumulation. Drives "下载选中" — this is what
   // actually gets sent to the download pipeline.
-  const allSelectedVideos = computed(() => Array.from(selectedVideoMap.value.values()))
+  const allSelectedVideos = computed(() => Array.from(selectedVideoMap.value.values(), entry => entry.video))
+  const selectedVideoGroups = computed(() => {
+    const groups = new Map<string, VideoInfo[]>()
+    for (const { video, source } of selectedVideoMap.value.values()) {
+      const list = groups.get(source) ?? []
+      list.push(video)
+      groups.set(source, list)
+    }
+    return Array.from(groups, ([name, videos]) => ({ name, videos }))
+  })
   const selectedCount = computed(() => selectedVideoMap.value.size)
   const allSelected = computed(() =>
     filteredVideos.value.length > 0
@@ -122,10 +136,20 @@ export const useContentStore = defineStore('content', () => {
   // Idempotent and safe to call from any view mode (single mode is no-op in
   // practice because singleVideos don't typically go through this flow, but
   // the function handles it correctly if called).
-  function toggleVideoSelection(v: VideoInfo) {
+  function toggleVideoSelection(v: VideoInfo, source = '') {
     const next = new Map(selectedVideoMap.value)
-    if (next.has(v.guid)) next.delete(v.guid)
-    else next.set(v.guid, v)
+    if (next.has(v.guid)) {
+      next.delete(v.guid)
+    } else {
+      next.set(v.guid, { video: v, source: source || '其他视频' })
+    }
+    selectedVideoMap.value = next
+  }
+
+  function removeVideoSelection(guid: string) {
+    if (!selectedVideoMap.value.has(guid)) return
+    const next = new Map(selectedVideoMap.value)
+    next.delete(guid)
     selectedVideoMap.value = next
   }
 
@@ -135,8 +159,11 @@ export const useContentStore = defineStore('content', () => {
   function toggleSelectAllFiltered(select: boolean) {
     const next = new Map(selectedVideoMap.value)
     for (const v of filteredVideos.value) {
-      if (select) next.set(v.guid, v)
-      else next.delete(v.guid)
+      if (select) {
+        next.set(v.guid, { video: v, source: selectedProgram.value?.name || '其他视频' })
+      } else {
+        next.delete(v.guid)
+      }
     }
     selectedVideoMap.value = next
   }
@@ -160,10 +187,10 @@ export const useContentStore = defineStore('content', () => {
     selectedMonth, downloadedSet, newContentMap, emptyMonths, selectedVideoMap,
     programQuery, searchQuery, debouncedSearch,
     isFav, filteredPrograms, displayRows,
-    filteredVideos, isVideoSelected, allSelectedVideos, selectedCount,
+    filteredVideos, isVideoSelected, allSelectedVideos, selectedVideoGroups, selectedCount,
     allSelected, downloadedCount, allSelectedDownloaded,
     emptyHint, groupedVideos,
     refreshDownloadedSet, recordVideosLoaded, clearEmptyMonths, applyNewContent, clearNewContent,
-    toggleVideoSelection, toggleSelectAllFiltered, clearAllSelection, markDownloaded
+    toggleVideoSelection, removeVideoSelection, toggleSelectAllFiltered, clearAllSelection, markDownloaded
   }
 })

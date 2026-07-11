@@ -3,8 +3,8 @@ import type { ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, B
 
 const api: CctvdlApi = {
   browseProgram: (url: string) => ipcRenderer.invoke('browse-program', url),
-  listVideos: (program: ProgramInfo, month: string) =>
-    ipcRenderer.invoke('list-videos', program, month),
+  listVideos: (program: ProgramInfo, month: string, requestId?: number) =>
+    ipcRenderer.invoke('list-videos', program, month, requestId),
   importProgram: (p: ProgramInfo) => ipcRenderer.invoke('import-program', p),
   importPrograms: () => ipcRenderer.invoke('import-programs'),
   deleteProgram: (columnId: string) => ipcRenderer.invoke('delete-program', columnId),
@@ -61,6 +61,11 @@ const api: CctvdlApi = {
     const handler = (_: unknown, info: { guid: string; title: string; reason: string }) => cb(info)
     ipcRenderer.on('download-skipped', handler)
     return () => ipcRenderer.removeListener('download-skipped', handler)
+  },
+  onAlbumLoadProgress: (cb: (info: { columnId: string; requestId?: number; videos: VideoInfo[] }) => void) => {
+    const handler = (_: unknown, info: { columnId: string; requestId?: number; videos: VideoInfo[] }) => cb(info)
+    ipcRenderer.on('album-load-progress', handler)
+    return () => ipcRenderer.removeListener('album-load-progress', handler)
   },
   onClipboardLink: (cb: (url: string) => void) => {
     const handler = (_: unknown, url: string) => cb(url)

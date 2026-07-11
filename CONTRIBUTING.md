@@ -112,7 +112,7 @@ npm run build:icons
 
 ## 测试
 
-提交 PR 前，请确保静态检查与测试都通过。CI 的 PR 门禁链为 lint/typecheck/build → unit → gui；e2e（联网管线）因 CCTV CDN 封境外 IP 无法在 CI 通过，改为仅手动触发（本地或 workflow_dispatch）：
+提交 PR 前，请确保静态检查与测试都通过。CI 的 PR 门禁链为 lint/typecheck/build → unit → gui。联网 E2E 依赖央视服务，请在本地网络环境运行；GitHub Actions 的手动工作流仍使用 GitHub Runner，不能替代本地联网验证：
 
 ```bash
 npm run lint        # ESLint（flat config）

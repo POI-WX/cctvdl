@@ -71,12 +71,18 @@ export class DownloadCoordinator extends EventEmitter {
     this.concurrentVideos = Math.max(1, Math.min(3, Math.floor(n)))
   }
 
-  addJob(job: DownloadJob): void {
+  addJob(job: DownloadJob): boolean {
+    const duplicate = this.queue.some(existing =>
+      existing.guid === job.guid
+      && ['Queued', 'ResolvingM3u8', 'Downloading', 'Merging'].includes(existing.state)
+    )
+    if (duplicate) return false
     job.state = 'Queued'
     job.stage = 'None'
     job.progressPercent = 0
     this.queue.push(job)
     this.batchStats.total++
+    return true
   }
 
   /**
@@ -90,10 +96,10 @@ export class DownloadCoordinator extends EventEmitter {
    * so the final `batchFinished` event reports accurate totals across every
    * append that contributed to the batch.
    *
-   * Persistence: only Queued jobs are saved as pending — running / finished
-   * jobs live in their own per-guid `state.json` work dirs.
+   * Pending jobs are persisted after every queue state change so an interrupted
+   * download can be resumed on the next launch.
    */
-  appendJobs(jobs: DownloadJob[]): void {
+  appendJobs(jobs: DownloadJob[]): DownloadJob[] {
     const hasActive = this.activeJobs.size > 0
       || this.queue.some(j =>
         j.state === 'Queued' || j.state === 'ResolvingM3u8'
@@ -105,21 +111,10 @@ export class DownloadCoordinator extends EventEmitter {
       this.failedJobs = []
       this.batchFinishedEmitted = false
     }
-    for (const job of jobs) this.addJob(job)
+    const added = jobs.filter(job => this.addJob(job))
     this.isCancellingAll = false
     this.startNext()
-  }
-
-  /**
-   * Drop every queued / running / finished job and zero the stats. Called
-   * by `cancelAll` to end the current batch cleanly; `appendJobs` called
-   * afterwards will start a fresh batch.
-   */
-  resetQueue(): void {
-    this.queue = []
-    this.batchStats = { completed: 0, failed: 0, cancelled: 0, total: 0 }
-    this.failedJobs = []
-    this.config?.clearPendingJobs()
+    return added
   }
 
   // Resume a previously persisted batch (e.g. after app restart). The queue

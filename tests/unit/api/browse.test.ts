@@ -266,6 +266,20 @@ describe('BrowseService', () => {
       expect(mockFetch.mock.calls[1][0]).toContain('p=2')
     })
 
+    it('reports the accumulated unique episode count after each page', async () => {
+      const firstPage = Array.from({ length: 100 }, (_, i) => ({ guid: `album-${i}`, title: `Episode ${i}`, brief: '', image: '', time: '' }))
+      const secondPage = [{ guid: 'album-100', title: 'Episode 100', brief: '', image: '', time: '' }]
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: { list: firstPage } }) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: { list: secondPage } }) })
+      const onProgress = vi.fn()
+
+      await new BrowseService(mockFetch).getAlbumVideoList('album123', 1, '', 'tvcctv', onProgress)
+
+      expect(onProgress.mock.calls[0][0]).toHaveLength(100)
+      expect(onProgress.mock.calls[1][0]).toHaveLength(1)
+    })
+
     it('stops when an upstream page repeats without adding videos', async () => {
       const fullPage = Array.from({ length: 100 }, (_, i) => ({ guid: `g${i}`, title: `E${i}`, brief: '', image: '', time: '' }))
       const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ data: { list: fullPage } }) })
@@ -291,6 +305,21 @@ describe('BrowseService', () => {
       const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 500 })
       const service = new BrowseService(mockFetch)
       await expect(service.getAlbumVideoList('album123', 1, '202401')).rejects.toThrow('HTTP 500')
+    })
+  })
+
+  describe('getLatestAlbumVideos', () => {
+    it('fetches only the newest album page for background checks', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: { list: [{ guid: 'newest', title: '最新一集' }] } })
+      })
+      const videos = await new BrowseService(mockFetch).getLatestAlbumVideos('album123', 'cctv4k')
+
+      expect(videos).toHaveLength(1)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      expect(mockFetch.mock.calls[0][0]).toContain('sort=desc')
+      expect(mockFetch.mock.calls[0][0]).toContain('pub=2')
     })
   })
 
@@ -396,6 +425,37 @@ describe('BrowseService', () => {
         kind: 'album',
         serviceId: 'tvcctv'
       })
+    })
+
+    it('recognizes an overview page with several episode links as the same album', async () => {
+      const overview = `<title>《极限火力》_CCTV节目官网</title>
+        <a href="/2021/10/13/VIDEeLV5WaJ6xHBNsqAeoaDe211013.shtml">第1集</a>
+        <a href="/2021/10/15/VIDEVbdZluoj27TlgPZXJVlr211015.shtml">第2集</a>`
+      const episode = `<script>var guid = "real-guid";</script>`
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(overview) })
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(episode) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({
+          title: '《极限火力》 第1集', album_id: 'album-fire', vset_title: '《极限火力》',
+          cvid: 'VIDEeLV5WaJ6xHBNsqAeoaDe211013', tnum: '6'
+        }) })
+
+      await expect(new BrowseService(mockFetch).resolveColumnInfo('https://tv.cctv.com/2021/10/09/VIDAlliMaCI9BiLxf3UhAGA8211009.shtml'))
+        .resolves.toEqual({ name: '极限火力', columnId: 'album-fire', itemId: 'VIDEeLV5WaJ6xHBNsqAeoaDe211013', kind: 'album', serviceId: 'tvcctv' })
+    })
+
+    it('recognizes a tv.cctv.cn overview page through its own episode links', async () => {
+      const overview = `<title>节目概览_CCTV节目官网</title>
+        <a href="/2021/10/13/VIDEeLV5WaJ6xHBNsqAeoaDe211013.shtml">第1集</a>
+        <a href="/2021/10/15/VIDEVbdZluoj27TlgPZXJVlr211015.shtml">第2集</a>`
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(overview) })
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(`<script>var guid = "real-guid";</script>`) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ album_id: 'album-cn', vset_title: '节目概览', cvid: 'episode-id', tnum: '2' }) })
+
+      await expect(new BrowseService(mockFetch).resolveColumnInfo('https://tv.cctv.cn/2021/10/09/VIDAlliMaCI9BiLxf3UhAGA8211009.shtml'))
+        .resolves.toMatchObject({ columnId: 'album-cn', kind: 'album' })
+      expect(mockFetch.mock.calls[1][0]).toContain('tv.cctv.cn')
     })
 
     it('keeps dated program pages as column programs even when metadata has album_id', async () => {

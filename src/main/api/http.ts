@@ -27,7 +27,19 @@ function isRetriableStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500
 }
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error('aborted'))
+    const timer = setTimeout(done, ms)
+    const onAbort = () => { clearTimeout(timer); done(new Error('aborted')) }
+    function done(err?: Error) {
+      signal?.removeEventListener('abort', onAbort)
+      if (err) reject(err)
+      else resolve()
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
 
 /**
  * Wrap a base fetcher with per-attempt timeout + bounded retry/backoff.
@@ -58,14 +70,16 @@ export function createResilientFetch(
       try {
         const resp = await baseFetch(url, { ...init, signal: controller.signal })
         if (isRetriableStatus(resp.status) && attempt < retries) {
-          await sleep(backoffMs * 2 ** attempt)
+          await resp.body?.cancel().catch(() => {})
+          await sleep(backoffMs * 2 ** attempt, init?.signal ?? undefined)
           continue
         }
         return resp
       } catch (err) {
         lastError = err
+        if (init?.signal?.aborted) throw new Error(`fetch failed after ${attempt + 1} attempts: aborted`)
         if (attempt < retries) {
-          await sleep(backoffMs * 2 ** attempt)
+          await sleep(backoffMs * 2 ** attempt, init?.signal ?? undefined)
           continue
         }
       } finally {

@@ -27,6 +27,7 @@ vi.mock('../../src/main/preflight', () => ({
 
 import { registerIpcHandlers } from '../../src/main/ipc'
 import { ipcMain, shell } from 'electron'
+import fs from 'fs'
 
 describe('IPC Handlers', () => {
   let handlers: Record<string, Function>
@@ -47,7 +48,7 @@ describe('IPC Handlers', () => {
     } as unknown as BrowserWindow
 
     mockCoordinator = {
-      appendJobs: vi.fn(),
+      appendJobs: vi.fn((jobs: any[]) => jobs),
       cancel: vi.fn(),
       cancelAll: vi.fn(),
       setConcurrentVideos: vi.fn(),
@@ -123,8 +124,35 @@ describe('IPC Handlers', () => {
 
     it('calls getAlbumVideoList for album programs', async () => {
       await handlers['list-videos']({}, { name: 'Album', columnId: 'album123', itemId: '', kind: 'album', serviceId: 'cctv4k' }, '202601')
-      expect(mockBrowse.getAlbumVideoList).toHaveBeenCalledWith('album123', 1, '202601', 'cctv4k')
+      expect(mockBrowse.getAlbumVideoList).toHaveBeenCalledWith('album123', 1, '202601', 'cctv4k', expect.any(Function))
       expect(mockBrowse.getColumnVideoList).not.toHaveBeenCalled()
+    })
+
+    it('forwards album page progress to the renderer', async () => {
+      vi.mocked(mockBrowse.getAlbumVideoList).mockImplementationOnce(async (_id, _page, _month, _serviceId, onProgress) => {
+        onProgress?.([{ guid: 'g1', title: 'Episode 1', brief: '', coverUrl: '', time: '' }])
+        return []
+      })
+
+      await handlers['list-videos']({}, { name: 'Album', columnId: 'album123', itemId: '', kind: 'album' }, '')
+
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('album-load-progress', {
+        columnId: 'album123',
+        videos: [{ guid: 'g1', title: 'Episode 1', brief: '', coverUrl: '', time: '' }]
+      })
+    })
+
+    it('tags album page progress with the originating request id', async () => {
+      vi.mocked(mockBrowse.getAlbumVideoList).mockImplementationOnce(async (_id, _page, _month, _serviceId, onProgress) => {
+        onProgress?.([{ guid: 'g2', title: 'Episode 2', brief: '', coverUrl: '', time: '' }])
+        return []
+      })
+
+      await handlers['list-videos']({}, { name: 'Album', columnId: 'album123', itemId: '', kind: 'album' }, '', 42)
+
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('album-load-progress', expect.objectContaining({
+        columnId: 'album123', requestId: 42
+      }))
     })
 
     it('does not fall back on network error (propagates directly)', async () => {
@@ -153,6 +181,13 @@ describe('IPC Handlers', () => {
     it('returns -1 and does not import when the dialog is cancelled', async () => {
       const result = await handlers['import-programs']({})
       expect(result).toBe(-1)
+      expect(mockConfig.importPrograms).not.toHaveBeenCalled()
+    })
+
+    it('reports malformed JSON with a user-facing error', async () => {
+      vi.mocked((await import('electron')).dialog.showOpenDialog).mockResolvedValueOnce({ canceled: false, filePaths: ['C:/broken.json'] } as any)
+      vi.spyOn(fs, 'readFileSync').mockReturnValueOnce('{ broken')
+      await expect(handlers['import-programs']({})).rejects.toThrow('JSON 文件格式不正确')
       expect(mockConfig.importPrograms).not.toHaveBeenCalled()
     })
   })
@@ -260,6 +295,18 @@ describe('IPC Handlers', () => {
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
       await handlers['start-download']({}, jobs)
       expect(mockCoordinator.appendJobs).toHaveBeenCalledWith(jobs)
+    })
+
+    it('reports jobs rejected by the coordinator as already queued', async () => {
+      const jobs = [{ id: 'j1', guid: 'g1', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
+      vi.mocked(mockCoordinator.appendJobs).mockReturnValueOnce([])
+
+      await handlers['start-download']({}, jobs)
+
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('download-skipped', {
+        guid: 'g1', title: 'T', reason: '已在下载队列中'
+      })
+      expect(mockWindow.webContents.send).not.toHaveBeenCalledWith('batch-started', expect.anything())
     })
 
     it('skips already-downloaded jobs', async () => {

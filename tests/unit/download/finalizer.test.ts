@@ -7,6 +7,11 @@ import os from 'os'
 describe('Finalizer', () => {
   let tempDir: string
 
+  const successfulSpawn = () => vi.fn(async (_bin: string, args: string[]) => {
+    fs.writeFileSync(args.at(-1)!, 'video')
+    return { exitCode: 0, stderr: '' }
+  })
+
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cctvdl-test-'))
   })
@@ -41,7 +46,7 @@ describe('Finalizer', () => {
 
   describe('merge (default = lossless copy)', () => {
     it('uses stream copy by default, not re-encoding', async () => {
-      const mockSpawn = vi.fn().mockResolvedValue({ exitCode: 0, stderr: '' })
+      const mockSpawn = successfulSpawn()
       const finalizer = new Finalizer(mockSpawn, '/mock/ffmpeg')
 
       const listPath = path.join(tempDir, 'concat.txt')
@@ -57,10 +62,12 @@ describe('Finalizer', () => {
       expect(args[cIndex + 1]).toBe('copy')
       expect(args).not.toContain('libx264')
       expect(args).toContain('+faststart')
+      expect(args.at(-1)).toMatch(/\.part\.mp4$/)
+      expect(fs.existsSync(outputPath)).toBe(true)
     })
 
     it('re-encodes with libx264 when reencode=true', async () => {
-      const mockSpawn = vi.fn().mockResolvedValue({ exitCode: 0, stderr: '' })
+      const mockSpawn = successfulSpawn()
       const finalizer = new Finalizer(mockSpawn, '/mock/ffmpeg')
 
       const listPath = path.join(tempDir, 'concat.txt')
@@ -79,7 +86,7 @@ describe('Finalizer', () => {
     })
 
     it('forwards cancellation to the ffmpeg runner', async () => {
-      const mockSpawn = vi.fn().mockResolvedValue({ exitCode: 0, stderr: '' })
+      const mockSpawn = successfulSpawn()
       const finalizer = new Finalizer(mockSpawn, '/mock/ffmpeg')
       const controller = new AbortController()
       const listPath = path.join(tempDir, 'concat.txt')
@@ -111,6 +118,19 @@ describe('Finalizer', () => {
 
       await expect(finalizer.merge(listPath, outputPath, true)).rejects.toThrow('ffmpeg exit 1')
     })
+
+    it('removes a partial temporary output when ffmpeg fails', async () => {
+      const mockSpawn = vi.fn(async (_bin: string, args: string[]) => {
+        fs.writeFileSync(args.at(-1)!, 'partial')
+        return { exitCode: 1, stderr: 'Error message' }
+      })
+      const finalizer = new Finalizer(mockSpawn, '/mock/ffmpeg')
+      const listPath = path.join(tempDir, 'concat.txt')
+      fs.writeFileSync(listPath, "file 'test.mp4'\n")
+
+      await expect(finalizer.merge(listPath, path.join(tempDir, 'output.mp4'))).rejects.toThrow('ffmpeg copy exit 1')
+      expect(fs.readdirSync(tempDir).some(name => name.includes('.part'))).toBe(false)
+    })
   })
 
 
@@ -139,6 +159,15 @@ describe('Finalizer', () => {
 
       const result = finalizer.uniquePath(base)
       expect(result).toBe(path.join(tempDir, 'test (3).mp4'))
+    })
+
+    it('throws instead of overwriting after the naming limit is exhausted', () => {
+      const finalizer = new Finalizer(undefined, undefined, 2)
+      const base = path.join(tempDir, 'test.mp4')
+      fs.writeFileSync(base, 'content')
+      for (let i = 1; i <= 2; i++) fs.writeFileSync(path.join(tempDir, `test (${i}).mp4`), 'content')
+
+      expect(() => finalizer.uniquePath(base)).toThrow('too many files with the same name')
     })
   })
 })

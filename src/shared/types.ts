@@ -132,7 +132,7 @@ export interface HistoryEntry {
 
 export interface CctvdlApi {
   browseProgram(url: string): Promise<ProgramInfo>
-  listVideos(program: ProgramInfo, month: string): Promise<VideoInfo[]>
+  listVideos(program: ProgramInfo, month: string, requestId?: number): Promise<VideoInfo[]>
   importProgram(p: ProgramInfo): Promise<boolean>
   importPrograms(): Promise<number>
   deleteProgram(columnId: string): Promise<void>
@@ -168,6 +168,7 @@ export interface CctvdlApi {
   onBatchFinished(cb: (result: BatchResult) => void): () => void
   onBatchStarted(cb: (info: BatchStartInfo) => void): () => void
   onDownloadSkipped(cb: (info: { guid: string; title: string; reason: string }) => void): () => void
+  onAlbumLoadProgress(cb: (info: { columnId: string; requestId?: number; videos: VideoInfo[] }) => void): () => void
   onClipboardLink(cb: (url: string) => void): () => void
   onUpdateAvailable(cb: (payload: { version: string }) => void): () => void
   onNewContent(cb: (payload: { columnId: string; count: number }) => void): () => void

@@ -87,13 +87,23 @@ describe('DownloadCoordinator', () => {
         progressPercent: 0
       }
 
-      coordinator.addJob(job)
       coordinator.appendJobs([job])
 
       // Wait for async operations
       await new Promise((resolve) => setTimeout(resolve, 100))
 
       expect(progressHandler).toHaveBeenCalled()
+    })
+
+    it('rejects a second active job for the same video guid', () => {
+      const first = {
+        id: 'first', guid: 'same-guid', sourceUrl: '', title: 'First', savePath: '/tmp/first.mp4',
+        quality: 'auto' as const, threadCount: 1, state: 'Created' as const, stage: 'None' as const, progressPercent: 0
+      }
+      const duplicate = { ...first, id: 'duplicate', title: 'Duplicate' }
+
+      expect(coordinator.appendJobs([first])).toEqual([first])
+      expect(coordinator.appendJobs([duplicate])).toEqual([])
     })
   })
 
@@ -932,18 +942,6 @@ describe('DownloadCoordinator', () => {
       // the second appendJobs fired mid-flight.
       const queueIds = (coordinator as any).queue.map((j: DownloadJob) => j.id)
       expect(queueIds).toEqual(expect.arrayContaining(['A', 'B', 'C', 'D']))
-    })
-
-    it('resetQueue clears queue, stats, and pending persistence', async () => {
-      const mockConfig = { addToDownloadHistory: vi.fn(), savePendingJobs: vi.fn(), clearPendingJobs: vi.fn() }
-      coordinator = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer, mockConfig)
-
-      coordinator.appendJobs([mkJob('A'), mkJob('B')])
-      coordinator.resetQueue()
-
-      expect((coordinator as any).queue).toEqual([])
-      expect((coordinator as any).batchStats).toEqual({ completed: 0, failed: 0, cancelled: 0, total: 0 })
-      expect(mockConfig.clearPendingJobs).toHaveBeenCalled()
     })
 
     it('cancelAll clears queue and leaves the coordinator ready for a fresh appendJobs', async () => {

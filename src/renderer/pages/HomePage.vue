@@ -121,7 +121,11 @@
             </span>
           </div>
           <div v-else class="single-mode-label">
-            <span>选集 · {{ videos.length }}</span>
+            <span>选集 · {{ loadingVideos ? `正在加载 ${albumLoadedCount} 集` : videos.length }}</span>
+            <el-select v-model="albumSort" size="small" style="width: 104px" @change="sortDisplayedAlbum">
+              <el-option label="正序（最早在前）" value="asc" />
+              <el-option label="倒序（最新在前）" value="desc" />
+            </el-select>
           </div>
           <div class="section-actions">
             <button
@@ -167,7 +171,7 @@
                   :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
                   @click="onVideoClick(v)"
                 >
-                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v)" @click.stop size="small" />
+                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v, selectionSource)" @click.stop size="small" />
                   <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
                        @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
@@ -187,7 +191,7 @@
                   :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
                   @click="onVideoClick(v)"
                 >
-                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v)" @click.stop size="small" />
+                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v, selectionSource)" @click.stop size="small" />
                   <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
                        @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
@@ -210,7 +214,7 @@
                   :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
                   @click="onVideoClick(v)"
                 >
-                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v)" @click.stop size="small" />
+                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v, selectionSource)" @click.stop size="small" />
                   <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
                        @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
@@ -229,7 +233,7 @@
                   :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
                   @click="onVideoClick(v)"
                 >
-                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v)" @click.stop size="small" />
+                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v, selectionSource)" @click.stop size="small" />
                   <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
                        @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
@@ -251,7 +255,7 @@
                   :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
                   @click="onVideoClick(v)"
                 >
-                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v)" @click.stop size="small" />
+                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v, selectionSource)" @click.stop size="small" />
                   <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
                        @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
@@ -280,6 +284,21 @@
             class="footer-btn footer-btn-ghost"
             @click="contentStore.clearAllSelection()"
           >清空已选</button>
+          <el-popover v-if="selectedCount" placement="top" :width="340" trigger="click">
+            <template #reference>
+              <button class="footer-btn footer-btn-ghost">查看已选</button>
+            </template>
+            <div class="selected-videos-panel">
+              <div class="selected-videos-title">已选 {{ selectedCount }} 个视频</div>
+              <div v-for="group in selectedVideoGroups" :key="group.name" class="selected-video-group">
+                <div class="selected-video-group-name">{{ group.name }} · {{ group.videos.length }}</div>
+                <div v-for="video in group.videos" :key="video.guid" class="selected-video-row">
+                  <span :title="video.title">{{ video.title }}</span>
+                  <button title="移除" @click="contentStore.removeVideoSelection(video.guid)">×</button>
+                </div>
+              </div>
+            </div>
+          </el-popover>
           <button
             v-if="viewMode === 'column'"
             class="footer-btn"
@@ -430,6 +449,7 @@ import type { ProgramInfo, VideoInfo, DownloadJob } from '../../shared/types'
 import { isProgramDeleteKey } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
 import { buildOutputPath, safeFilename } from '../../shared/filename'
+import { createLatestRequestGuard } from '../../shared/latest-request'
 import { useContentStore } from '../stores/content'
 
 const contentStore = useContentStore()
@@ -439,7 +459,7 @@ const {
   programQuery, searchQuery, debouncedSearch,
   filteredPrograms, displayRows,
   filteredVideos, allSelected, downloadedCount, allSelectedDownloaded,
-  emptyHint, groupedVideos, allSelectedVideos, selectedCount
+  emptyHint, groupedVideos, allSelectedVideos, selectedVideoGroups, selectedCount
 } = storeToRefs(contentStore)
 
 const isFav = contentStore.isFav
@@ -451,6 +471,7 @@ const selectedIsAlbum = computed(() => (selectedProgram.value?.kind ?? 'column')
 const currentListSelectedCount = computed(() =>
   videos.value.filter(v => contentStore.isVideoSelected(v)).length
 )
+const selectionSource = computed(() => selectedProgram.value?.name || (viewMode.value === 'single' ? '单个视频' : '其他视频'))
 
 const isMac = window.cctvdlApi.isMac
 
@@ -470,7 +491,9 @@ const importPlaceholder = ref(IMPORT_PLACEHOLDERS[0])
 let placeholderTimer: ReturnType<typeof setInterval> | null = null
 let placeholderIdx = 0
 const loadingVideos = ref(false)
-let videoLoadRequestId = 0
+const videoLoadGuard = createLatestRequestGuard()
+const albumSort = ref<'asc' | 'desc'>('asc')
+const albumLoadedCount = ref(0)
 const coverError = ref(false)
 const coverLoading = ref(false)
 const coverDownloading = ref(false)
@@ -535,6 +558,7 @@ let cleanupSkipped: (() => void) | null = null
 let cleanupClipboard: (() => void) | null = null
 let cleanupNewContent: (() => void) | null = null
 let cleanupJobFinished: (() => void) | null = null
+let cleanupAlbumProgress: (() => void) | null = null
 let lastClipboardUrl = ''
 function onHistoryCleared() { contentStore.refreshDownloadedSet() }
 
@@ -603,6 +627,19 @@ onMounted(async () => {
   cleanupJobFinished = window.cctvdlApi.onJobFinished((job) => {
     if (job.state === 'Completed') contentStore.markDownloaded(job.guid)
   })
+  cleanupAlbumProgress = window.cctvdlApi.onAlbumLoadProgress((info) => {
+    if (
+      selectedIsAlbum.value
+      && selectedProgram.value?.columnId === info.columnId
+      && info.requestId != null
+      && videoLoadGuard.isCurrent(info.requestId)
+    ) {
+      const merged = new Map(videos.value.map(video => [video.guid, video]))
+      for (const video of info.videos) merged.set(video.guid, video)
+      videos.value = sortAlbumList(Array.from(merged.values()))
+      albumLoadedCount.value = videos.value.length
+    }
+  })
 
   // 设置页清除历史后刷新已下载标记
   window.addEventListener('cctvdl:history-cleared', onHistoryCleared)
@@ -613,6 +650,7 @@ onUnmounted(() => {
   cleanupClipboard?.()
   cleanupNewContent?.()
   cleanupJobFinished?.()
+  cleanupAlbumProgress?.()
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('cctvdl:history-cleared', onHistoryCleared)
   if (placeholderTimer) clearInterval(placeholderTimer)
@@ -812,14 +850,16 @@ async function clearAllPrograms() {
 
 async function loadVideos() {
   if (!selectedProgram.value) return
-  const requestId = ++videoLoadRequestId
+  const requestId = videoLoadGuard.begin()
   loadingVideos.value = true
+  albumLoadedCount.value = 0
+  if (selectedIsAlbum.value) videos.value = []
   contentStore.refreshDownloadedSet()
   try {
     const program = { ...selectedProgram.value }
-    const list = await window.cctvdlApi.listVideos(program, selectedIsAlbum.value ? '' : selectedMonth.value)
-    if (requestId !== videoLoadRequestId) return
-    videos.value = list
+    const list = await window.cctvdlApi.listVideos(program, selectedIsAlbum.value ? '' : selectedMonth.value, requestId)
+    if (!videoLoadGuard.isCurrent(requestId)) return
+    videos.value = selectedIsAlbum.value ? sortAlbumList(list) : list
     // Only drop the preview if its video is no longer in the freshly loaded
     // list (e.g. deleted from the server). Otherwise preserve so users can
     // browse months without losing their preview context.
@@ -828,10 +868,22 @@ async function loadVideos() {
     }
     if (!selectedIsAlbum.value) contentStore.recordVideosLoaded(selectedMonth.value, list)
   } catch (err) {
-    if (requestId === videoLoadRequestId) ElMessage.error(`加载失败：${humanizeError(String(err))}`)
+    if (videoLoadGuard.isCurrent(requestId)) ElMessage.error(`加载失败：${humanizeError(String(err))}`)
   } finally {
-    if (requestId === videoLoadRequestId) loadingVideos.value = false
+    if (videoLoadGuard.isCurrent(requestId)) loadingVideos.value = false
   }
+}
+
+function sortAlbumList(list: VideoInfo[]): VideoInfo[] {
+  const direction = albumSort.value === 'asc' ? 1 : -1
+  return [...list].sort((a, b) => {
+    const byTime = String(a.time || '').localeCompare(String(b.time || ''))
+    return byTime === 0 ? direction * a.guid.localeCompare(b.guid) : direction * byTime
+  })
+}
+
+function sortDisplayedAlbum() {
+  if (selectedIsAlbum.value) videos.value = sortAlbumList(videos.value)
 }
 
 function onVideoClick(row: VideoInfo) {
@@ -923,6 +975,17 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
       if (v.sourceVideoIndex != null) job.sourceVideoIndex = v.sourceVideoIndex
       return job
     })
+    if (jobs.length > 1) {
+      try {
+        await ElMessageBox.confirm(
+          `将下载 ${jobs.length} 个视频\n清晰度：${settings.quality}\n保存到：${settings.savePath}`,
+          '确认下载',
+          { confirmButtonText: '加入队列', cancelButtonText: '返回检查', type: 'info' }
+        )
+      } catch {
+        return
+      }
+    }
     await window.cctvdlApi.startDownload(jobs, autoOpen)
     ElMessage.success(`已添加 ${jobs.length} 个下载任务`)
   } catch (err) { ElMessage.error(`下载失败：${humanizeError(String(err))}`) }
@@ -1331,6 +1394,14 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
   color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
 }
+
+.selected-videos-panel { max-height: 280px; overflow: auto; }
+.selected-videos-title { margin-bottom: 8px; font-weight: 600; }
+.selected-video-group + .selected-video-group { margin-top: 10px; }
+.selected-video-group-name { color: var(--el-text-color-secondary); font-size: 12px; }
+.selected-video-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.selected-video-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selected-video-row button { border: 0; background: transparent; color: var(--el-color-danger); cursor: pointer; font-size: 18px; line-height: 1; }
 
 /* 主操作：有选中时 */
 .footer-btn-primary {

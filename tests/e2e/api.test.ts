@@ -98,4 +98,15 @@ describe('CCTV API smoke', () => {
     expect(clip.title).toContain('导视')
     expect(clip.time).toMatch(/^2019-11-16 \d{2}:\d{2}:\d{2}$/)
   }, 90_000)
+
+  it('recognizes a program overview page through its episode links', async () => {
+    const overview = await browse.resolveColumnInfo('https://tv.cctv.com/2021/10/09/VIDAlliMaCI9BiLxf3UhAGA8211009.shtml')
+    const episode = await browse.resolveColumnInfo('https://tv.cctv.com/2021/10/13/VIDEeLV5WaJ6xHBNsqAeoaDe211013.shtml')
+
+    expect(overview.kind).toBe('album')
+    expect(overview.name).toContain('极限火力')
+    expect(overview.columnId).toBe(episode.columnId)
+    const videos = await browse.getAlbumVideoList(overview.columnId, 1, '', overview.serviceId)
+    expect(videos.length).toBeGreaterThan(1)
+  }, 60_000)
 })

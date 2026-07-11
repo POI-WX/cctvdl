@@ -121,8 +121,6 @@ app.whenReady().then(() => {
   const iconPath = getResourcePath('icons', 'icon.png')
   if (fs.existsSync(iconPath)) {
     try {
-      // Tray uses the app icon on every platform.
-      // TODO: consider a dedicated monochrome template image for macOS via setTemplateImage
       const trayIcon = nativeImage.createFromPath(iconPath)
 
       tray = new Tray(trayIcon)
@@ -240,7 +238,7 @@ app.whenReady().then(() => {
     const month = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
     Promise.allSettled(programs.map(async (program) => {
       const list = (program.kind ?? 'column') === 'album'
-        ? await browse.getAlbumVideoList(program.columnId, 1, month, program.serviceId ?? 'tvcctv')
+        ? await browse.getLatestAlbumVideos(program.columnId, program.serviceId ?? 'tvcctv')
         : await browse.getColumnVideoList(program.columnId, 1, month)
       const newCount = list.filter(v => !history.has(v.guid)).length
       if (newCount > 0 && !mainWindow.isDestroyed()) {
