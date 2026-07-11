@@ -16,11 +16,13 @@ export class ClipboardWatcher {
     private readonly isEnabled: () => boolean,
     private readonly onLink: (url: string) => void,
     private readonly readText: () => string = () => clipboard.readText(),
-    private readonly intervalMs = 1500
+    private readonly intervalMs = 750
   ) {}
 
   start(): void {
-    if (!this.timer) this.timer = setInterval(() => this.check(), this.intervalMs)
+    if (this.timer) return
+    this.check()
+    this.timer = setInterval(() => this.check(), this.intervalMs)
   }
 
   stop(): void {
@@ -28,10 +30,10 @@ export class ClipboardWatcher {
   }
 
   /** One poll cycle. Exposed for testing. */
-  check(): void {
+  check(force = false): void {
     if (!this.isEnabled()) return
     const text = this.readText()
-    if (text === this.lastText) return
+    if (!force && text === this.lastText) return
     this.lastText = text
     const trimmed = text.trim()
     if (isCctvLink(trimmed)) this.onLink(trimmed)

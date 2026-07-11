@@ -35,6 +35,7 @@ describe('IPC Handlers', () => {
   let mockCoordinator: DownloadCoordinator
   let mockBrowse: BrowseService
   let mockConfig: ConfigStore
+  let checkClipboardNow: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     handlers = {}
@@ -62,7 +63,10 @@ describe('IPC Handlers', () => {
       resolveColumnInfo: vi.fn().mockResolvedValue({ name: 'Test', columnId: 'TOPC1', itemId: '' }),
       resolveSingleVideo: vi.fn().mockResolvedValue({ guid: 'VIDE1', title: 'Movie', brief: '', coverUrl: '', time: '' }),
       getColumnVideoList: vi.fn().mockResolvedValue([{ guid: 'g1', title: 'V1', brief: '', coverUrl: '', time: '' }]),
-      getAlbumVideoList: vi.fn().mockResolvedValue([])
+      getAlbumVideoList: vi.fn().mockResolvedValue([]),
+      getLatestAlbumVideos: vi.fn().mockResolvedValue([{ guid: 'latest', title: 'Latest', brief: '', coverUrl: '', time: '' }]),
+      getColumnMonthBounds: vi.fn().mockResolvedValue({ earliest: '201801', latest: '202412' }),
+      getAlbumMonthBounds: vi.fn().mockResolvedValue({ earliest: '201503', latest: '201906' })
     } as unknown as BrowseService
 
     mockConfig = {
@@ -84,7 +88,8 @@ describe('IPC Handlers', () => {
       clearDownloadHistory: vi.fn()
     } as unknown as ConfigStore
 
-    registerIpcHandlers(() => mockWindow, mockCoordinator, mockBrowse, mockConfig)
+    checkClipboardNow = vi.fn()
+    registerIpcHandlers(() => mockWindow, mockCoordinator, mockBrowse, mockConfig, checkClipboardNow)
   })
 
   describe('browse-program', () => {
@@ -100,11 +105,11 @@ describe('IPC Handlers', () => {
     it('resolves album info and probes album content', async () => {
       const album = { name: 'Album', columnId: 'VIDA1', itemId: 'VIDE1', kind: 'album' as const, serviceId: 'cctv4k' as const }
       vi.mocked(mockBrowse.resolveColumnInfo).mockResolvedValueOnce(album)
-      vi.mocked(mockBrowse.getAlbumVideoList).mockResolvedValueOnce([{ guid: 'ag1', title: 'A1', brief: '', coverUrl: '', time: '' }])
+      vi.mocked(mockBrowse.getLatestAlbumVideos).mockResolvedValueOnce([{ guid: 'ag1', title: 'A1', brief: '', coverUrl: '', time: '' }])
 
       const result = await handlers['browse-program']({}, 'https://tv.cctv.com/4k.shtml')
 
-      expect(mockBrowse.getAlbumVideoList).toHaveBeenCalledWith('VIDA1', 1, '', 'cctv4k')
+      expect(mockBrowse.getLatestAlbumVideos).toHaveBeenCalledWith('VIDA1', 'cctv4k')
       expect(mockBrowse.getColumnVideoList).not.toHaveBeenCalled()
       expect(result).toEqual(album)
     })
@@ -198,6 +203,27 @@ describe('IPC Handlers', () => {
       vi.spyOn(fs, 'readFileSync').mockReturnValueOnce('{ broken')
       await expect(handlers['import-programs']({})).rejects.toThrow('JSON 文件格式不正确')
       expect(mockConfig.importPrograms).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('get-program-month-bounds', () => {
+    it('uses column edges for regular columns', async () => {
+      const program = { name: 'Column', columnId: 'TOPC1', itemId: '' }
+      await expect(handlers['get-program-month-bounds']({}, program)).resolves.toEqual({
+        earliest: '201801', latest: '202412'
+      })
+      expect(mockBrowse.getColumnMonthBounds).toHaveBeenCalledWith('TOPC1')
+    })
+
+    it('uses album edges for album-backed monthly columns', async () => {
+      const program = {
+        name: '档案', columnId: 'VIDA1', itemId: '', kind: 'column' as const,
+        listSource: { type: 'album' as const, id: 'VIDA1', serviceId: 'tvcctv' as const }
+      }
+      await expect(handlers['get-program-month-bounds']({}, program)).resolves.toEqual({
+        earliest: '201503', latest: '201906'
+      })
+      expect(mockBrowse.getAlbumMonthBounds).toHaveBeenCalledWith('VIDA1', 'tvcctv')
     })
   })
 
@@ -295,6 +321,30 @@ describe('IPC Handlers', () => {
       const settings = { savePath: '/new', threadCount: 4, quality: 'chaoqing' as const, logLevel: 'debug' as const }
       await handlers['save-settings']({}, settings)
       expect(mockConfig.saveSettings).toHaveBeenCalledWith(settings)
+    })
+
+    it('checks immediately when clipboard watching changes from off to on', async () => {
+      vi.mocked(mockConfig.getSettings)
+        .mockReturnValueOnce({ savePath: '/tmp', threadCount: 8, quality: 'auto', logLevel: 'info', clipboardWatch: false })
+        .mockReturnValueOnce({ savePath: '/tmp', threadCount: 8, quality: 'auto', logLevel: 'info', clipboardWatch: true })
+      const settings = {
+        savePath: '/tmp', threadCount: 8, quality: 'auto' as const,
+        logLevel: 'info' as const, clipboardWatch: true
+      }
+
+      await handlers['save-settings']({}, settings)
+
+      expect(checkClipboardNow).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not recheck on unrelated saves while clipboard watching stays enabled', async () => {
+      vi.mocked(mockConfig.getSettings).mockReturnValue({
+        savePath: '/tmp', threadCount: 8, quality: 'auto', logLevel: 'info', clipboardWatch: true
+      })
+      await handlers['save-settings']({}, {
+        savePath: '/new', threadCount: 4, quality: 'auto', logLevel: 'info', clipboardWatch: true
+      })
+      expect(checkClipboardNow).not.toHaveBeenCalled()
     })
   })
 

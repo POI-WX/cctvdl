@@ -506,6 +506,44 @@ test.describe('cctvdl GUI 测试', () => {
   })
 })
 
+test.describe('剪贴板自动导入常驻监听', () => {
+  let electronApp: any
+  let page: any
+  let userDataDir: string
+
+  test.beforeAll(async () => {
+    userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cctvdl-gui-clipboard-'))
+    electronApp = await electron.launch({
+      args: [path.join(__dirname, '../../out/main/index.js'), `--user-data-dir=${userDataDir}`],
+      env: {
+        ...process.env,
+        MOCK_CLIPBOARD_TEXT: 'https://tv.cctv.com/lm/xwlb/index.shtml'
+      }
+    })
+    page = await electronApp.firstWindow()
+    await page.waitForLoadState('domcontentloaded')
+  })
+
+  test.afterAll(async () => {
+    if (electronApp) await electronApp.close()
+    try { fs.rmSync(userDataDir, { recursive: true, force: true }) } catch { /* best effort */ }
+  })
+
+  test('在设置页启用并保存后立即弹出确认框', async () => {
+    await navTab(page, '设置').click()
+    const clipboardSetting = page.locator('.settings-item', { hasText: '剪贴板自动导入' })
+    await clipboardSetting.locator('.el-switch').click()
+    await page.locator('.settings-save-btn').click()
+
+    const dialog = page.locator('.el-message-box')
+    await expect(dialog).toBeVisible({ timeout: 3000 })
+    await expect(dialog).toContainText('剪贴板导入')
+    await expect(dialog).toContainText('tv.cctv.com/lm/xwlb')
+    await expect(navTab(page, '设置')).toHaveClass(/active/)
+    await dialog.locator('button', { hasText: '忽略' }).click()
+  })
+})
+
 // ── 0.2.4 · 版本更新提醒 GUI 测试 ────────────────────────────────────────────
 test.describe('0.2.4 版本更新提醒', () => {
   let electronApp: any

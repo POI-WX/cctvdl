@@ -126,7 +126,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { storeToRefs } from 'pinia'
 import { isCctvLink } from '../shared/cctv-link'
 import HomePage from './pages/HomePage.vue'
@@ -187,6 +187,9 @@ onMounted(() => {
   cleanups.push(window.cctvdlApi.onUpdateAvailable(({ version }) => {
     updateVersion.value = version
   }))
+
+  cleanups.push(window.cctvdlApi.onClipboardLink(queueClipboardLink))
+  void window.cctvdlApi.checkClipboardNow()
 })
 
 onUnmounted(() => {
@@ -216,6 +219,41 @@ function onDrop(e: DragEvent) {
     nextTick(() => homePageRef.value?.handleDropImport(text.trim()))
   } else {
     ElMessage.warning('仅支持央视节目链接')
+  }
+}
+
+const clipboardQueue: string[] = []
+let clipboardPromptActive = false
+
+function queueClipboardLink(url: string) {
+  if (clipboardQueue.includes(url)) return
+  clipboardQueue.push(url)
+  void processClipboardQueue()
+}
+
+async function processClipboardQueue() {
+  if (clipboardPromptActive) return
+  clipboardPromptActive = true
+  try {
+    while (clipboardQueue.length) {
+      const url = clipboardQueue.shift() as string
+      try {
+        await ElMessageBox.confirm(`检测到央视链接，是否导入？\n${url}`, '剪贴板导入', {
+          confirmButtonText: '导入', cancelButtonText: '忽略', type: 'info'
+        })
+      } catch {
+        continue
+      }
+      activeTab.value = 'home'
+      await nextTick()
+      if (!homePageRef.value) {
+        await new Promise(resolve => setTimeout(resolve, 200))
+        await nextTick()
+      }
+      homePageRef.value?.handleDropImport(url)
+    }
+  } finally {
+    clipboardPromptActive = false
   }
 }
 </script>

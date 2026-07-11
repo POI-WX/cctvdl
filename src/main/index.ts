@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, Notification, nativeImage, screen } from 'electron'
+import { app, BrowserWindow, Menu, Tray, Notification, nativeImage, screen, clipboard } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { registerIpcHandlers } from './ipc'
@@ -154,7 +154,10 @@ app.whenReady().then(() => {
   coordinatorRef = coordinator
 
   // IPC handlers resolve the live window lazily so they survive recreation on macOS.
-  registerIpcHandlers(() => mainWindow, coordinator, browse, config)
+  registerIpcHandlers(
+    () => mainWindow, coordinator, browse, config,
+    () => clipboardWatcherRef?.check(true)
+  )
 
   // OS taskbar (Windows) / dock (macOS) progress + tray indicator during downloads.
   coordinator.on('progress', (p: DownloadProgress) => {
@@ -201,12 +204,14 @@ app.whenReady().then(() => {
   // off), then offers to import a copied CCTV link.
   clipboardWatcherRef = new ClipboardWatcher(
     () => config.getSettings().clipboardWatch === true,
-    (url) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('clipboard-link', url) }
+    (url) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('clipboard-link', url) },
+    () => process.env['MOCK_CLIPBOARD_TEXT'] ?? clipboard.readText()
   )
-  clipboardWatcherRef.start()
+  mainWindow.on('focus', () => clipboardWatcherRef?.check())
 
   // Background checks: fire once the renderer has loaded so send() is safe.
   mainWindow.webContents.once('did-finish-load', () => {
+    clipboardWatcherRef?.start()
     // Resume any queued jobs that were persisted before the last app exit.
     const pending = config.getPendingJobs()
     if (pending.length > 0) {

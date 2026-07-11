@@ -1,6 +1,14 @@
 import type { Settings, Quality } from './types'
 
 export const QUALITIES: Quality[] = ['auto', 'bluray', 'chaoqing', 'gaoqing', 'biaoqing', 'liuchang']
+export const QUALITY_LABELS: Record<Quality, string> = {
+  auto: '自动（最高画质）',
+  bluray: '蓝光 1080p',
+  chaoqing: '超清 720p',
+  gaoqing: '高清 720p',
+  biaoqing: '标清 360p',
+  liuchang: '流畅 270p'
+}
 export const LOG_LEVELS: Settings['logLevel'][] = ['info', 'debug']
 
 export const MIN_THREADS = 1

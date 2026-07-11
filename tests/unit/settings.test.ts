@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeSettings, QUALITIES, MIN_THREADS, MAX_THREADS } from '../../src/shared/settings'
+import { normalizeSettings, QUALITIES, QUALITY_LABELS, MIN_THREADS, MAX_THREADS } from '../../src/shared/settings'
 import type { Settings } from '../../src/shared/types'
 
 const fallback: Settings = {
@@ -17,6 +17,17 @@ const fallback: Settings = {
 }
 
 describe('normalizeSettings', () => {
+  it('provides a user-facing label for every quality value', () => {
+    expect(QUALITIES.map(quality => QUALITY_LABELS[quality])).toEqual([
+      '自动（最高画质）',
+      '蓝光 1080p',
+      '超清 720p',
+      '高清 720p',
+      '标清 360p',
+      '流畅 270p'
+    ])
+  })
+
   it('returns full defaults for undefined/garbage input', () => {
     expect(normalizeSettings(undefined, fallback)).toEqual(fallback)
     expect(normalizeSettings('not an object', fallback)).toEqual(fallback)

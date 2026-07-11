@@ -122,6 +122,9 @@ describe('CCTV API smoke', () => {
     const march = await browse.getAlbumVideoList('VIDA1425372752043217', 1, '201503')
     expect(march.some(v => v.guid === '074fe7898bce4142ad74cdffc505946a')).toBe(true)
     expect(march.every(v => v.time.startsWith('2015-03'))).toBe(true)
+    const june2019 = await browse.getAlbumVideoList('VIDA1425372752043217', 1, '201906')
+    expect(june2019.length).toBeGreaterThan(0)
+    expect(june2019.every(v => v.time.startsWith('2019-06'))).toBe(true)
 
     const oldEpisode = await browse.resolveColumnInfo('https://jishi.cctv.com/2015/03/24/VIDE1427145150264630.shtml')
     const newEpisode = await browse.resolveColumnInfo('https://jishi.cctv.com/2019/06/16/VIDE9dr4xvEdkaXlvenDzLtr190616.shtml')

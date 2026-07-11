@@ -1,6 +1,6 @@
 import { createResilientFetch, type Fetcher, uaInit } from './http'
 import { CctvNewsService, isCctvNewsSnowBookPage } from './cctvnews'
-import type { VideoInfo, ProgramInfo, Quality } from '../../shared/types'
+import type { VideoInfo, ProgramInfo, ProgramMonthBounds, Quality } from '../../shared/types'
 import { isCctvPageHostname } from '../../shared/cctv-link'
 
 export { isCctvNewsSnowBookPage }
@@ -54,6 +54,9 @@ export function extractTitle(html: string): string {
 
 export class BrowseService {
   private readonly albumCache = new Map<string, { expiresAt: number; videos: VideoInfo[] }>()
+  private readonly albumMonthCache = new Map<string, { expiresAt: number; videos: VideoInfo[] }>()
+  private readonly monthBoundsCache = new Map<string, { expiresAt: number; bounds: ProgramMonthBounds }>()
+  private readonly monthBoundsInflight = new Map<string, Promise<ProgramMonthBounds>>()
   private readonly albumInflight = new Map<string, Promise<VideoInfo[]>>()
   private readonly albumColumnEdges = new Map<string, Promise<Set<string>>>()
 
@@ -64,6 +67,11 @@ export class BrowseService {
 
   clearAlbumCache(albumId: string, serviceId: CctvServiceId = 'tvcctv'): void {
     this.albumCache.delete(`${serviceId}:${albumId}`)
+    const prefix = `${serviceId}:${albumId}:`
+    for (const key of this.albumMonthCache.keys()) {
+      if (key.startsWith(prefix)) this.albumMonthCache.delete(key)
+    }
+    this.monthBoundsCache.delete(`album:${serviceId}:${albumId}`)
   }
 
   async getColumnVideoList(columnId: string, page: number, month: string): Promise<VideoInfo[]> {
@@ -80,6 +88,35 @@ export class BrowseService {
     return list.map(mapVideoItem)
   }
 
+  async getColumnMonthBounds(columnId: string): Promise<ProgramMonthBounds> {
+    const cacheKey = `column:${columnId}`
+    const cached = this.monthBoundsCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) return cached.bounds
+    let request = this.monthBoundsInflight.get(cacheKey)
+    if (!request) {
+      request = (async () => {
+        const fetchEdge = async (sort: 'asc' | 'desc'): Promise<Array<Record<string, unknown>>> => {
+          const params = new URLSearchParams({
+            id: columnId, n: '100', p: '1', d: '', mode: '0', serviceId: 'tvcctv', sort
+          })
+          const resp = await this.fetch(`https://api.cntv.cn/NewVideo/getVideoListByColumn?${params}`, uaInit())
+          if (!resp.ok) throw new Error(`HTTP ${resp.status} from getVideoListByColumn`)
+          const data = await resp.json() as Record<string, unknown>
+          const dataObj = data['data'] as Record<string, unknown> | undefined
+          return (dataObj?.['list'] as Array<Record<string, unknown>>) || []
+        }
+        const [earliestItems, latestItems] = await Promise.all([fetchEdge('asc'), fetchEdge('desc')])
+        const bounds = monthBoundsFromEdges(earliestItems, latestItems)
+        this.monthBoundsCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, bounds })
+        return bounds
+      })()
+      this.monthBoundsInflight.set(cacheKey, request)
+    }
+    try { return await request } finally {
+      if (this.monthBoundsInflight.get(cacheKey) === request) this.monthBoundsInflight.delete(cacheKey)
+    }
+  }
+
   // `_month` is part of the symmetric signature with getColumnVideoList but the
   // album endpoint doesn't filter by month, so it's intentionally unused.
   // Albums can contain more than the API's 100-item page size, so keep fetching
@@ -93,6 +130,9 @@ export class BrowseService {
   ): Promise<VideoInfo[]> {
     const cacheKey = `${serviceId}:${albumId}`
     const cached = this.albumCache.get(cacheKey)
+    if (month && (!cached || cached.expiresAt <= Date.now())) {
+      return this.fetchAlbumVideosByMonth(albumId, month, serviceId, onProgress)
+    }
     let allVideos: VideoInfo[]
     if (cached && cached.expiresAt > Date.now()) {
       allVideos = cached.videos
@@ -110,6 +150,70 @@ export class BrowseService {
       }
     }
     return month ? allVideos.filter(video => monthFromVideoTime(video.time) === month) : allVideos
+  }
+
+  private async fetchAlbumVideosByMonth(
+    albumId: string,
+    month: string,
+    serviceId: CctvServiceId,
+    onProgress?: (newVideos: VideoInfo[]) => void
+  ): Promise<VideoInfo[]> {
+    const cacheKey = `${serviceId}:${albumId}:${month}`
+    const cached = this.albumMonthCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) return cached.videos
+
+    const pageSize = 100
+    const [ascFirst, descFirst] = await Promise.all([
+      this.fetchAlbumPage(albumId, 1, pageSize, serviceId, 'asc'),
+      this.fetchAlbumPage(albumId, 1, pageSize, serviceId, 'desc')
+    ])
+    const target = monthNumber(month)
+    if (target == null) return []
+    const distance = (items: Array<Record<string, unknown>>): number => {
+      const values = items.map(item => monthNumber(formatVideoTime(item['focus_date']) || String(item['time'] || '')))
+        .filter((value): value is number => value != null)
+      return values.length ? Math.min(...values.map(value => Math.abs(value - target))) : Number.POSITIVE_INFINITY
+    }
+    const sort: 'asc' | 'desc' = distance(ascFirst) <= distance(descFirst) ? 'asc' : 'desc'
+    const first = sort === 'asc' ? ascFirst : descFirst
+    const seen = new Set<string>()
+    const videos: VideoInfo[] = []
+
+    for (let page = 1; page <= 100; page++) {
+      const list = page === 1 ? first : await this.fetchAlbumPage(albumId, page, pageSize, serviceId, sort)
+      const matching: VideoInfo[] = []
+      for (const item of list) {
+        const video = mapVideoItem(item)
+        if (monthFromVideoTime(video.time) !== month) continue
+        const key = video.guid || `${video.title}\u0000${video.time}`
+        if (!seen.has(key)) { seen.add(key); videos.push(video); matching.push(video) }
+      }
+      if (matching.length) onProgress?.(matching)
+
+      const months = list.map(item => monthNumber(formatVideoTime(item['focus_date']) || String(item['time'] || '')))
+        .filter((value): value is number => value != null)
+      const passedTarget = months.length > 0 && (sort === 'asc'
+        ? Math.max(...months) > target
+        : Math.min(...months) < target)
+      if (list.length < pageSize || passedTarget) break
+    }
+
+    this.albumMonthCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, videos })
+    return videos
+  }
+
+  private async fetchAlbumPage(
+    albumId: string, page: number, pageSize: number, serviceId: CctvServiceId, sort: 'asc' | 'desc'
+  ): Promise<Array<Record<string, unknown>>> {
+    const params = new URLSearchParams({
+      id: albumId, pub: serviceId === 'cctv4k' ? '2' : '1', sort,
+      mode: '0', p: String(page), n: String(pageSize), serviceId
+    })
+    const resp = await this.fetch(`https://api.cntv.cn/NewVideo/getVideoListByAlbumIdNew?${params}`, uaInit())
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} from getVideoListByAlbumIdNew`)
+    const data = await resp.json() as Record<string, unknown>
+    const dataObj = data['data'] as Record<string, unknown> | undefined
+    return (dataObj?.['list'] as Array<Record<string, unknown>>) || []
   }
 
   private async fetchAllAlbumVideos(
@@ -172,6 +276,29 @@ export class BrowseService {
     const dataObj = data['data'] as Record<string, unknown> | undefined
     const list = (dataObj?.['list'] as Array<Record<string, unknown>>) || []
     return list.map(mapVideoItem)
+  }
+
+  async getAlbumMonthBounds(
+    albumId: string, serviceId: CctvServiceId = 'tvcctv'
+  ): Promise<ProgramMonthBounds> {
+    const cacheKey = `album:${serviceId}:${albumId}`
+    const cached = this.monthBoundsCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) return cached.bounds
+    let request = this.monthBoundsInflight.get(cacheKey)
+    if (!request) {
+      request = Promise.all([
+        this.fetchAlbumPage(albumId, 1, 100, serviceId, 'asc'),
+        this.fetchAlbumPage(albumId, 1, 100, serviceId, 'desc')
+      ]).then(([earliestItems, latestItems]) => {
+        const bounds = monthBoundsFromEdges(earliestItems, latestItems)
+        this.monthBoundsCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, bounds })
+        return bounds
+      })
+      this.monthBoundsInflight.set(cacheKey, request)
+    }
+    try { return await request } finally {
+      if (this.monthBoundsInflight.get(cacheKey) === request) this.monthBoundsInflight.delete(cacheKey)
+    }
   }
 
   async resolveColumnInfo(pageUrl: string): Promise<ProgramInfo> {
@@ -410,11 +537,11 @@ export class BrowseService {
   ): Promise<ProgramInfo | null> {
     const albumId = String(info['album_id'] || '')
     if (Number(info['tnum'] || 0) > 0 || !albumId || !currentColumnId || !/^VIDE[A-Za-z0-9]+$/.test(itemId)) return null
-    if (!await this.albumSpansMultipleColumns(albumId, serviceId, currentColumnId)) return null
+    if (!await this.albumShowsColumnMigration(albumId, serviceId, currentColumnId)) return null
     return this.monthlyAlbumColumnFromVideoInfo(info, serviceId, fallbackName, itemId)
   }
 
-  private albumSpansMultipleColumns(
+  private albumShowsColumnMigration(
     albumId: string, serviceId: CctvServiceId, currentColumnId: string
   ): Promise<boolean> {
     const key = `${serviceId}:${albumId}`
@@ -423,7 +550,12 @@ export class BrowseService {
       request = this.fetchAlbumColumnEdges(albumId, serviceId).catch(() => new Set<string>())
       this.albumColumnEdges.set(key, request)
     }
-    return request.then(columns => [...columns].some(columnId => columnId !== currentColumnId))
+    // A different album column alone is not evidence of an ID migration. CCTV
+    // movie pages, for example, can be mounted under a movie-page column while
+    // their album belongs to a long-running scheduling column. A migration is
+    // only established when the album history contains the pasted page's
+    // column as well as another column.
+    return request.then(columns => columns.has(currentColumnId) && columns.size > 1)
   }
 
   private async fetchAlbumColumnEdges(
@@ -575,4 +707,25 @@ function formatUnixMsChina(ms: number): string {
 function monthFromVideoTime(time: string): string {
   const match = time.match(/^(\d{4})[-/]?(\d{2})/)
   return match ? `${match[1]}${match[2]}` : ''
+}
+
+function monthBoundsFromEdges(
+  earliestItems: Array<Record<string, unknown>>,
+  latestItems: Array<Record<string, unknown>>
+): ProgramMonthBounds {
+  const months = (items: Array<Record<string, unknown>>): string[] => items
+    .map(item => monthFromVideoTime(formatVideoTime(item['focus_date']) || String(item['time'] || '')))
+    .filter(Boolean)
+  const earliestMonths = months(earliestItems)
+  const latestMonths = months(latestItems)
+  return {
+    earliest: earliestMonths.length ? earliestMonths.reduce((a, b) => a < b ? a : b) : null,
+    latest: latestMonths.length ? latestMonths.reduce((a, b) => a > b ? a : b) : null
+  }
+}
+
+function monthNumber(value: string): number | null {
+  const month = monthFromVideoTime(value)
+  if (!month) return null
+  return Number(month.slice(0, 4)) * 12 + Number(month.slice(4, 6)) - 1
 }

@@ -139,9 +139,15 @@ export interface HistoryEntry {
   sourceVideoIndex?: number
 }
 
+export interface ProgramMonthBounds {
+  earliest: string | null
+  latest: string | null
+}
+
 export interface CctvdlApi {
   browseProgram(url: string): Promise<ProgramInfo>
   listVideos(program: ProgramInfo, month: string, requestId?: number, forceRefresh?: boolean): Promise<VideoInfo[]>
+  getProgramMonthBounds(program: ProgramInfo): Promise<ProgramMonthBounds>
   importProgram(p: ProgramInfo): Promise<boolean>
   importPrograms(): Promise<number>
   deleteProgram(columnId: string): Promise<void>
@@ -167,6 +173,7 @@ export interface CctvdlApi {
   reorderQueue(ids: string[]): Promise<void>
   getSettings(): Promise<Settings>
   saveSettings(s: Settings): Promise<void>
+  checkClipboardNow(): Promise<void>
   selectDirectory(defaultPath?: string): Promise<string | null>
   openPath(p: string): Promise<void>
   openUrl(url: string): Promise<void>

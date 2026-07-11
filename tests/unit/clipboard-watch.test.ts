@@ -44,6 +44,16 @@ describe('isCctvLink', () => {
 })
 
 describe('ClipboardWatcher.check', () => {
+  it('checks immediately when started instead of waiting for the first interval', () => {
+    const onLink = vi.fn()
+    const watcher = new ClipboardWatcher(
+      () => true, onLink, () => 'https://tv.cctv.com/lm/xwlb/', 60_000
+    )
+    watcher.start()
+    watcher.stop()
+    expect(onLink).toHaveBeenCalledWith('https://tv.cctv.com/lm/xwlb/')
+  })
+
   it('does not read the clipboard or fire when disabled (privacy)', () => {
     const readText = vi.fn(() => 'https://tv.cctv.com/lm/xwlb/')
     const onLink = vi.fn()
@@ -59,6 +69,14 @@ describe('ClipboardWatcher.check', () => {
     w.check()
     expect(onLink).toHaveBeenCalledTimes(1)
     expect(onLink).toHaveBeenCalledWith('https://tv.cctv.com/lm/xwlb/')
+  })
+
+  it('can force a recheck after the renderer subscribes or watching is enabled', () => {
+    const onLink = vi.fn()
+    const w = new ClipboardWatcher(() => true, onLink, () => 'https://tv.cctv.com/lm/xwlb/')
+    w.check()
+    w.check(true)
+    expect(onLink).toHaveBeenCalledTimes(2)
   })
 
   it('does not fire for non-CCTV clipboard text', () => {

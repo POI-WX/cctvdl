@@ -5,6 +5,7 @@ const api: CctvdlApi = {
   browseProgram: (url: string) => ipcRenderer.invoke('browse-program', url),
   listVideos: (program: ProgramInfo, month: string, requestId?: number, forceRefresh?: boolean) =>
     ipcRenderer.invoke('list-videos', program, month, requestId, forceRefresh),
+  getProgramMonthBounds: (program: ProgramInfo) => ipcRenderer.invoke('get-program-month-bounds', program),
   importProgram: (p: ProgramInfo) => ipcRenderer.invoke('import-program', p),
   importPrograms: () => ipcRenderer.invoke('import-programs'),
   deleteProgram: (columnId: string) => ipcRenderer.invoke('delete-program', columnId),
@@ -29,6 +30,7 @@ const api: CctvdlApi = {
   reorderQueue: (ids: string[]) => ipcRenderer.invoke('reorder-queue', ids),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (s: Settings) => ipcRenderer.invoke('save-settings', s),
+  checkClipboardNow: () => ipcRenderer.invoke('check-clipboard-now'),
   selectDirectory: (defaultPath?: string) => ipcRenderer.invoke('select-directory', defaultPath),
   openPath: (p: string) => ipcRenderer.invoke('open-path', p),
   openUrl: (url: string) => ipcRenderer.invoke('open-url', url),

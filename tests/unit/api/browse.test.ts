@@ -177,6 +177,51 @@ describe('BrowseService', () => {
     })
   })
 
+  describe('program month bounds', () => {
+    it('reads the earliest and latest months from column edges', async () => {
+      const mockFetch = vi.fn(async (url: string) => ({
+        ok: true,
+        json: async () => ({ data: { list: url.includes('sort=desc')
+          ? [{ focus_date: '2024-12-30 20:00:00' }, { time: '2024-11-01' }]
+          : [{ focus_date: '2018-03-02 20:00:00' }, { time: '2018-04-01' }]
+        } })
+      }))
+
+      await expect(new BrowseService(mockFetch).getColumnMonthBounds('TOPC1')).resolves.toEqual({
+        earliest: '201803', latest: '202412'
+      })
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('reads the earliest and latest months from album edges', async () => {
+      const mockFetch = vi.fn(async (url: string) => ({
+        ok: true,
+        json: async () => ({ data: { list: url.includes('sort=desc')
+          ? [{ focus_date: '2019-06-16 10:00:00' }]
+          : [{ focus_date: '2015-03-03 10:00:00' }]
+        } })
+      }))
+
+      const service = new BrowseService(mockFetch)
+      const [first, concurrent] = await Promise.all([
+        service.getAlbumMonthBounds('VIDA1'),
+        service.getAlbumMonthBounds('VIDA1')
+      ])
+      expect(first).toEqual({ earliest: '201503', latest: '201906' })
+      expect(concurrent).toEqual(first)
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('returns null boundaries when edge items have no usable dates', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true, json: async () => ({ data: { list: [{ title: 'No date' }] } })
+      })
+      await expect(new BrowseService(mockFetch).getAlbumMonthBounds('VIDA1')).resolves.toEqual({
+        earliest: null, latest: null
+      })
+    })
+  })
+
   describe('resolveColumnInfo', () => {
     it('extracts program info from page HTML', async () => {
       const html = `
@@ -245,10 +290,10 @@ describe('BrowseService', () => {
       const videos = await service.getAlbumVideoList('album123', 1, '202401')
       expect(videos).toHaveLength(1)
       expect(videos[0].guid).toBe('album-1')
-      expect(mockFetch).toHaveBeenCalledTimes(1)
+      expect(mockFetch).toHaveBeenCalledTimes(2)
     })
 
-    it('filters an album-backed monthly column by month and reuses the cached full list', async () => {
+    it('filters an album-backed monthly column by month and caches each month', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ data: { list: [
@@ -260,8 +305,25 @@ describe('BrowseService', () => {
       const service = new BrowseService(mockFetch)
 
       await expect(service.getAlbumVideoList('VIDA1', 1, '201503')).resolves.toMatchObject([{ guid: 'march' }])
+      await expect(service.getAlbumVideoList('VIDA1', 1, '201503')).resolves.toMatchObject([{ guid: 'march' }])
       await expect(service.getAlbumVideoList('VIDA1', 1, '201504')).resolves.toMatchObject([{ guid: 'april' }])
-      expect(mockFetch).toHaveBeenCalledTimes(1)
+      expect(mockFetch).toHaveBeenCalledTimes(4)
+    })
+
+    it('chooses the nearer album edge so recent months are not lost behind the page cap', async () => {
+      const mockFetch = vi.fn(async (url: string) => ({
+        ok: true,
+        json: async () => ({ data: { list: url.includes('sort=desc')
+          ? [{ guid: 'recent', title: 'Recent', focus_date: '2019-06-16 10:00:00' }]
+          : [{ guid: 'old', title: 'Old', focus_date: '2015-03-24 10:00:00' }]
+        } })
+      }))
+
+      const videos = await new BrowseService(mockFetch).getAlbumVideoList('VIDA1', 1, '201906')
+
+      expect(videos).toMatchObject([{ guid: 'recent' }])
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+      expect(mockFetch.mock.calls.some(([url]) => String(url).includes('sort=desc'))).toBe(true)
     })
 
     it('loads every album page and deduplicates repeated videos', async () => {
@@ -553,6 +615,38 @@ describe('BrowseService', () => {
       })
       expect(older).toMatchObject({ columnId: 'VIDA-shared', kind: 'column' })
       expect(mockFetch.mock.calls.filter(([url]) => String(url).includes('sort=asc'))).toHaveLength(1)
+    })
+
+    it('does not confuse a movie page column with an album column migration', async () => {
+      const movieUrl = 'https://tv.cctv.com/2026/06/12/VIDEmovie.shtml'
+      const firstUrl = 'https://tv.cctv.com/2011/12/31/VIDEfirst.shtml'
+      const lastUrl = 'https://tv.cctv.com/2026/07/11/VIDElast.shtml'
+      const mockFetch = vi.fn(async (url: string) => {
+        if (url === movieUrl) return { ok: true, text: async () => '<script>var guid="movie-guid"; var itemid1="VIDEmovie"; var column_id="TOPC-movie"; var commentTitle="电影《测试电影》";</script>' }
+        if (url === firstUrl || url === lastUrl) {
+          return { ok: true, text: async () => '<script>var column_id="TOPC-album";</script>' }
+        }
+        if (url.includes('videoinfoByGuid')) return { ok: true, json: async () => ({
+          title: '电影《测试电影》', album_id: 'VIDA-schedule',
+          vset_title: '动画大放映-CCTV14', cvid: 'VIDEmovie', tnum: '0'
+        }) }
+        if (url.includes('getVideoListByAlbumIdNew') && url.includes('sort=asc')) {
+          return { ok: true, json: async () => ({ data: { list: [{ url: firstUrl }] } }) }
+        }
+        if (url.includes('getVideoListByAlbumIdNew') && url.includes('sort=desc')) {
+          return { ok: true, json: async () => ({ data: { list: [{ url: lastUrl }] } }) }
+        }
+        throw new Error(`unexpected URL: ${url}`)
+      })
+
+      await expect(new BrowseService(mockFetch).resolveColumnInfo(movieUrl)).resolves.toEqual({
+        name: '测试电影',
+        columnId: 'TOPC-movie',
+        itemId: 'VIDEmovie',
+        kind: 'column',
+        serviceId: 'tvcctv',
+        listSource: { type: 'column', id: 'TOPC-movie', serviceId: 'tvcctv' }
+      })
     })
 
     it('keeps dated program pages as column programs even when metadata has album_id', async () => {

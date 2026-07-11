@@ -113,16 +113,18 @@ test.describe('单视频真实链接导入（联网）', () => {
   })
 
   test('粘贴僵尸栏目电影链接：进入单个视频集合，预览有封面和简介', async () => {
+    test.setTimeout(60000)
     const importInput = page.locator('.import-row input')
     await importInput.fill(MOVIE_URL)
     await importInput.press('Enter')
 
-    // 解析需联网（两次 API 探测 + resolveSingleVideo），最多等 20s
-    await page.waitForTimeout(12000)
-
-    // 应进入单个视频集合，而非栏目列表
+    // Wait for the observable import result instead of sleeping for a fixed
+    // interval: cross-column probing has several network round trips and CI
+    // runners vary considerably in latency.
+    await expect(page.locator('.single-entry-count')).toHaveText('1', { timeout: 45000 })
+    // A movie-page column differing from its scheduling album is not an ID
+    // migration, so it must still fall back to the single-video collection.
     await expect(page.locator('.program-list .program-item')).toHaveCount(0)
-    await expect(page.locator('.single-entry-count')).toHaveText('1')
 
     // 切到单个视频集合
     await page.locator('.single-entry').click()

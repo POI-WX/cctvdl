@@ -87,7 +87,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">视频清晰度</span>
-            <span class="settings-item-desc">优先下载的画质档位，所选档位不可用时自动降级</span>
+            <span class="settings-item-desc">优先选择该清晰度；片源缺少对应档位时使用可用画质</span>
           </div>
           <div class="settings-item-control">
             <el-select v-model="form.quality" size="small" style="width: 160px">
@@ -323,7 +323,7 @@
 import { ref, computed, onMounted, toRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Settings } from '../../shared/types'
-import { MIN_THREADS, MAX_THREADS, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS, QUALITIES } from '../../shared/settings'
+import { MIN_THREADS, MAX_THREADS, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS, QUALITIES, QUALITY_LABELS } from '../../shared/settings'
 import { applyAccentColor } from '../utils/accent'
 import { buildOutputPath } from '../../shared/filename'
 import { applyDarkMode } from '../utils/dark-mode'
@@ -362,15 +362,6 @@ const threadHintClass = computed(() => {
   if (n <= 10) return 'hint-fast'
   return 'hint-extreme'
 })
-
-const QUALITY_LABELS: Record<string, string> = {
-  auto: '自动（最高画质）',
-  bluray: '蓝光 1080p',
-  chaoqing: '超清 720p',
-  gaoqing: '高清 720p',
-  biaoqing: '标清 360p',
-  liuchang: '流畅 270p',
-}
 
 const ACCENT_COLORS = [
   { label: '品牌蓝（默认）', value: '#2563EB' },

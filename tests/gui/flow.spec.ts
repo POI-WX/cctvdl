@@ -132,6 +132,7 @@ test.describe('真实用户流程', () => {
   })
 
   test('跨 TOPC 的 VIDA 长期节目仍显示月份和下载本月', async () => {
+    test.setTimeout(60000)
     const importInput = page.locator('.import-row input')
     await importInput.fill('https://jishi.cctv.com/2015/03/03/VIDA1425372752043217.shtml')
     await importInput.press('Enter')
@@ -144,6 +145,29 @@ test.describe('真实用户流程', () => {
     await expect(page.locator('.video-item', { hasText: /四平之战/ }).first()).toBeVisible({ timeout: 30000 })
     await expect(page.locator('button', { hasText: '下载本月' })).toBeVisible()
     await expect(page.locator('.single-mode-label', { hasText: '选集' })).toHaveCount(0)
+
+    // The album is too large to reach 2019 by walking only from its oldest
+    // page. Switching to a recent month must load from the nearer edge.
+    await monthInput.fill('2019-06')
+    await monthInput.press('Enter')
+    await expect(page.locator('.video-item').first()).toBeVisible({ timeout: 30000 })
+
+    const bounds = await page.evaluate(async () => {
+      const program = (await window.cctvdlApi.getPrograms()).find(p => p.name.includes('档案'))
+      if (!program) throw new Error('档案栏目未导入')
+      return window.cctvdlApi.getProgramMonthBounds(program)
+    })
+    expect(bounds).toEqual({ earliest: '201503', latest: '201906' })
+
+    await monthInput.blur()
+    await expect(page.locator('.earliest-month-btn')).toBeEnabled({ timeout: 30000 })
+    await page.locator('.earliest-month-btn').click()
+    await expect(monthInput).toHaveValue('2015年3月')
+    await expect(page.locator('.video-item', { hasText: /四平之战/ }).first()).toBeVisible({ timeout: 30000 })
+
+    await page.locator('.latest-month-btn').click()
+    await expect(monthInput).toHaveValue('2019年6月')
+    await expect(page.locator('.video-item').first()).toBeVisible({ timeout: 30000 })
   })
 
   test('设置页修改并发数后保存，下载任务使用新并发数', async () => {

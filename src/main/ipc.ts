@@ -14,7 +14,8 @@ export function registerIpcHandlers(
   getWindow: () => BrowserWindow,
   coordinator: DownloadCoordinator,
   browse: BrowseService,
-  config: ConfigStore
+  config: ConfigStore,
+  checkClipboardNow: () => void = () => {}
 ): void {
   // Resolve the current window lazily so handlers survive window recreation (macOS).
   const send = (channel: string, payload?: unknown): void => {
@@ -31,7 +32,10 @@ export function registerIpcHandlers(
     const info = await browse.resolveColumnInfo(url)
     const source = getProgramListSource(info)
     if (source.type === 'album') {
-      const anyVideos = await browse.getAlbumVideoList(source.id, 1, '', source.serviceId).catch(() => [])
+      // Import validation only needs proof that the source is non-empty. Do not
+      // traverse a multi-year album here; month-specific loading will fetch the
+      // relevant edge efficiently after import.
+      const anyVideos = await browse.getLatestAlbumVideos(source.id, source.serviceId).catch(() => [])
       if (!anyVideos.length) throw new Error('无法解析节目信息')
       return info
     }
@@ -68,6 +72,13 @@ export function registerIpcHandlers(
     const videos = await browse.getColumnVideoList(source.id, 1, month)
     logger.debug(`list-videos: ${program.name}, source=column:${source.id}, month=${month || 'all'}, count=${videos.length}`)
     return videos
+  })
+
+  ipcMain.handle('get-program-month-bounds', async (_, program: ProgramInfo) => {
+    const source = getProgramListSource(program)
+    return source.type === 'album'
+      ? browse.getAlbumMonthBounds(source.id, source.serviceId)
+      : browse.getColumnMonthBounds(source.id)
   })
 
   ipcMain.handle('import-program', (_, program: ProgramInfo) => config.addProgram(program))
@@ -197,12 +208,16 @@ export function registerIpcHandlers(
 
   ipcMain.handle('save-settings', (_, settings: Settings) => {
     logger.info(`save-settings: savePath=${settings.savePath}, threadCount=${settings.threadCount}`)
+    const wasWatchingClipboard = config.getSettings().clipboardWatch === true
     config.saveSettings(settings)
     const saved = config.getSettings()
+    if (!wasWatchingClipboard && saved.clipboardWatch === true) checkClipboardNow()
     setLogLevel(saved.logLevel)
     setLogPath(saved.logPath ?? '')
     return true
   })
+
+  ipcMain.handle('check-clipboard-now', () => checkClipboardNow())
 
   ipcMain.handle('get-download-history', () => config.getDownloadHistory())
 

@@ -109,9 +109,25 @@
               @change="selectedProgram && loadVideos()"
             />
             <span v-if="emptyMonths.has(selectedMonth)" class="month-empty-dot" title="本月暂无视频" />
+            <button
+              type="button"
+              class="month-quick-btn boundary earliest-month-btn"
+              title="最早节目月份"
+              aria-label="最早节目月份"
+              :disabled="monthBoundsLoading || !programMonthBounds?.earliest"
+              @click.prevent.stop="jumpToContentBoundary('earliest')"
+            >⏮</button>
             <button class="month-quick-btn" title="上个月" @click="jumpMonth(-1)">‹</button>
             <button class="month-quick-btn today" title="跳回本月" @click="jumpMonth(0)">本月</button>
             <button class="month-quick-btn" title="下个月" @click="jumpMonth(1)">›</button>
+            <button
+              type="button"
+              class="month-quick-btn boundary latest-month-btn"
+              title="最新节目月份"
+              aria-label="最新节目月份"
+              :disabled="monthBoundsLoading || !programMonthBounds?.latest"
+              @click.prevent.stop="jumpToContentBoundary('latest')"
+            >⏭</button>
           </div>
           <div v-else-if="viewMode === 'single'" class="single-mode-label">
             <span>📌 单个视频 · {{ singleVideos.length }}</span>
@@ -441,14 +457,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { storeToRefs } from 'pinia'
 import { Search } from '@element-plus/icons-vue'
-import type { ProgramInfo, VideoInfo, DownloadJob } from '../../shared/types'
+import type { ProgramInfo, ProgramMonthBounds, VideoInfo, DownloadJob } from '../../shared/types'
 import { isProgramDeleteKey } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
 import { buildOutputPath, safeFilename } from '../../shared/filename'
+import { QUALITY_LABELS } from '../../shared/settings'
 import { createLatestRequestGuard } from '../../shared/latest-request'
 import { useContentStore } from '../stores/content'
 
@@ -466,6 +483,40 @@ const isFav = contentStore.isFav
 const isVideoSelected = contentStore.isVideoSelected
 const toggleVideoSelection = contentStore.toggleVideoSelection
 const selectedIsAlbum = computed(() => (selectedProgram.value?.kind ?? 'column') === 'album')
+const programMonthBounds = ref<ProgramMonthBounds | null>(null)
+const monthBoundsLoading = ref(false)
+let monthBoundsRequestId = 0
+
+watch(selectedProgram, async program => {
+  const requestId = ++monthBoundsRequestId
+  programMonthBounds.value = null
+  if (!program || (program.kind ?? 'column') === 'album') {
+    monthBoundsLoading.value = false
+    return
+  }
+  monthBoundsLoading.value = true
+  try {
+    const sourceProgram = programs.value.find(item => item.columnId === program.columnId) || program
+    const canonical: ProgramInfo = {
+      ...sourceProgram,
+      ...(sourceProgram.listSource ? { listSource: { ...sourceProgram.listSource } } : {})
+    }
+    let bounds: ProgramMonthBounds | null = null
+    for (let attempt = 0; attempt < 3 && !bounds; attempt++) {
+      try { bounds = await window.cctvdlApi.getProgramMonthBounds(canonical) } catch {
+        if (attempt === 2) throw new Error('month bounds unavailable')
+        await new Promise(resolve => setTimeout(resolve, 300))
+      }
+    }
+    if (requestId === monthBoundsRequestId && selectedProgram.value?.columnId === program.columnId) {
+      programMonthBounds.value = bounds
+    }
+  } catch {
+    // Boundary navigation is optional; normal month selection remains usable.
+  } finally {
+    if (requestId === monthBoundsRequestId) monthBoundsLoading.value = false
+  }
+})
 // How many videos in the current program/month (or album) are selected. Shown
 // next to the cross-program `selectedCount` so users can see both scopes.
 const currentListSelectedCount = computed(() =>
@@ -555,26 +606,10 @@ function onSearchInput(val: string) {
 }
 
 let cleanupSkipped: (() => void) | null = null
-let cleanupClipboard: (() => void) | null = null
 let cleanupNewContent: (() => void) | null = null
 let cleanupJobFinished: (() => void) | null = null
 let cleanupAlbumProgress: (() => void) | null = null
-let lastClipboardUrl = ''
 function onHistoryCleared() { contentStore.refreshDownloadedSet() }
-
-// Clipboard auto-import (opt-in): the main process only sends a link while the
-// user enabled the feature; here we confirm before importing, deduping repeats.
-async function onClipboardLink(url: string) {
-  if (url === lastClipboardUrl) return
-  lastClipboardUrl = url
-  try {
-    await ElMessageBox.confirm(`检测到央视链接，是否导入？\n${url}`, '剪贴板导入', {
-      confirmButtonText: '导入', cancelButtonText: '忽略', type: 'info'
-    })
-    importUrl.value = url
-    await doImport(url)
-  } catch { /* user ignored */ }
-}
 
 // True when focus is in a text-entry field, so global shortcuts don't hijack
 // typing (e.g. forward-delete while editing the search box must not delete a
@@ -620,7 +655,6 @@ onMounted(async () => {
   cleanupSkipped = window.cctvdlApi.onDownloadSkipped((info) => {
     ElMessage.info(`跳过：${info.title}（${info.reason}）`)
   })
-  cleanupClipboard = window.cctvdlApi.onClipboardLink(onClipboardLink)
   cleanupNewContent = window.cctvdlApi.onNewContent(({ columnId, count }) => {
     contentStore.applyNewContent(columnId, count)
   })
@@ -647,7 +681,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   cleanupSkipped?.()
-  cleanupClipboard?.()
   cleanupNewContent?.()
   cleanupJobFinished?.()
   cleanupAlbumProgress?.()
@@ -911,6 +944,13 @@ function jumpMonth(offset: number) {
   if (selectedProgram.value && !selectedIsAlbum.value) loadVideos()
 }
 
+function jumpToContentBoundary(edge: 'earliest' | 'latest') {
+  const month = programMonthBounds.value?.[edge]
+  if (!month || !selectedProgram.value) return
+  selectedMonth.value = month
+  loadVideos()
+}
+
 function highlightText(text: string, query: string): string {
   if (!query.trim()) return escapeHtml(text)
   const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -985,7 +1025,7 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
     if (jobs.length > 1) {
       try {
         await ElMessageBox.confirm(
-          `将下载 ${jobs.length} 个视频\n清晰度：${settings.quality}\n保存到：${settings.savePath}`,
+          `将下载 ${jobs.length} 个视频\n清晰度：${QUALITY_LABELS[settings.quality]}\n保存到：${settings.savePath}`,
           '确认下载',
           { confirmButtonText: '加入队列', cancelButtonText: '返回检查', type: 'info' }
         )
@@ -1934,6 +1974,15 @@ html.dark .preview-downloaded-badge {
   background: var(--el-color-primary-light-9);
   border-color: var(--el-color-primary-light-5);
   color: var(--el-color-primary);
+}
+
+.month-quick-btn.boundary {
+  font-size: 12px;
+}
+
+.month-quick-btn:disabled {
+  cursor: wait;
+  opacity: .45;
 }
 
 .month-empty-dot {
