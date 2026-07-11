@@ -98,7 +98,3 @@
 本项目为个人开源项目，与中央广播电视总台（CCTV）无任何隶属或授权关系。
 
 本工具仅供技术研究与个人学习使用。所有节目内容版权归中央广播电视总台所有，请勿将下载内容用于商业目的或二次分发。使用本工具所产生的一切后果由使用者自行承担。
-
-## ⭐ Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=POI-WX/cctvdl&type=date&legend=top-left)](https://www.star-history.com/#POI-WX/cctvdl&type=date&legend=top-left)
