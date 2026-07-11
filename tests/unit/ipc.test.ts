@@ -376,16 +376,16 @@ describe('IPC Handlers', () => {
       expect(mockWindow.webContents.send).toHaveBeenCalledWith('download-skipped', expect.any(Object))
     })
 
-    it('sends batch-finished when all jobs skipped', async () => {
+    it('does not finish the current batch when all submitted jobs are skipped', async () => {
       const jobs = [{ id: 'j1', guid: 'g1', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
-      await handlers['start-download']({}, jobs)
-      expect(mockWindow.webContents.send).toHaveBeenCalledWith('batch-finished', expect.objectContaining({ total: 0 }))
+      const result = await handlers['start-download']({}, jobs)
+      expect(result).toEqual({ added: 0, skipped: 1 })
+      expect(mockWindow.webContents.send).not.toHaveBeenCalledWith('batch-finished', expect.anything())
     })
 
-    it('clears auto-open after an all-skipped full-set download', async () => {
+    it('an all-skipped submission does not clear auto-open for the active batch', async () => {
       vi.mocked(shell.openPath).mockClear()
-      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
       vi.mocked(mockConfig.getSettings).mockReturnValue({
         savePath: '/tmp/save', autoOpenFolder: true, threadCount: 8,
         quality: 'auto', logLevel: 'info', reencode: false
@@ -394,12 +394,25 @@ describe('IPC Handlers', () => {
         .find(c => c[0] === 'batchFinished')?.[1] as (r: any) => void
       const job = { id: 'skipped', guid: 'g', title: 'T', savePath: '/tmp/save/a.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }
 
-      await handlers['start-download']({}, [job], true)
+      // Start a real full-set batch, then submit an already-downloaded item.
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
-      await handlers['start-download']({}, [{ ...job, id: 'next' }], false)
+      await handlers['start-download']({}, [job], true)
+      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
+      await handlers['start-download']({}, [{ ...job, id: 'skipped-again' }], false)
       finished({ completed: 1, failed: 0, cancelled: 0, total: 1, failedJobs: [] })
 
-      expect(shell.openPath).not.toHaveBeenCalled()
+      expect(shell.openPath).toHaveBeenCalledWith('/tmp/save')
+    })
+
+    it('force-redownload bypasses history but still uses coordinator dedupe', async () => {
+      const job = { id: 'redo', guid: 'g', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }
+      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
+
+      const result = await handlers['start-download']({}, [job], false, true)
+
+      expect(mockConfig.isInDownloadHistory).not.toHaveBeenCalled()
+      expect(mockCoordinator.appendJobs).toHaveBeenCalledWith([job])
+      expect(result).toEqual({ added: 1, skipped: 0 })
     })
 
     it('two consecutive start-download calls both append (no queue replace)', async () => {

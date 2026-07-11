@@ -85,7 +85,7 @@ export class BrowseService {
     const data = await resp.json() as Record<string, unknown>
     const dataObj = data['data'] as Record<string, unknown> | undefined
     const list = (dataObj?.['list'] as Array<Record<string, unknown>>) || []
-    return list.map(mapVideoItem)
+    return sortVideosChronologically(list.map(mapVideoItem))
   }
 
   async getColumnMonthBounds(columnId: string): Promise<ProgramMonthBounds> {
@@ -188,7 +188,7 @@ export class BrowseService {
         const key = video.guid || `${video.title}\u0000${video.time}`
         if (!seen.has(key)) { seen.add(key); videos.push(video); matching.push(video) }
       }
-      if (matching.length) onProgress?.(matching)
+      if (matching.length) onProgress?.(sortVideosChronologically(matching))
 
       const months = list.map(item => monthNumber(formatVideoTime(item['focus_date']) || String(item['time'] || '')))
         .filter((value): value is number => value != null)
@@ -198,8 +198,9 @@ export class BrowseService {
       if (list.length < pageSize || passedTarget) break
     }
 
-    this.albumMonthCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, videos })
-    return videos
+    const sortedVideos = sortVideosChronologically(videos)
+    this.albumMonthCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, videos: sortedVideos })
+    return sortedVideos
   }
 
   private async fetchAlbumPage(
@@ -707,6 +708,22 @@ function formatUnixMsChina(ms: number): string {
 function monthFromVideoTime(time: string): string {
   const match = time.match(/^(\d{4})[-/]?(\d{2})/)
   return match ? `${match[1]}${match[2]}` : ''
+}
+
+// CCTV's legacy column/album endpoints do not consistently honor their
+// `sort` parameter. Normalize at our boundary so old and new column IDs render
+// in the same (oldest-to-newest) order. Unknown dates retain their source order
+// and are placed after dated entries.
+function sortVideosChronologically(videos: VideoInfo[]): VideoInfo[] {
+  return videos
+    .map((video, index) => ({ video, index }))
+    .sort((a, b) => {
+      if (!a.video.time && !b.video.time) return a.index - b.index
+      if (!a.video.time) return 1
+      if (!b.video.time) return -1
+      return a.video.time.localeCompare(b.video.time) || a.index - b.index
+    })
+    .map(({ video }) => video)
 }
 
 function monthBoundsFromEdges(

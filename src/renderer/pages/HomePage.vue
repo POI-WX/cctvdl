@@ -319,7 +319,7 @@
             v-if="viewMode === 'column'"
             class="footer-btn"
             :class="selectedCount ? 'footer-btn-primary' : 'footer-btn-idle'"
-            :disabled="!selectedCount"
+            :disabled="!selectedCount || startingDownload"
             @click="downloadSelected"
           >
             {{ allSelectedDownloaded ? '重新下载' : '下载选中' }}
@@ -996,7 +996,7 @@ async function downloadCoverImage() {
 }
 
 // Selected items: auto-open only for single videos (column partial selections don't).
-async function downloadSelected() { await downloadVideos(allSelectedVideos.value, viewMode.value === 'single') }
+async function downloadSelected() { await downloadVideos(allSelectedVideos.value, viewMode.value === 'single', true) }
 
 // 下载本月（仅栏目）：始终下载当前月份的完整列表，不受搜索过滤或其他
 // 栏目、月份的已选项影响；这是「全量下载」意图，会触发自动打开文件夹。
@@ -1004,10 +1004,14 @@ async function downloadAll() {
   await downloadVideos(videos.value, true)
 }
 
-async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
+const startingDownload = ref(false)
+
+async function downloadVideos(videoList: VideoInfo[], autoOpen = false, consumeSelection = false) {
+  if (startingDownload.value) return
   if (!videoList.length) return
   const validVideos = videoList.filter(v => v.guid)
   if (!validVideos.length) { ElMessage.warning('选中的视频链接无效'); return }
+  startingDownload.value = true
   try {
     const settings = await window.cctvdlApi.getSettings()
     const jobs: DownloadJob[] = validVideos.map(v => {
@@ -1033,9 +1037,18 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false) {
         return
       }
     }
-    await window.cctvdlApi.startDownload(jobs, autoOpen)
-    ElMessage.success(`已添加 ${jobs.length} 个下载任务`)
+    // The button explicitly says “重新下载” only when every selected item is
+    // already in history. In that case bypass history, while the coordinator's
+    // active-guid dedupe still protects any job currently in flight.
+    const result = await window.cctvdlApi.startDownload(jobs, autoOpen, consumeSelection && allSelectedDownloaded.value)
+    if (consumeSelection) contentStore.removeVideoSelections(validVideos.map(v => v.guid))
+    if (result.added > 0) {
+      ElMessage.success(`已添加 ${result.added} 个下载任务${result.skipped ? `，忽略 ${result.skipped} 个重复或已下载项` : ''}`)
+    } else {
+      ElMessage.info('所选视频已下载或已在下载队列中')
+    }
   } catch (err) { ElMessage.error(`下载失败：${humanizeError(String(err))}`) }
+  finally { startingDownload.value = false }
 }
 </script>
 

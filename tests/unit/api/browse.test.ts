@@ -326,6 +326,21 @@ describe('BrowseService', () => {
       expect(mockFetch.mock.calls.some(([url]) => String(url).includes('sort=desc'))).toBe(true)
     })
 
+    it('normalizes a reverse legacy album response to chronological order', async () => {
+      const reverse = [
+        { guid: 'new', title: 'New', focus_date: '2019-06-16 10:00:00' },
+        { guid: 'old', title: 'Old', focus_date: '2019-06-01 10:00:00' }
+      ]
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { list: reverse } })
+      })
+
+      const videos = await new BrowseService(mockFetch).getAlbumVideoList('VIDA1', 1, '201906')
+
+      expect(videos.map(video => video.guid)).toEqual(['old', 'new'])
+    })
+
     it('loads every album page and deduplicates repeated videos', async () => {
       const firstPage = Array.from({ length: 100 }, (_, i) => ({ guid: `album-${i}`, title: `Episode ${i}`, brief: '', image: '', time: '' }))
       const secondPage = [

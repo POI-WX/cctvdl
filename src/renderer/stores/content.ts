@@ -153,6 +153,13 @@ export const useContentStore = defineStore('content', () => {
     selectedVideoMap.value = next
   }
 
+  function removeVideoSelections(guids: Iterable<string>) {
+    const next = new Map(selectedVideoMap.value)
+    let changed = false
+    for (const guid of guids) changed = next.delete(guid) || changed
+    if (changed) selectedVideoMap.value = next
+  }
+
   // Select / deselect every video in the current filtered list. Used by the
   // header checkbox. Operates on filteredVideos so search results can be
   // bulk-selected without touching hidden rows.
@@ -191,6 +198,6 @@ export const useContentStore = defineStore('content', () => {
     allSelected, downloadedCount, allSelectedDownloaded,
     emptyHint, groupedVideos,
     refreshDownloadedSet, recordVideosLoaded, clearEmptyMonths, applyNewContent, clearNewContent,
-    toggleVideoSelection, removeVideoSelection, toggleSelectAllFiltered, clearAllSelection, markDownloaded
+    toggleVideoSelection, removeVideoSelection, removeVideoSelections, toggleSelectAllFiltered, clearAllSelection, markDownloaded
   }
 })

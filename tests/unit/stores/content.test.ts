@@ -310,6 +310,20 @@ describe('useContentStore', () => {
       expect(store.allSelectedVideos.map(v => v.guid)).toEqual(['G2'])
     })
 
+    it('removeVideoSelections consumes a submitted batch while leaving newer selections alone', () => {
+      const store = useContentStore()
+      const v1 = mkVideo('G1')
+      const v2 = mkVideo('G2')
+      const v3 = mkVideo('G3')
+      store.toggleVideoSelection(v1)
+      store.toggleVideoSelection(v2)
+      store.toggleVideoSelection(v3)
+
+      store.removeVideoSelections(['G1', 'G2'])
+
+      expect(store.allSelectedVideos.map(v => v.guid)).toEqual(['G3'])
+    })
+
     it('clearAllSelection is a no-op when nothing is selected', () => {
       const store = useContentStore()
       expect(() => store.clearAllSelection()).not.toThrow()

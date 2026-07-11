@@ -108,6 +108,11 @@ export interface BatchStartInfo {
   jobs: Array<{ id: string; title: string; guid: string }>
 }
 
+export interface DownloadStartResult {
+  added: number
+  skipped: number
+}
+
 export interface Settings {
   savePath: string
   threadCount: number
@@ -165,7 +170,7 @@ export interface CctvdlApi {
   importSingleVideos(): Promise<number>
   exportSingleVideos(): Promise<boolean>
   exportPrograms(): Promise<boolean>
-  startDownload(jobs: DownloadJob[], autoOpen?: boolean): Promise<void>
+  startDownload(jobs: DownloadJob[], autoOpen?: boolean, forceRedownload?: boolean): Promise<DownloadStartResult>
   retryJob(job: DownloadJob): Promise<void>
   retryJobs(jobs: DownloadJob[]): Promise<void>
   cancelDownload(id: string): Promise<void>

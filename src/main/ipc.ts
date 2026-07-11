@@ -146,7 +146,7 @@ export function registerIpcHandlers(
     return true
   })
 
-  const launchBatch = (jobs: DownloadJob[], skipHistory: boolean, autoOpen = false): void => {
+  const launchBatch = (jobs: DownloadJob[], skipHistory: boolean, autoOpen = false): { added: number; skipped: number } => {
     // Pre-flight: make sure the target directory exists and is writable before
     // spawning any work. Throws so the renderer's catch surfaces the reason.
     const saveDir = jobs.length ? path.dirname(jobs[0].savePath) : ''
@@ -179,16 +179,12 @@ export function registerIpcHandlers(
           jobs: addedJobs.map(j => ({ id: j.id, title: j.title, guid: j.guid }))
         })
       }
-    } else {
-      // All jobs were already downloaded - send empty batch-finished to reset UI
-      currentBatchAutoOpen = false
-      send('batch-finished', {
-        completed: 0, failed: 0, cancelled: 0, total: 0, failedJobs: []
-      })
-    }
+      return { added: addedJobs.length, skipped: jobs.length - addedJobs.length }
+    } else return { added: 0, skipped: jobs.length }
   }
 
-  ipcMain.handle('start-download', (_, jobs: DownloadJob[], autoOpen?: boolean) => launchBatch(jobs, false, !!autoOpen))
+  ipcMain.handle('start-download', (_, jobs: DownloadJob[], autoOpen?: boolean, forceRedownload?: boolean) =>
+    launchBatch(jobs, !!forceRedownload, !!autoOpen))
 
   // Retry bypasses the download-history filter and resumes from any cached segments.
   ipcMain.handle('retry-job', (_, job: DownloadJob) => launchBatch([job], true))
