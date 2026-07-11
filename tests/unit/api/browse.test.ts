@@ -248,6 +248,22 @@ describe('BrowseService', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1)
     })
 
+    it('filters an album-backed monthly column by month and reuses the cached full list', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: { list: [
+          { guid: 'march', title: 'March', time: '2015-03-24 05:10:04' },
+          { guid: 'april', title: 'April', time: '2015-04-01 10:00:00' },
+          { guid: 'unknown', title: 'Unknown', time: '' }
+        ] } })
+      })
+      const service = new BrowseService(mockFetch)
+
+      await expect(service.getAlbumVideoList('VIDA1', 1, '201503')).resolves.toMatchObject([{ guid: 'march' }])
+      await expect(service.getAlbumVideoList('VIDA1', 1, '201504')).resolves.toMatchObject([{ guid: 'april' }])
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+
     it('loads every album page and deduplicates repeated videos', async () => {
       const firstPage = Array.from({ length: 100 }, (_, i) => ({ guid: `album-${i}`, title: `Episode ${i}`, brief: '', image: '', time: '' }))
       const secondPage = [
@@ -395,7 +411,8 @@ describe('BrowseService', () => {
         columnId: 'VIDAjM8fGS3rvZWYKznnUUTu220708',
         itemId: 'VIDEkLRS36ABdGAb0llIYJAR241130',
         kind: 'album',
-        serviceId: 'cctv4k'
+        serviceId: 'cctv4k',
+        listSource: { type: 'album', id: 'VIDAjM8fGS3rvZWYKznnUUTu220708', serviceId: 'cctv4k' }
       })
     })
 
@@ -423,7 +440,8 @@ describe('BrowseService', () => {
         columnId: 'VIDAo7h09tLB0WMqOC7e1775260609',
         itemId: 'VIDElk5c6FRjXLZhcppxIHhL260612',
         kind: 'album',
-        serviceId: 'tvcctv'
+        serviceId: 'tvcctv',
+        listSource: { type: 'album', id: 'VIDAo7h09tLB0WMqOC7e1775260609', serviceId: 'tvcctv' }
       })
     })
 
@@ -441,7 +459,7 @@ describe('BrowseService', () => {
         }) })
 
       await expect(new BrowseService(mockFetch).resolveColumnInfo('https://tv.cctv.com/2021/10/09/VIDAlliMaCI9BiLxf3UhAGA8211009.shtml'))
-        .resolves.toEqual({ name: '极限火力', columnId: 'album-fire', itemId: 'VIDEeLV5WaJ6xHBNsqAeoaDe211013', kind: 'album', serviceId: 'tvcctv' })
+        .resolves.toMatchObject({ name: '极限火力', columnId: 'album-fire', itemId: 'VIDEeLV5WaJ6xHBNsqAeoaDe211013', kind: 'album', serviceId: 'tvcctv' })
     })
 
     it('recognizes a tv.cctv.cn overview page through its own episode links', async () => {
@@ -456,6 +474,85 @@ describe('BrowseService', () => {
       await expect(new BrowseService(mockFetch).resolveColumnInfo('https://tv.cctv.cn/2021/10/09/VIDAlliMaCI9BiLxf3UhAGA8211009.shtml'))
         .resolves.toMatchObject({ columnId: 'album-cn', kind: 'album' })
       expect(mockFetch.mock.calls[1][0]).toContain('tv.cctv.cn')
+    })
+
+    it('recognizes a jishi.cctv.com VIDA overview with changed TOPC as a monthly album-backed column', async () => {
+      const overview = `<title>上海纪实《档案》_纪实台_央视网(cctv.com)</title>
+        <script>var commentTitle = "上海纪实《档案》"; var column_id = "TOPC1354673616621733"; var itemid1 = "VIDA1425372752043217";</script>
+        <a href="/2019/06/16/VIDE9dr4xvEdkaXlvenDzLtr190616.shtml">2019年节目</a>
+        <a href="/2015/03/24/VIDE1427145150264630.shtml">2015年节目</a>`
+      const episode = `<script>var guid = "real-guid"; var column_id = "TOPC1355056930229941";</script>`
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(overview) })
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(episode) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({
+          title: '《上海纪实-档案》 20190615 第四集',
+          album_id: 'VIDA1425372752043217',
+          vset_title: '上海纪实《档案》',
+          cvid: 'VIDE9dr4xvEdkaXlvenDzLtr190616',
+          // Real legacy metadata reports 0 despite this being an album episode.
+          tnum: '0'
+        }) })
+
+      await expect(new BrowseService(mockFetch).resolveColumnInfo('https://jishi.cctv.com/2015/03/03/VIDA1425372752043217.shtml'))
+        .resolves.toEqual({
+          name: '上海纪实《档案》',
+          columnId: 'VIDA1425372752043217',
+          itemId: 'VIDA1425372752043217',
+          kind: 'column',
+          serviceId: 'tvcctv',
+          listSource: { type: 'album', id: 'VIDA1425372752043217', serviceId: 'tvcctv' }
+        })
+      expect(mockFetch.mock.calls[1][0]).toBe('https://jishi.cctv.com/2019/06/16/VIDE9dr4xvEdkaXlvenDzLtr190616.shtml')
+    })
+
+    it('accepts episode links from any official legacy CCTV subdomain', async () => {
+      const overview = `<title>文化十分_央视网</title>
+        <a href="https://ent.cctv.com/2015/07/21/VIDEepisode1.shtml">第1期</a>
+        <a href="https://ent.cctv.com/2015/07/22/VIDEepisode2.shtml">第2期</a>
+        <a href="https://cctv.com.evil.example/2015/07/23/VIDEepisode3.shtml">伪装链接</a>`
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(overview) })
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve('<script>var guid = "episode-guid";</script>') })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({
+          title: '《文化十分》 第1期', album_id: 'VIDA1437462909085973',
+          vset_title: '文化十分', cvid: 'VIDEepisode1', tnum: '20'
+        }) })
+
+      await expect(new BrowseService(mockFetch).resolveColumnInfo('https://ent.cctv.com/2015/07/21/VIDA1437462909085973.shtml'))
+        .resolves.toMatchObject({ columnId: 'VIDA1437462909085973', kind: 'album' })
+      expect(mockFetch.mock.calls[1][0]).toBe('https://ent.cctv.com/2015/07/21/VIDEepisode1.shtml')
+    })
+
+    it('maps episodes from both sides of a TOPC change to the same monthly VIDA column', async () => {
+      const oldUrl = 'https://jishi.cctv.com/2015/03/24/VIDEold.shtml'
+      const newUrl = 'https://jishi.cctv.com/2019/06/16/VIDEnew.shtml'
+      const mockFetch = vi.fn(async (url: string) => {
+        if (url === oldUrl) return { ok: true, text: async () => '<script>var guid="old-guid"; var itemid1="VIDEold"; var column_id="TOPC-old";</script>' }
+        if (url === newUrl) return { ok: true, text: async () => '<script>var guid="new-guid"; var itemid1="VIDEnew"; var column_id="TOPC-new";</script>' }
+        if (url.includes('videoinfoByGuid')) return { ok: true, json: async () => ({
+          title: '《上海纪实-档案》 某期', album_id: 'VIDA-shared',
+          vset_title: '上海纪实《档案》', tnum: '0'
+        }) }
+        if (url.includes('getVideoListByAlbumIdNew') && url.includes('sort=asc')) {
+          return { ok: true, json: async () => ({ data: { list: [{ url: oldUrl }] } }) }
+        }
+        if (url.includes('getVideoListByAlbumIdNew') && url.includes('sort=desc')) {
+          return { ok: true, json: async () => ({ data: { list: [{ url: newUrl }] } }) }
+        }
+        throw new Error(`unexpected URL: ${url}`)
+      })
+      const service = new BrowseService(mockFetch)
+
+      const newer = await service.resolveColumnInfo(newUrl)
+      const older = await service.resolveColumnInfo(oldUrl)
+
+      expect(newer).toMatchObject({
+        name: '上海纪实《档案》', columnId: 'VIDA-shared', kind: 'column',
+        listSource: { type: 'album', id: 'VIDA-shared', serviceId: 'tvcctv' }
+      })
+      expect(older).toMatchObject({ columnId: 'VIDA-shared', kind: 'column' })
+      expect(mockFetch.mock.calls.filter(([url]) => String(url).includes('sort=asc'))).toHaveLength(1)
     })
 
     it('keeps dated program pages as column programs even when metadata has album_id', async () => {
@@ -482,7 +579,8 @@ describe('BrowseService', () => {
         columnId: 'TOPC1570876640457386',
         itemId: 'VIDEgkpWAAVCNkSdEnYSK5GO260702',
         kind: 'column',
-        serviceId: 'tvcctv'
+        serviceId: 'tvcctv',
+        listSource: { type: 'column', id: 'TOPC1570876640457386', serviceId: 'tvcctv' }
       })
     })
 

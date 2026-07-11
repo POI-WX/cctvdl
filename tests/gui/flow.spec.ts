@@ -131,6 +131,21 @@ test.describe('真实用户流程', () => {
     await expect(page.locator('.selected-video-group-name', { hasText: /跟着唐诗去旅行|唐诗/ })).toBeVisible()
   })
 
+  test('跨 TOPC 的 VIDA 长期节目仍显示月份和下载本月', async () => {
+    const importInput = page.locator('.import-row input')
+    await importInput.fill('https://jishi.cctv.com/2015/03/03/VIDA1425372752043217.shtml')
+    await importInput.press('Enter')
+    await expect(page.locator('.program-item', { hasText: '上海纪实《档案》' })).toBeVisible({ timeout: 30000 })
+
+    const monthInput = page.locator('.month-row input')
+    await expect(monthInput).toBeVisible()
+    await monthInput.fill('2015-03')
+    await monthInput.press('Enter')
+    await expect(page.locator('.video-item', { hasText: /四平之战/ }).first()).toBeVisible({ timeout: 30000 })
+    await expect(page.locator('button', { hasText: '下载本月' })).toBeVisible()
+    await expect(page.locator('.single-mode-label', { hasText: '选集' })).toHaveCount(0)
+  })
+
   test('设置页修改并发数后保存，下载任务使用新并发数', async () => {
     // Change settings
     const settingsTab = page.locator('.sidebar-nav-item', { hasText: '设置' })

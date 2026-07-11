@@ -140,7 +140,7 @@
               title="刷新 (F5)"
               :disabled="!selectedProgram"
               :class="{ spinning: loadingVideos }"
-              @click="loadVideos"
+              @click="loadVideos(true)"
             >↻</button>
           </div>
         </div>
@@ -594,7 +594,7 @@ function isEditingTarget(): boolean {
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && lightboxOpen.value) { e.preventDefault(); closeLightbox(); return }
   if (isEditingTarget()) return
-  if (e.key === 'F5') { e.preventDefault(); if (selectedProgram.value) loadVideos(); return }
+  if (e.key === 'F5') { e.preventDefault(); if (selectedProgram.value) loadVideos(true); return }
   if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); if (filteredVideos.value.length > 0) contentStore.toggleSelectAllFiltered(!allSelected.value); return }
   if (isProgramDeleteKey(e.key, isMac) && selectedProgram.value) { e.preventDefault(); deleteProgram(selectedProgram.value) }
 }
@@ -848,7 +848,7 @@ async function clearAllPrograms() {
   } catch { /* cancelled */ }
 }
 
-async function loadVideos() {
+async function loadVideos(forceRefresh = false) {
   if (!selectedProgram.value) return
   const requestId = videoLoadGuard.begin()
   loadingVideos.value = true
@@ -856,8 +856,15 @@ async function loadVideos() {
   if (selectedIsAlbum.value) videos.value = []
   contentStore.refreshDownloadedSet()
   try {
-    const program = { ...selectedProgram.value }
-    const list = await window.cctvdlApi.listVideos(program, selectedIsAlbum.value ? '' : selectedMonth.value, requestId)
+    const program: ProgramInfo = {
+      ...selectedProgram.value,
+      ...(selectedProgram.value.listSource
+        ? { listSource: { ...selectedProgram.value.listSource } }
+        : {})
+    }
+    const list = await window.cctvdlApi.listVideos(
+      program, selectedIsAlbum.value ? '' : selectedMonth.value, requestId, forceRefresh
+    )
     if (!videoLoadGuard.isCurrent(requestId)) return
     videos.value = selectedIsAlbum.value ? sortAlbumList(list) : list
     // Only drop the preview if its video is no longer in the freshly loaded

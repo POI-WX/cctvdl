@@ -97,6 +97,31 @@ describe('ConfigStore', () => {
       expect(store.getPrograms()).toHaveLength(1)
     })
 
+    it('upgrades an existing album entry to an album-backed monthly column', () => {
+      store.addProgram({
+        name: '上海纪实《档案》', columnId: 'VIDA1', itemId: 'VIDE1', kind: 'album',
+        listSource: { type: 'album', id: 'VIDA1', serviceId: 'tvcctv' }, favoritedAt: 123
+      })
+      expect(store.addProgram({
+        name: '上海纪实《档案》', columnId: 'VIDA1', itemId: 'VIDA1', kind: 'column',
+        listSource: { type: 'album', id: 'VIDA1', serviceId: 'tvcctv' }
+      })).toBe(true)
+      expect(store.getPrograms()[0]).toMatchObject({ kind: 'column', favoritedAt: 123 })
+    })
+
+    it('does not let a legacy backup downgrade an upgraded monthly column', () => {
+      store.addProgram({
+        name: '上海纪实《档案》', columnId: 'VIDA1', itemId: 'VIDA1', kind: 'column',
+        listSource: { type: 'album', id: 'VIDA1', serviceId: 'tvcctv' }
+      })
+      expect(store.addProgram({
+        name: '上海纪实《档案》', columnId: 'VIDA1', itemId: 'VIDE1', kind: 'album'
+      })).toBe(false)
+      expect(store.getPrograms()[0]).toMatchObject({
+        kind: 'column', listSource: { type: 'album', id: 'VIDA1' }
+      })
+    })
+
     it('addProgram allows different columnIds', () => {
       const program1: ProgramInfo = { name: '新闻联播', columnId: 'TOPC001', itemId: '' }
       const program2: ProgramInfo = { name: '世界战史', columnId: 'TOPC002', itemId: '' }
@@ -158,15 +183,17 @@ describe('ConfigStore', () => {
       expect(store.getPrograms().map((p) => p.columnId)).toEqual(['TOPC001', 'TOPC002', 'TOPC004'])
     })
 
-    it('importPrograms preserves program kind and serviceId', () => {
+    it('importPrograms preserves program kind, serviceId and list source', () => {
       const added = store.importPrograms([
-        { name: '跟着唐诗去旅行', columnId: 'VIDA1', itemId: 'VIDE1', kind: 'album', serviceId: 'cctv4k' }
+        { name: '跟着唐诗去旅行', columnId: 'VIDA1', itemId: 'VIDE1', kind: 'album', serviceId: 'cctv4k',
+          listSource: { type: 'album', id: 'VIDA1', serviceId: 'cctv4k' } }
       ])
 
       expect(added).toBe(1)
       expect(store.getPrograms()[0]).toMatchObject({
         kind: 'album',
-        serviceId: 'cctv4k'
+        serviceId: 'cctv4k',
+        listSource: { type: 'album', id: 'VIDA1', serviceId: 'cctv4k' }
       })
     })
 

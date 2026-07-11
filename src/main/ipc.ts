@@ -8,6 +8,7 @@ import { appendFailures, logger, setLogLevel, setLogPath } from './logger'
 import { downloadCoverToDir } from './api/cover'
 import { checkSaveDir } from './preflight'
 import type { ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult } from '../shared/types'
+import { getProgramListSource } from '../shared/programs'
 
 export function registerIpcHandlers(
   getWindow: () => BrowserWindow,
@@ -28,8 +29,9 @@ export function registerIpcHandlers(
   let currentBatchAutoOpen = false
   ipcMain.handle('browse-program', async (_, url: string) => {
     const info = await browse.resolveColumnInfo(url)
-    if ((info.kind ?? 'column') === 'album') {
-      const anyVideos = await browse.getAlbumVideoList(info.columnId, 1, '', info.serviceId ?? 'tvcctv').catch(() => [])
+    const source = getProgramListSource(info)
+    if (source.type === 'album') {
+      const anyVideos = await browse.getAlbumVideoList(source.id, 1, '', source.serviceId).catch(() => [])
       if (!anyVideos.length) throw new Error('无法解析节目信息')
       return info
     }
@@ -45,21 +47,27 @@ export function registerIpcHandlers(
     return info
   })
 
-  ipcMain.handle('list-videos', async (_, program: ProgramInfo, month: string, requestId?: number) => {
-    if ((program.kind ?? 'column') === 'album') {
-      return browse.getAlbumVideoList(
-        program.columnId,
+  ipcMain.handle('list-videos', async (_, program: ProgramInfo, month: string, requestId?: number, forceRefresh = false) => {
+    const source = getProgramListSource(program)
+    if (source.type === 'album') {
+      if (forceRefresh) browse.clearAlbumCache(source.id, source.serviceId)
+      const videos = await browse.getAlbumVideoList(
+        source.id,
         1,
         month,
-        program.serviceId ?? 'tvcctv',
+        source.serviceId,
         videos => send('album-load-progress', {
           columnId: program.columnId,
           ...(requestId == null ? {} : { requestId }),
           videos
         })
       )
+      logger.debug(`list-videos: ${program.name}, source=album:${source.id}, month=${month || 'all'}, count=${videos.length}`)
+      return videos
     }
-    return browse.getColumnVideoList(program.columnId, 1, month)
+    const videos = await browse.getColumnVideoList(source.id, 1, month)
+    logger.debug(`list-videos: ${program.name}, source=column:${source.id}, month=${month || 'all'}, count=${videos.length}`)
+    return videos
   })
 
   ipcMain.handle('import-program', (_, program: ProgramInfo) => config.addProgram(program))

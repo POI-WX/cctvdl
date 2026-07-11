@@ -71,6 +71,12 @@ export class ConfigStore {
       const program: ProgramInfo = { name: p.name, columnId: p.columnId, itemId: typeof p.itemId === 'string' ? p.itemId : '' }
       if (p.kind === 'album' || p.kind === 'column') program.kind = p.kind
       if (p.serviceId === 'tvcctv' || p.serviceId === 'cctv4k') program.serviceId = p.serviceId
+      const source = p.listSource
+      if (source && (source.type === 'column' || source.type === 'album')
+        && typeof source.id === 'string' && source.id
+        && (source.serviceId === 'tvcctv' || source.serviceId === 'cctv4k')) {
+        program.listSource = { type: source.type, id: source.id, serviceId: source.serviceId }
+      }
       if (typeof p.favoritedAt === 'number' && Number.isFinite(p.favoritedAt)) program.favoritedAt = p.favoritedAt
       return [program]
     })
@@ -78,7 +84,22 @@ export class ConfigStore {
 
   addProgram(p: ProgramInfo): boolean {
     const programs = this.getPrograms()
-    if (programs.some((x) => x.columnId === p.columnId)) return false
+    const existingIndex = programs.findIndex((x) => x.columnId === p.columnId)
+    if (existingIndex >= 0) {
+      const existing = programs[existingIndex]
+      // Legacy backups do not know listSource. Never let one downgrade a
+      // current entry whose presentation/source split has already been resolved.
+      if (existing.listSource && !p.listSource) return false
+      const sourceChanged = JSON.stringify(existing.listSource) !== JSON.stringify(p.listSource)
+      const kindChanged = (existing.kind ?? 'column') !== (p.kind ?? 'column')
+      if (!sourceChanged && !kindChanged) return false
+      programs[existingIndex] = {
+        ...p,
+        ...(existing.favoritedAt == null ? {} : { favoritedAt: existing.favoritedAt })
+      }
+      this.store.set('programs', programs)
+      return true
+    }
     programs.push(p)
     this.store.set('programs', programs)
     return true
@@ -110,6 +131,12 @@ export class ConfigStore {
         }
         if (p.kind === 'album' || p.kind === 'column') program.kind = p.kind
         if (p.serviceId === 'tvcctv' || p.serviceId === 'cctv4k') program.serviceId = p.serviceId
+        const source = p.listSource
+        if (source && (source.type === 'column' || source.type === 'album')
+          && typeof source.id === 'string' && source.id
+          && (source.serviceId === 'tvcctv' || source.serviceId === 'cctv4k')) {
+          program.listSource = { type: source.type, id: source.id, serviceId: source.serviceId }
+        }
         if (typeof p.favoritedAt === 'number') program.favoritedAt = p.favoritedAt
         if (this.addProgram(program)) added++
       }

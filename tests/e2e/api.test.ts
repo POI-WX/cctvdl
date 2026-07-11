@@ -109,4 +109,23 @@ describe('CCTV API smoke', () => {
     const videos = await browse.getAlbumVideoList(overview.columnId, 1, '', overview.serviceId)
     expect(videos.length).toBeGreaterThan(1)
   }, 60_000)
+
+  it('keeps a legacy VIDA archive with changed TOPC as a monthly column', async () => {
+    const info = await browse.resolveColumnInfo(
+      'https://jishi.cctv.com/2015/03/03/VIDA1425372752043217.shtml?open_source=weibo_search'
+    )
+    expect(info).toMatchObject({
+      name: '上海纪实《档案》',
+      kind: 'column',
+      listSource: { type: 'album', id: 'VIDA1425372752043217', serviceId: 'tvcctv' }
+    })
+    const march = await browse.getAlbumVideoList('VIDA1425372752043217', 1, '201503')
+    expect(march.some(v => v.guid === '074fe7898bce4142ad74cdffc505946a')).toBe(true)
+    expect(march.every(v => v.time.startsWith('2015-03'))).toBe(true)
+
+    const oldEpisode = await browse.resolveColumnInfo('https://jishi.cctv.com/2015/03/24/VIDE1427145150264630.shtml')
+    const newEpisode = await browse.resolveColumnInfo('https://jishi.cctv.com/2019/06/16/VIDE9dr4xvEdkaXlvenDzLtr190616.shtml')
+    expect(oldEpisode).toMatchObject({ columnId: info.columnId, kind: 'column', listSource: info.listSource })
+    expect(newEpisode).toMatchObject({ columnId: info.columnId, kind: 'column', listSource: info.listSource })
+  }, 60_000)
 })

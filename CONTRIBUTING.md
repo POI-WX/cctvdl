@@ -55,13 +55,16 @@ shared types    → src/shared/      # 跨进程共享的 TypeScript 类型
 关键模块：
 - `src/main/api/cctv.ts` — 视频信息接口、HLS 解析、清晰度选择
 - `src/main/api/cctvnews.ts` — 央视新闻移动端视频页（`cctvnews.cctv.com/snow-book`）解析：Emas 网关 HMAC-SHA256 签名、base64 响应解码、多画质 m3u8 选择
-- `src/main/api/browse.ts` — 栏目/单视频页面解析、zombie column 检测；`resolveSingleVideoBatch` 统一调度普通 CCTV 页与 cctvnews 页
+- `src/main/api/browse.ts` — 栏目/节目集/单视频页面解析、跨 `TOPC` 的 `VIDA` 长期归档识别、album 分页缓存与按月过滤；`resolveSingleVideoBatch` 统一调度普通 CCTV 页与 cctvnews 页
+- `src/shared/programs.ts` — 节目展示语义与列表数据源的兼容路由；旧配置从 `kind` 推导数据源，新配置使用 `listSource`
 - `src/main/api/http.ts` — 弹性 HTTP 客户端（重试、超时、UA）
 - `src/renderer/stores/` — Pinia 状态管理（app / content / download）
 - `src/main/download/coordinator.ts` — 下载任务调度，支持并行下载、队列排序、取消与断点续传；`m3u8Url` 分支直接下载明文 segment（用于 cctvnews）
 - `src/main/download/decryptor.ts` — 在解密子进程中解密分片（仅用于常规 CCTV 加密流）
 - `src/main/download/finalizer.ts` — 调用 ffmpeg 合并分片
 - `resources/decrypt/` — 第三方解密脚本（**不可修改**，见下）
+
+`ProgramInfo.kind` 只表示界面语义：`column` 显示月份，`album` 显示选集。实际列表接口由 `ProgramInfo.listSource` 决定，因此一个按月栏目可以使用 `TOPC` 栏目接口，也可以使用稳定的 `VIDA` album 接口。跨进程发送该对象时必须复制嵌套的 `listSource`，不要直接传递 Vue 响应式 Proxy。
 
 ## 代码规范
 

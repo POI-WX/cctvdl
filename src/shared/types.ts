@@ -1,3 +1,9 @@
+export interface ProgramListSource {
+  type: 'column' | 'album'
+  id: string
+  serviceId: 'tvcctv' | 'cctv4k'
+}
+
 export interface ProgramInfo {
   name: string
   // Primary list id: TOPC... for regular columns, album_id for episode-style programs.
@@ -7,6 +13,9 @@ export interface ProgramInfo {
   // Missing kind means a legacy regular column.
   kind?: 'column' | 'album'
   serviceId?: 'tvcctv' | 'cctv4k'
+  // List transport is independent from presentation kind. A long-running
+  // monthly column may use a stable VIDA album source after CCTV changes TOPC.
+  listSource?: ProgramListSource
   // Epoch ms when favorited (pinned to top); undefined = not favorited.
   favoritedAt?: number
 }
@@ -132,7 +141,7 @@ export interface HistoryEntry {
 
 export interface CctvdlApi {
   browseProgram(url: string): Promise<ProgramInfo>
-  listVideos(program: ProgramInfo, month: string, requestId?: number): Promise<VideoInfo[]>
+  listVideos(program: ProgramInfo, month: string, requestId?: number, forceRefresh?: boolean): Promise<VideoInfo[]>
   importProgram(p: ProgramInfo): Promise<boolean>
   importPrograms(): Promise<number>
   deleteProgram(columnId: string): Promise<void>

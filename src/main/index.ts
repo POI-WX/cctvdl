@@ -13,6 +13,7 @@ import { setLogLevel, setLogPath, logger } from './logger'
 import { taskbarFraction } from '../shared/progress'
 import { sanitizeBounds } from '../shared/window-bounds'
 import { checkForUpdate } from '../shared/update-check'
+import { getProgramListSource } from '../shared/programs'
 import type { BatchResult, DownloadProgress } from '../shared/types'
 
 const isMac   = process.platform === 'darwin'
@@ -237,9 +238,10 @@ app.whenReady().then(() => {
     const now = new Date()
     const month = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
     Promise.allSettled(programs.map(async (program) => {
-      const list = (program.kind ?? 'column') === 'album'
-        ? await browse.getLatestAlbumVideos(program.columnId, program.serviceId ?? 'tvcctv')
-        : await browse.getColumnVideoList(program.columnId, 1, month)
+      const source = getProgramListSource(program)
+      const list = source.type === 'album'
+        ? await browse.getLatestAlbumVideos(source.id, source.serviceId)
+        : await browse.getColumnVideoList(source.id, 1, month)
       const newCount = list.filter(v => !history.has(v.guid)).length
       if (newCount > 0 && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('new-content', { columnId: program.columnId, count: newCount })

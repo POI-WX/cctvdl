@@ -1,5 +1,16 @@
 // Pure, framework-free helpers for the imported content list.
 
+import type { ProgramInfo, ProgramListSource } from './types'
+
+export function getProgramListSource(program: ProgramInfo): ProgramListSource {
+  if (program.listSource) return program.listSource
+  return {
+    type: (program.kind ?? 'column') === 'album' ? 'album' : 'column',
+    id: program.columnId,
+    serviceId: program.serviceId ?? 'tvcctv'
+  }
+}
+
 export interface SortableProgram {
   columnId: string
   // Epoch ms when the program was favorited; undefined = not favorited.

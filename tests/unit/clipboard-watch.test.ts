@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('electron', () => ({ clipboard: { readText: () => '' } }))
 
 import { isCctvLink, ClipboardWatcher } from '../../src/main/clipboard-watch'
+import { isCctvPageHostname } from '../../src/shared/cctv-link'
 
 describe('isCctvLink', () => {
   it('matches tv.cctv.com page URLs (trims whitespace)', () => {
@@ -18,6 +19,21 @@ describe('isCctvLink', () => {
     expect(isCctvLink('https://news.cctv.com/2026/01/01/ARTI.shtml')).toBe(true)
     expect(isCctvLink('https://news.cctv.cn/2026/01/01/ARTI.shtml')).toBe(true)
     expect(isCctvLink('https://content-static.cctvnews.cctv.com/snow-book/video.html?item_id=1')).toBe(true)
+  })
+
+  it('matches legacy programme subdomains without a host allowlist', () => {
+    expect(isCctvLink('https://jishi.cctv.com/2015/03/03/VIDA1425372752043217.shtml')).toBe(true)
+    expect(isCctvLink('https://ent.cctv.com/2015/07/21/VIDA1437462909085973.shtml')).toBe(true)
+    expect(isCctvLink('https://big5.cctv.com/gate/big5/wlchunwan.cntv.cn/2015/02/04/VIDE1423018814797644.shtml')).toBe(true)
+    expect(isCctvLink('https://wlchunwan.cntv.cn/2015/02/04/VIDE1423018814797644.shtml')).toBe(true)
+  })
+
+  it('requires a real CCTV/CNTV domain boundary', () => {
+    expect(isCctvPageHostname('sports.cctv.com')).toBe(true)
+    expect(isCctvPageHostname('CCTV.COM.')).toBe(true)
+    expect(isCctvPageHostname('cctv.com.evil.example')).toBe(false)
+    expect(isCctvPageHostname('fakecctv.com')).toBe(false)
+    expect(isCctvLink('https://cctv.com.evil.example/VIDE.shtml')).toBe(false)
   })
 
   it('rejects non-CCTV / non-URL text', () => {

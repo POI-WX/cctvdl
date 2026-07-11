@@ -128,6 +128,15 @@ describe('IPC Handlers', () => {
       expect(mockBrowse.getColumnVideoList).not.toHaveBeenCalled()
     })
 
+    it('uses an album list source with month filtering for a monthly column', async () => {
+      await handlers['list-videos']({}, {
+        name: '上海纪实《档案》', columnId: 'VIDA1', itemId: 'VIDA1', kind: 'column',
+        listSource: { type: 'album', id: 'VIDA1', serviceId: 'tvcctv' }
+      }, '201503')
+      expect(mockBrowse.getAlbumVideoList).toHaveBeenCalledWith('VIDA1', 1, '201503', 'tvcctv', expect.any(Function))
+      expect(mockBrowse.getColumnVideoList).not.toHaveBeenCalled()
+    })
+
     it('forwards album page progress to the renderer', async () => {
       vi.mocked(mockBrowse.getAlbumVideoList).mockImplementationOnce(async (_id, _page, _month, _serviceId, onProgress) => {
         onProgress?.([{ guid: 'g1', title: 'Episode 1', brief: '', coverUrl: '', time: '' }])
