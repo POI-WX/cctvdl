@@ -12,6 +12,7 @@ const fallback: Settings = {
   logPath: '/logs',
   autoOpenFolder: false,
   clipboardWatch: false,
+  includeHighlights: false,
   concurrentVideos: 1,
   coverSavePath: '/pictures'
 }
@@ -39,6 +40,7 @@ describe('normalizeSettings', () => {
     const out = normalizeSettings(legacy, fallback)
     expect(out.reencode).toBe(false)      // new field filled from fallback
     expect(out.darkMode).toBe(false)
+    expect(out.includeHighlights).toBe(false)
     expect(out.savePath).toBe('/x')
     expect(out.threadCount).toBe(4)
     expect(out.quality).toBe('chaoqing')
@@ -81,6 +83,7 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ reencode: 1 }, fallback).reencode).toBe(false)
     expect(normalizeSettings({ darkMode: 'yes' }, fallback).darkMode).toBe(false)
     expect(normalizeSettings({ reencode: true }, fallback).reencode).toBe(true)
+    expect(normalizeSettings({ includeHighlights: true }, fallback).includeHighlights).toBe(true)
   })
 
   it('keeps a fully valid settings object intact', () => {

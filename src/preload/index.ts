@@ -15,6 +15,7 @@ const api: CctvdlApi = {
   getPrograms: () => ipcRenderer.invoke('get-programs'),
   resolveSingleVideo: (url: string) => ipcRenderer.invoke('resolve-single-video', url),
   resolveVideoBatch: (url: string, quality?: Quality) => ipcRenderer.invoke('resolve-video-batch', url, quality),
+  getVideoMediaMetadata: (guid: string) => ipcRenderer.invoke('get-video-media-metadata', guid),
   getSingleVideos: () => ipcRenderer.invoke('get-single-videos'),
   addSingleVideo: (v: VideoInfo) => ipcRenderer.invoke('add-single-video', v),
   deleteSingleVideo: (guid: string) => ipcRenderer.invoke('delete-single-video', guid),

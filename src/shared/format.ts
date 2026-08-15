@@ -31,6 +31,17 @@ export function formatTime(seconds: number): string {
   return `${secs}秒`
 }
 
+/** Format known media length as mm:ss or h:mm:ss for compact preview metadata. */
+export function formatMediaDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.round(totalSeconds))
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const remainder = seconds % 60
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+    : `${minutes}:${String(remainder).padStart(2, '0')}`
+}
+
 /** Format an epoch-ms timestamp into a relative zh-CN string (e.g. "2 天前"). */
 export function relativeTime(epochMs: number): string {
   if (!epochMs) return ''

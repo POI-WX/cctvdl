@@ -1,8 +1,17 @@
-export interface ProgramListSource {
-  type: 'column' | 'album'
-  id: string
-  serviceId: 'tvcctv' | 'cctv4k'
-}
+export type ProgramListSource =
+  | {
+      type: 'column' | 'album'
+      id: string
+      serviceId: 'tvcctv' | 'cctv4k'
+    }
+  | {
+      // v.cctv.com programme pages use a separate catalogue API keyed by
+      // mid+chid rather than CNTV's TOPC/VIDA identifiers.
+      type: 'vcctv'
+      id: string
+      chid: string
+      serviceId: 'tvcctv'
+    }
 
 export interface ProgramInfo {
   name: string
@@ -10,6 +19,9 @@ export interface ProgramInfo {
   columnId: string
   // Source page/item id when CCTV exposes one; legacy configs may leave it empty.
   itemId: string
+  // Original TOPC topic used by CCTV's separate fragment endpoint. Album-backed
+  // programmes otherwise replace columnId with their VIDA catalogue id.
+  topicId?: string
   // Missing kind means a legacy regular column.
   kind?: 'column' | 'album'
   serviceId?: 'tvcctv' | 'cctv4k'
@@ -26,6 +38,10 @@ export interface VideoInfo {
   brief: string
   coverUrl: string
   time: string
+  channel?: string
+  durationSeconds?: number
+  // Full episodes are the default; only supplementary results need a label.
+  contentType?: 'highlight' | 'fragment'
   // When set, the download pipeline uses this variant m3u8 URL directly instead
   // of resolving segments via CctvApiService (which requires a CCTV guid and the
   // flash-client signature). Used by cctvnews.cctv.com snow-book videos whose
@@ -127,6 +143,9 @@ export interface Settings {
   autoOpenFolder?: boolean
   // When true, watch the clipboard and offer to import copied CCTV links (opt-in).
   clipboardWatch?: boolean
+  // Include CCTV's separately published programme highlights and topic clips
+  // whenever its video list is loaded. Kept opt-in because these lists can be large.
+  includeHighlights?: boolean
   // Maximum number of videos to download simultaneously (1–3, default 1).
   concurrentVideos?: number
   // Directory for saving cover images (separate from video savePath).
@@ -163,6 +182,7 @@ export interface CctvdlApi {
   // Returns all videos reachable from a single URL. Regular pages yield a
   // single-element array; cctvnews snow-book articles may yield N.
   resolveVideoBatch(url: string, quality?: Quality): Promise<VideoInfo[]>
+  getVideoMediaMetadata(guid: string): Promise<Pick<VideoInfo, 'channel' | 'durationSeconds'>>
   getSingleVideos(): Promise<VideoInfo[]>
   addSingleVideo(v: VideoInfo): Promise<boolean>
   deleteSingleVideo(guid: string): Promise<void>

@@ -92,8 +92,10 @@ describe('CCTV API smoke', () => {
     expect(column.kind).toBe('column')
     expect(column.columnId).toMatch(/^TOPC/)
 
-    await expect(browse.resolveColumnInfo('https://tv.cctv.com/2019/11/16/VIDEDvCPMR7rm10QI5chA4In191116.shtml'))
-      .rejects.toThrow('无法解析节目信息')
+    const clipProgram = await browse.resolveColumnInfo(
+      'https://tv.cctv.com/2019/11/16/VIDEDvCPMR7rm10QI5chA4In191116.shtml'
+    )
+    expect(clipProgram).toMatchObject({ name: '创新进行时', kind: 'album', serviceId: 'tvcctv' })
     const clip = await browse.resolveSingleVideo('https://tv.cctv.com/2019/11/16/VIDEDvCPMR7rm10QI5chA4In191116.shtml')
     expect(clip.title).toContain('导视')
     expect(clip.time).toMatch(/^2019-11-16 \d{2}:\d{2}:\d{2}$/)
@@ -131,4 +133,94 @@ describe('CCTV API smoke', () => {
     expect(oldEpisode).toMatchObject({ columnId: info.columnId, kind: 'column', listSource: info.listSource })
     expect(newEpisode).toMatchObject({ columnId: info.columnId, kind: 'column', listSource: info.listSource })
   }, 60_000)
+
+  it('upstream #99: resolves the legacy sports page and its 2011 archive', async () => {
+    const info = await browse.resolveColumnInfo(
+      'https://sports.cctv.com/2011/12/22/VIDE0tOb7LbbAcQsiTpDpZwf111222.shtml'
+    )
+    expect(info.columnId).toBeTruthy()
+    const videos = info.listSource?.type === 'album'
+      ? await browse.getAlbumVideoList(info.listSource.id, 1, '201112', info.listSource.serviceId)
+      : await browse.getColumnVideoList(info.listSource?.id || info.columnId, 1, '201112')
+    expect(videos.some(video => video.time.startsWith('2011-12'))).toBe(true)
+  }, 60_000)
+
+  it('upstream #96: keeps an editorial programme segment as the pasted single video', async () => {
+    const url = 'https://tv.cctv.com/2021/11/16/VIDE9lJuIH1R3ee7BcFluJZ5211116.shtml'
+    await expect(browse.resolveColumnInfo(url)).rejects.toThrow('无法解析节目信息')
+    const pasted = await browse.resolveSingleVideo(url)
+    expect(pasted.guid).toBe('36a90b852caf401b887cdafb0dc9d08c')
+  }, 60_000)
+
+  it('upstream #98: VIDA overview and episode resolve to the same multi-episode album', async () => {
+    const overview = await browse.resolveColumnInfo(
+      'https://tv.cctv.com/2024/03/19/VIDAs4QKnv232uJm4BjzaI6u240319.shtml'
+    )
+    const episode = await browse.resolveColumnInfo(
+      'https://tv.cctv.com/2026/03/18/VIDENGxMKPgX3qgwirTrWHD0260318.shtml'
+    )
+    expect(overview.kind).toBe('album')
+    expect(episode.columnId).toBe(overview.columnId)
+    expect((await browse.getLatestAlbumVideos(overview.columnId, overview.serviceId)).length).toBeGreaterThan(1)
+    const videos = await browse.getAlbumVideoList(overview.columnId, 1, '', overview.serviceId)
+    expect(videos.length).toBeGreaterThan(1)
+    expect(videos[0].title).toMatch(/第\s*1\s*集/)
+  }, 90_000)
+
+  it('upstream #104: resolves CCTV-16 from clear HLS rather than H5E', async () => {
+    const video = await browse.resolveSingleVideo(
+      'https://tv.cctv.cn/2026/07/25/VIDE3hJ88s2Emprtnumwfy4Q260725.shtml'
+    )
+    expect(video.channel).toMatch(/CCTV-16/i)
+    const resolved = await api.resolveSegmentUrls(video.guid, 'auto')
+    expect(resolved.encrypted).toBe(false)
+    expect(resolved.segmentUrls.length).toBeGreaterThan(0)
+  }, 60_000)
+
+  it('upstream v4.4.3: treats culture/travel itemguid as the playable single video', async () => {
+    const url = 'https://culture-travel.cctv.com/2024/12/21/VIDEvVu5prXSM14Y8yQk6aiq241221.shtml'
+    await expect(browse.resolveColumnInfo(url)).rejects.toThrow('无法解析节目信息')
+    const video = await browse.resolveSingleVideo(url)
+    expect(video.guid).toBe('19e5f94bf6fe4c53b9df44d6885af4c4')
+    expect(video.durationSeconds).toBe(377)
+  }, 60_000)
+
+  // The original #103 URL has expired; the stable #106 album exercises both
+  // its full-episode classification and #103's optional-highlight separation.
+  it('upstream #106 and #103 behaviour: separates full episodes from optional highlights', async () => {
+    const info = await browse.resolveColumnInfo(
+      'https://tv.cctv.com/2026/08/02/VIDECtLnpaVTtX2Xx5aTKZ4A260802.shtml'
+    )
+    expect(info.kind).toBe('album')
+    const videos = await browse.getAlbumVideoList(info.columnId, 1, '', info.serviceId)
+    expect(videos.map(video => video.title)).toEqual([
+      '《南戏九百年》 第1集',
+      '《南戏九百年》 第2集'
+    ])
+    const supplementary = await browse.getSupplementaryVideos(info)
+    expect(supplementary.length).toBeGreaterThan(2)
+    expect(supplementary.every(video => video.contentType === 'highlight' || video.contentType === 'fragment')).toBe(true)
+    expect(new Set([...videos, ...supplementary].map(video => video.guid)).size)
+      .toBe(videos.length + supplementary.length)
+  }, 60_000)
+
+  it('upstream #108: routes the 2016 event page to its 161-video album, not a single video', async () => {
+    const info = await browse.resolveColumnInfo(
+      'https://2016.cctv.com/2016/08/18/VIDEFXKSsL0eOPfC4Z3GqpIv160818.shtml'
+    )
+    expect(info).toMatchObject({
+      name: '里约奥运-乒乓球', kind: 'album',
+      listSource: { type: 'album', id: 'VIDAJWCgstBc3Q3ADY9VIGGE160801' }
+    })
+    const videos = await browse.getAlbumVideoList('VIDAJWCgstBc3Q3ADY9VIGGE160801', 1, '201608')
+    expect(videos.length).toBeGreaterThan(100)
+    expect(videos.some(video => video.guid === '6860a7d7945043bba8aabea4d102c364')).toBe(true)
+  }, 90_000)
+
+  it('upstream #101: lists a v.cctv mid/chid catalogue through the surviving API', async () => {
+    const videos = await browse.getLatestVcctvVideos('24iQzAZ30426', 'EPGC1525679284945000')
+    expect(videos.length).toBeGreaterThan(0)
+    expect(videos[0].guid).toBeTruthy()
+  }, 60_000)
+
 })

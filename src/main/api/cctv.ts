@@ -32,6 +32,40 @@ export interface HLSVariant {
 
 export interface ResolveResult {
   segmentUrls: string[]
+  encrypted: boolean
+}
+
+export interface CctvMediaInfo {
+  hlsH5eUrl: string | null
+  hlsUrl: string | null
+  channel: string
+}
+
+export function isCctv16Channel(channel: string): boolean {
+  return /CCTV-16(?!\d)/i.test(channel)
+}
+
+export function clearHlsCandidates(hlsUrl: string, quality: Quality): string[] {
+  const tiersByQuality: Record<Quality, string[]> = {
+    auto: ['4000', '3000', '2000', '1200', '850', '450'],
+    bluray: ['4000', '3000', '2000', '1200', '850', '450'],
+    chaoqing: ['2000', '1200', '850', '450', '3000', '4000'],
+    gaoqing: ['1200', '850', '450', '2000', '3000', '4000'],
+    biaoqing: ['850', '450', '1200', '2000', '3000', '4000'],
+    liuchang: ['450', '850', '1200', '2000', '3000', '4000']
+  }
+  let parsed: URL
+  try { parsed = new URL(hlsUrl) } catch { return [hlsUrl] }
+  if (!/\/asp\/hls\/(?:main|4000|3000|2000|1200|850|450)(?=\/)/i.test(parsed.pathname)) {
+    return [hlsUrl]
+  }
+  return tiersByQuality[quality].map(tier => {
+    const candidate = new URL(parsed.href)
+    candidate.pathname = candidate.pathname
+      .replace(/\/asp\/hls\/(?:main|4000|3000|2000|1200|850|450)(?=\/)/i, `/asp/hls/${tier}`)
+      .replace(/\/(?:main|4000|3000|2000|1200|850|450)\.m3u8$/i, `/${tier}.m3u8`)
+    return candidate.href
+  })
 }
 
 export function computeSignature(tsp: string): string {
@@ -108,10 +142,7 @@ export function parseSegmentUrls(variantText: string, baseUrl: string): string[]
 export class CctvApiService {
   constructor(private readonly fetch: Fetcher = createResilientFetch()) {}
 
-  async fetchVideoInfo(guid: string, signal?: AbortSignal): Promise<{
-    hlsH5eUrl: string | null
-    hlsUrl: string | null
-  }> {
+  async fetchVideoInfo(guid: string, signal?: AbortSignal): Promise<CctvMediaInfo> {
     const tsp = String(Math.floor(Date.now() / 1000))
     const vc = computeSignature(tsp)
     const params = new URLSearchParams({
@@ -124,29 +155,58 @@ export class CctvApiService {
     const manifest = (data['manifest'] as Record<string, unknown>) || {}
     const hlsH5eUrl = (data['hls_h5e_url'] as string) || (manifest['hls_h5e_url'] as string) || null
     const hlsUrl = (data['hls_url'] as string) || (manifest['hls_url'] as string) || null
-    return { hlsH5eUrl, hlsUrl }
+    const channel = String(data['channel'] || data['play_channel'] || '')
+    return { hlsH5eUrl, hlsUrl, channel }
   }
 
   async resolveSegmentUrls(guid: string, quality: Quality = 'auto', signal?: AbortSignal): Promise<ResolveResult> {
     const info = await this.fetchVideoInfo(guid, signal)
+    if (!info.hlsH5eUrl && !info.hlsUrl) throw new Error('No HLS URL found')
 
-    const streamUrl = info.hlsH5eUrl || info.hlsUrl
-    if (!streamUrl) throw new Error('No HLS URL found')
+    // CCTV-16's encrypted stream can exhibit slight corruption on some current
+    // programmes. Prefer its clear HLS variants and fall back to H5E only when
+    // every suitable clear tier is unavailable or malformed.
+    if (info.hlsUrl && isCctv16Channel(info.channel)) {
+      for (const candidate of clearHlsCandidates(info.hlsUrl, quality)) {
+        try {
+          const segmentUrls = await this.resolvePlaylist(candidate, quality, signal)
+          if (segmentUrls.length) {
+            logger.debug(`CCTV-16 clear HLS: ${candidate}, ${segmentUrls.length} segments`)
+            return { segmentUrls, encrypted: false }
+          }
+        } catch (err) {
+          if (signal?.aborted) throw err
+          logger.debug(`CCTV-16 clear HLS unavailable: ${candidate}: ${String(err)}`)
+        }
+      }
+    }
 
-    const masterResp = await this.fetch(streamUrl, uaInit(signal))
-    if (!masterResp.ok) throw new Error(`HTTP ${masterResp.status} fetching master playlist`)
-    const masterText = await masterResp.text()
+    if (info.hlsH5eUrl) {
+      return { segmentUrls: await this.resolvePlaylist(info.hlsH5eUrl, quality, signal), encrypted: true }
+    }
+    return { segmentUrls: await this.resolvePlaylist(info.hlsUrl!, quality, signal), encrypted: false }
+  }
+
+  private async resolvePlaylist(streamUrl: string, quality: Quality, signal?: AbortSignal): Promise<string[]> {
+    const playlistResp = await this.fetch(streamUrl, uaInit(signal))
+    if (!playlistResp.ok) throw new Error(`HTTP ${playlistResp.status} fetching playlist`)
+    const playlistText = await playlistResp.text()
     const baseUrl = streamUrl.substring(0, streamUrl.lastIndexOf('/') + 1)
-    const maxBw = QUALITY_MAP[quality] ?? Infinity
-    const variant = CCTVHLSBestParser.best(masterText, baseUrl, maxBw)
+    // HLS variant URIs are not required to end in .m3u8. Use playlist tags,
+    // not URI suffixes, so extensionless variants are never downloaded as
+    // if they were media segments.
+    const isMediaPlaylist = /^\s*#EXTINF:/m.test(playlistText)
+    const isMasterPlaylist = /^\s*#EXT-X-STREAM-INF:/m.test(playlistText)
+    if (isMediaPlaylist && !isMasterPlaylist) return parseSegmentUrls(playlistText, baseUrl)
 
+    const maxBw = QUALITY_MAP[quality] ?? Infinity
+    const variant = CCTVHLSBestParser.best(playlistText, baseUrl, maxBw)
     const variantResp = await this.fetch(variant.uri, uaInit(signal))
     if (!variantResp.ok) throw new Error(`HTTP ${variantResp.status} fetching variant playlist`)
     const variantText = await variantResp.text()
     const variantBase = variant.uri.substring(0, variant.uri.lastIndexOf('/') + 1)
     const segmentUrls = parseSegmentUrls(variantText, variantBase)
-
     logger.debug(`HLS variant: ${variant.bandwidth}bps ${variant.resolution.width}x${variant.resolution.height}, ${segmentUrls.length} segments`)
-    return { segmentUrls }
+    return segmentUrls
   }
 }

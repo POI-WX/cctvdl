@@ -34,6 +34,7 @@ interface StateFile {
   segmentUrls: string[]
   completed: number[]
   pending: number[]
+  encrypted?: boolean
 }
 
 interface HistoryStore {
@@ -273,6 +274,7 @@ export class DownloadCoordinator extends EventEmitter {
       }
 
       const segments = result.segmentUrls
+      const encrypted = result.encrypted ?? true
       if (!segments.length) {
         this.markFailed(job, 'no segment urls')
         this.cleanWorkDir(workDir)
@@ -283,7 +285,8 @@ export class DownloadCoordinator extends EventEmitter {
 
       const stateFile = this.loadState(workDir)
       let completedIndices: number[] = []
-      if (stateFile && stateFile.guid === job.guid && Array.isArray(stateFile.segmentUrls) && stateFile.segmentUrls.length === segments.length) {
+      if (stateFile && stateFile.guid === job.guid && (stateFile.encrypted ?? true) === encrypted
+        && Array.isArray(stateFile.segmentUrls) && stateFile.segmentUrls.length === segments.length) {
         completedIndices = (stateFile.completed || []).filter((i) => {
           if (i < 0 || i >= segments.length) return false
           const segPath = path.join(workDir, segmentFileName(i))
@@ -293,7 +296,7 @@ export class DownloadCoordinator extends EventEmitter {
       const completedSet = new Set(completedIndices)
       const pendingIndices = segments.map((_, i) => i).filter((i) => !completedSet.has(i))
 
-      logger.debug(`[${job.guid}] quality=${job.quality}, ${segments.length} segments; resume: ${completedSet.size} done, ${pendingIndices.length} to decrypt`)
+      logger.debug(`[${job.guid}] quality=${job.quality}, ${segments.length} ${encrypted ? 'encrypted' : 'clear'} segments; resume: ${completedSet.size} done, ${pendingIndices.length} pending`)
 
       jobSegments = segments.map((_, i) => ({
         index: i,
@@ -306,7 +309,10 @@ export class DownloadCoordinator extends EventEmitter {
       emitJobProgress(true)
 
       const totalSegments = segments.length
-      const decryptResult = await this.decryptor.decryptAll(
+      const processSegments = encrypted
+        ? this.decryptor.decryptAll.bind(this.decryptor)
+        : this.decryptor.downloadPlainAll.bind(this.decryptor)
+      const decryptResult = await processSegments(
         pendingIndices.map((i) => ({ index: i, url: segments[i] })),
         workDir,
         (info: ProgressInfo) => {
@@ -331,7 +337,7 @@ export class DownloadCoordinator extends EventEmitter {
           }
           job.progressPercent = totalSegments > 0 ? Math.round((completedCount / totalSegments) * DOWNLOAD_PHASE_MAX_PCT) : 0
           emitJobProgress()
-          saveJobState(workDir, { guid: job.guid, segmentUrls: segments, completed, pending })
+          saveJobState(workDir, { guid: job.guid, segmentUrls: segments, completed, pending, encrypted })
         },
         abort.signal,
         Math.max(1, Math.floor(job.threadCount / this.concurrentVideos))

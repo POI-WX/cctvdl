@@ -40,6 +40,7 @@ describe('ConfigStore', () => {
       expect(settings.reencode).toBe(false)
       expect(settings.logLevel).toBe('info')
       expect(settings.darkMode).toBe(false)
+      expect(settings.includeHighlights).toBe(false)
     })
 
     it('saveSettings persists and getSettings returns saved values', () => {
@@ -52,7 +53,8 @@ describe('ConfigStore', () => {
         darkMode: true,
         logPath: '/custom/log',
         autoOpenFolder: true,
-        clipboardWatch: true
+        clipboardWatch: true,
+        includeHighlights: true
       }
       store.saveSettings(newSettings)
       const retrieved = store.getSettings()
@@ -64,6 +66,7 @@ describe('ConfigStore', () => {
       expect(retrieved.darkMode).toBe(true)
       expect(retrieved.autoOpenFolder).toBe(true)
       expect(retrieved.clipboardWatch).toBe(true)
+      expect(retrieved.includeHighlights).toBe(true)
     })
   })
 
@@ -197,6 +200,19 @@ describe('ConfigStore', () => {
       })
     })
 
+    it('round-trips a v.cctv list source through import and persisted reads', () => {
+      const added = store.importPrograms([{
+        name: 'v.cctv 节目', columnId: 'vcctv:mid1', itemId: 'mid1', kind: 'column',
+        listSource: { type: 'vcctv', id: 'mid1', chid: 'chid1', serviceId: 'tvcctv' }
+      }])
+
+      expect(added).toBe(1)
+      expect(store.getPrograms()[0]).toMatchObject({
+        columnId: 'vcctv:mid1',
+        listSource: { type: 'vcctv', id: 'mid1', chid: 'chid1', serviceId: 'tvcctv' }
+      })
+    })
+
     it('importPrograms throws on non-array input', () => {
       expect(() => store.importPrograms({ not: 'an array' })).toThrow()
     })
@@ -215,6 +231,15 @@ describe('ConfigStore', () => {
       expect(store.getSingleVideos().map((v) => v.guid)).toEqual(['B', 'A'])
       expect(store.addSingleVideo(mk('A'))).toBe(false)
       expect(store.getSingleVideos()).toHaveLength(2)
+    })
+
+    it('persists optional channel, duration and content type metadata', () => {
+      store.addSingleVideo({
+        ...mk('metadata'), channel: 'CCTV-16', durationSeconds: 123.6, contentType: 'highlight'
+      })
+      expect(store.getSingleVideos()[0]).toMatchObject({
+        channel: 'CCTV-16', durationSeconds: 124, contentType: 'highlight'
+      })
     })
 
     it('deleteSingleVideo removes by guid', () => {

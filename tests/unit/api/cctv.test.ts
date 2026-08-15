@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { computeSignature, CCTVHLSBestParser, parseSegmentUrls, CctvApiService } from '../../../src/main/api/cctv'
+import {
+  computeSignature, CCTVHLSBestParser, parseSegmentUrls, CctvApiService,
+  clearHlsCandidates, isCctv16Channel
+} from '../../../src/main/api/cctv'
 
 describe('computeSignature', () => {
   it('computes MD5 signature with fixed tsp', () => {
@@ -186,6 +189,38 @@ seg2.ts`
 })
 
 describe('CctvApiService', () => {
+  it('builds clear HLS quality candidates without losing query or fragment', () => {
+    const candidates = clearHlsCandidates(
+      'https://media.example/asp/hls/main/video/main.m3u8?token=abc#part', 'chaoqing'
+    )
+    expect(candidates[0]).toBe('https://media.example/asp/hls/2000/video/2000.m3u8?token=abc#part')
+    expect(candidates.slice(0, 4).at(-1)).toContain('/450/video/450.m3u8')
+    expect(candidates.at(-1)).toContain('/4000/video/4000.m3u8')
+  })
+
+  it('tries higher clear tiers before falling back to encrypted H5E', () => {
+    const candidates = clearHlsCandidates(
+      'https://media.example/asp/hls/main/video/main.m3u8', 'liuchang'
+    )
+    expect(candidates.map(url => url.match(/\/hls\/(\d+)\//)?.[1])).toEqual([
+      '450', '850', '1200', '2000', '3000', '4000'
+    ])
+  })
+
+  it('updates both directory and filename when the clear URL already names a tier', () => {
+    const candidates = clearHlsCandidates(
+      'https://media.example/asp/hls/1200/video/1200.m3u8?token=abc', 'liuchang'
+    )
+    expect(candidates[0]).toBe('https://media.example/asp/hls/450/video/450.m3u8?token=abc')
+    expect(candidates[1]).toContain('/850/video/850.m3u8')
+  })
+
+  it('matches CCTV-16 without matching neighbouring channel numbers', () => {
+    expect(isCctv16Channel('CCTV-16 4K奥林匹克')).toBe(true)
+    expect(isCctv16Channel('cctv-16')).toBe(true)
+    expect(isCctv16Channel('CCTV-160测试')).toBe(false)
+  })
+
   describe('fetchVideoInfo', () => {
     it('parses the HLS stream URL', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
@@ -197,6 +232,17 @@ describe('CctvApiService', () => {
 
       expect(info.hlsH5eUrl).toBe('https://example.com/master.m3u8')
       expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('prefers channel over play_channel', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          channel: 'CCTV-1 综合', play_channel: '旧频道'
+        })
+      })
+      const info = await new CctvApiService(mockFetch).fetchVideoInfo('test-guid')
+      expect(info.channel).toBe('CCTV-1 综合')
     })
 
     it('throws on HTTP failure', async () => {
@@ -230,6 +276,49 @@ describe('CctvApiService', () => {
       const result = await api.resolveSegmentUrls('test-guid', 'auto')
 
       expect(result.segmentUrls).toHaveLength(2)
+      expect(result.encrypted).toBe(true)
+    })
+
+    it('recognizes an extensionless URI as a master-playlist variant', async () => {
+      const mockFetch = makeChainedFetch(
+        '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000000,RESOLUTION=1280x720\nplaylist?id=720',
+        '#EXTM3U\n#EXTINF:10,\nseg1.ts\n#EXT-X-ENDLIST'
+      )
+      const result = await new CctvApiService(mockFetch).resolveSegmentUrls('test-guid')
+
+      expect(mockFetch.mock.calls[2][0]).toBe('https://example.com/playlist?id=720')
+      expect(result.segmentUrls).toEqual(['https://example.com/seg1.ts'])
+    })
+
+    it('uses a clear CCTV-16 playlist before H5E', async () => {
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({
+          channel: 'CCTV-16 4K奥林匹克',
+          hls_url: 'https://media.example/asp/hls/main/video/main.m3u8',
+          hls_h5e_url: 'https://media.example/h5e/master.m3u8'
+        }) })
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve('#EXTM3U\n#EXTINF:10,\nclear-1.ts') })
+      const result = await new CctvApiService(mockFetch).resolveSegmentUrls('cctv16', 'auto')
+      expect(result).toEqual({
+        segmentUrls: ['https://media.example/asp/hls/4000/video/clear-1.ts'], encrypted: false
+      })
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('falls back to H5E after all CCTV-16 clear tiers fail', async () => {
+      const info = {
+        play_channel: 'CCTV-16 4K奥林匹克',
+        hls_url: 'https://media.example/asp/hls/main/video/main.m3u8',
+        hls_h5e_url: 'https://media.example/h5e/master.m3u8'
+      }
+      const mockFetch = vi.fn().mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(info) })
+      for (let i = 0; i < 6; i++) mockFetch.mockResolvedValueOnce({ ok: false, status: 404 })
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000000,RESOLUTION=1280x720\n720p.m3u8') })
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve('#EXTM3U\n#EXTINF:10,\nencrypted.ts') })
+      const result = await new CctvApiService(mockFetch).resolveSegmentUrls('cctv16', 'auto')
+      expect(result.encrypted).toBe(true)
+      expect(result.segmentUrls).toEqual(['https://media.example/h5e/encrypted.ts'])
     })
 
     it('passes quality tier bandwidth cap to variant selection (liuchang → 460800)', async () => {

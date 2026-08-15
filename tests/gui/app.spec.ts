@@ -330,7 +330,7 @@ test.describe('cctvdl GUI 测试', () => {
     await page.waitForTimeout(500)
 
     // Custom settings page, labels use .settings-item-name
-    const expectedLabels = ['视频保存目录', '图片保存目录', '下载线程数', '同时下载视频数', '视频清晰度', '合并方式', '下载完成后打开文件夹', '剪贴板自动导入', '日志级别', '深色模式', '日志目录']
+    const expectedLabels = ['视频保存目录', '图片保存目录', '下载线程数', '同时下载视频数', '视频清晰度', '合并方式', '下载完成后打开文件夹', '加载节目看点和片段', '剪贴板自动导入', '日志级别', '深色模式', '日志目录']
     for (const label of expectedLabels) {
       const el = page.locator('.settings-item-name', { hasText: label })
       await expect(el).toBeVisible()

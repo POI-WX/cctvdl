@@ -3,6 +3,7 @@ import fs from 'fs'
 import { spawn } from 'child_process'
 import PQueue from 'p-queue'
 import { ffmpegPath } from './ffmpeg'
+import { createResilientFetch, type Fetcher, uaInit } from '../api/http'
 
 export type DecryptFn = (segmentUrl: string, outputPath: string) => Promise<void>
 
@@ -113,7 +114,21 @@ export interface ProgressInfo {
   completedIndex: number // the segment's ORIGINAL global index that just finished
   failed: boolean
   bytes: number         // bytes written for this segment (0 on failure)
-  attempts: number      // how many decrypt attempts this segment took
+  attempts: number      // how many decrypt/download attempts this segment took
+}
+
+interface RetryResult<T> {
+  ok: boolean
+  attempts: number
+  value?: T
+  error?: string
+}
+
+interface SegmentProcessResult {
+  ok: boolean
+  attempts: number
+  bytes: number
+  error?: string
 }
 
 /** Build the on-disk output path for a segment from its original global index. */
@@ -126,7 +141,8 @@ export class SegmentDecryptor {
     private readonly decrypt: DecryptFn = createDefaultDecrypt(),
     private readonly defaultConcurrency: number = 8,
     private readonly maxAttempts: number = 3,
-    private readonly retryBaseDelayMs: number = 600
+    private readonly retryBaseDelayMs: number = 600,
+    private readonly plainFetch: Fetcher = createResilientFetch()
   ) {}
 
   async decryptAll(
@@ -136,6 +152,41 @@ export class SegmentDecryptor {
     signal?: AbortSignal,
     concurrency?: number
   ): Promise<DecryptResult> {
+    return this.processAll(
+      tasks, workDir, onProgress, signal, concurrency, 'decrypt failed',
+      async (task, outPath) => {
+        const result = await this.decryptWithRetry(task.url, outPath, signal)
+        let bytes = 0
+        if (result.ok) {
+          try { bytes = fs.statSync(outPath).size } catch { /* size best-effort */ }
+        }
+        return { ...result, bytes }
+      }
+    )
+  }
+
+  async downloadPlainAll(
+    tasks: SegmentTask[],
+    workDir: string,
+    onProgress: (info: ProgressInfo) => void,
+    signal?: AbortSignal,
+    concurrency?: number
+  ): Promise<DecryptResult> {
+    return this.processAll(
+      tasks, workDir, onProgress, signal, concurrency, 'download failed',
+      (task, outPath) => this.downloadPlainWithRetry(task.url, outPath, signal)
+    )
+  }
+
+  private async processAll(
+    tasks: SegmentTask[],
+    workDir: string,
+    onProgress: (info: ProgressInfo) => void,
+    signal: AbortSignal | undefined,
+    concurrency: number | undefined,
+    fallbackError: string,
+    process: (task: SegmentTask, outPath: string) => Promise<SegmentProcessResult>
+  ): Promise<DecryptResult> {
     const queue = new PQueue({ concurrency: concurrency || this.defaultConcurrency })
     const completed: number[] = []
     const failed: Array<{ index: number; error: string }> = []
@@ -144,28 +195,47 @@ export class SegmentDecryptor {
 
     for (const task of tasks) {
       if (signal?.aborted) break
-      // Name by ORIGINAL index so resume never collides with previously completed segments.
-      const outPath = path.join(workDir, segmentFileName(task.index))
-      queue.add(async () => {
-        if (signal?.aborted) {
-          done++
-          return
-        }
-        const { ok, error, attempts } = await this.decryptWithRetry(task.url, outPath, signal)
-        if (ok) {
+      void queue.add(async () => {
+        if (signal?.aborted) return
+        // Name by ORIGINAL index so resume never collides with completed segments.
+        const outPath = path.join(workDir, segmentFileName(task.index))
+        const result = await process(task, outPath)
+        if (signal?.aborted) return
+        if (result.ok) {
           completed.push(task.index)
-          let bytes = 0
-          try { bytes = fs.statSync(outPath).size } catch { /* size best-effort */ }
-          onProgress({ done: ++done, total, completedIndex: task.index, failed: false, bytes, attempts })
+          onProgress({
+            done: ++done, total, completedIndex: task.index,
+            failed: false, bytes: result.bytes, attempts: result.attempts
+          })
         } else {
-          failed.push({ index: task.index, error: error || 'decrypt failed' })
-          onProgress({ done: ++done, total, completedIndex: task.index, failed: true, bytes: 0, attempts })
+          failed.push({ index: task.index, error: result.error || fallbackError })
+          onProgress({
+            done: ++done, total, completedIndex: task.index,
+            failed: true, bytes: 0, attempts: result.attempts
+          })
         }
       })
     }
-
     await queue.onIdle()
     return { completed, failed }
+  }
+
+  private async downloadPlainWithRetry(
+    url: string,
+    outPath: string,
+    signal?: AbortSignal
+  ): Promise<{ ok: boolean; error?: string; attempts: number; bytes: number }> {
+    const result = await this.runWithRetry(async () => {
+      const resp = await this.plainFetch(url, uaInit(signal))
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const buffer = Buffer.from(await resp.arrayBuffer())
+      if (!buffer.length) throw new Error('empty segment response')
+      if (signal?.aborted) throw new Error('aborted')
+      await fs.promises.writeFile(outPath, buffer)
+      if (signal?.aborted) throw new Error('aborted')
+      return buffer.length
+    }, () => fs.promises.rm(outPath, { force: true }), signal)
+    return { ...result, bytes: result.value ?? 0 }
   }
 
   /**
@@ -178,16 +248,28 @@ export class SegmentDecryptor {
     outPath: string,
     signal?: AbortSignal
   ): Promise<{ ok: boolean; error?: string; attempts: number }> {
+    return this.runWithRetry(
+      () => this.decrypt(url, outPath),
+      () => { try { fs.rmSync(outPath, { force: true }) } catch { /* best effort */ } },
+      signal
+    )
+  }
+
+  /** Shared bounded retry policy for encrypted and clear segment processing. */
+  private async runWithRetry<T>(
+    operation: () => Promise<T>,
+    cleanup: () => void | Promise<void>,
+    signal?: AbortSignal
+  ): Promise<RetryResult<T>> {
     let lastError = ''
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
       if (signal?.aborted) return { ok: false, error: 'aborted', attempts: attempt - 1 }
       try {
-        await this.decrypt(url, outPath)
-        return { ok: true, attempts: attempt }
+        return { ok: true, attempts: attempt, value: await operation() }
       } catch (err) {
         lastError = String(err)
-        // Drop any partial output before the next attempt so a half-written file can't poison the merge.
-        try { fs.rmSync(outPath, { force: true }) } catch { /* best effort */ }
+        try { await cleanup() } catch { /* best effort */ }
+        if (signal?.aborted) return { ok: false, error: 'aborted', attempts: attempt }
         if (attempt < this.maxAttempts && !signal?.aborted) {
           try {
             await abortableDelay(this.retryBaseDelayMs * 2 ** (attempt - 1), signal)

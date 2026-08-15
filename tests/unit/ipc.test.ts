@@ -62,11 +62,16 @@ describe('IPC Handlers', () => {
     mockBrowse = {
       resolveColumnInfo: vi.fn().mockResolvedValue({ name: 'Test', columnId: 'TOPC1', itemId: '' }),
       resolveSingleVideo: vi.fn().mockResolvedValue({ guid: 'VIDE1', title: 'Movie', brief: '', coverUrl: '', time: '' }),
+      getVideoMediaMetadata: vi.fn().mockResolvedValue({ channel: 'CCTV-1', durationSeconds: 60 }),
       getColumnVideoList: vi.fn().mockResolvedValue([{ guid: 'g1', title: 'V1', brief: '', coverUrl: '', time: '' }]),
       getAlbumVideoList: vi.fn().mockResolvedValue([]),
       getLatestAlbumVideos: vi.fn().mockResolvedValue([{ guid: 'latest', title: 'Latest', brief: '', coverUrl: '', time: '' }]),
+      getVcctvVideoList: vi.fn().mockResolvedValue([]),
+      getLatestVcctvVideos: vi.fn().mockResolvedValue([]),
+      getSupplementaryVideos: vi.fn().mockResolvedValue([]),
       getColumnMonthBounds: vi.fn().mockResolvedValue({ earliest: '201801', latest: '202412' }),
-      getAlbumMonthBounds: vi.fn().mockResolvedValue({ earliest: '201503', latest: '201906' })
+      getAlbumMonthBounds: vi.fn().mockResolvedValue({ earliest: '201503', latest: '201906' }),
+      getVcctvMonthBounds: vi.fn().mockResolvedValue({ earliest: '202001', latest: '202608' })
     } as unknown as BrowseService
 
     mockConfig = {
@@ -125,6 +130,24 @@ describe('IPC Handlers', () => {
       const result = await handlers['list-videos']({}, { name: 'Test', columnId: 'TOPC1', itemId: '' }, '202601')
       expect(mockBrowse.getColumnVideoList).toHaveBeenCalledWith('TOPC1', 1, '202601')
       expect(result).toHaveLength(1)
+      expect(mockBrowse.getSupplementaryVideos).not.toHaveBeenCalled()
+    })
+
+    it('merges optional content by guid and sorts the result chronologically', async () => {
+      vi.mocked(mockConfig.getSettings).mockReturnValueOnce({ includeHighlights: true } as any)
+      vi.mocked(mockBrowse.getColumnVideoList).mockResolvedValueOnce([
+        { guid: 'main', title: '正片', brief: '', coverUrl: '', time: '2026-01-03 10:00:00' }
+      ])
+      vi.mocked(mockBrowse.getSupplementaryVideos).mockResolvedValueOnce([
+        { guid: 'extra', title: '看点', brief: '', coverUrl: '', time: '2026-01-01 10:00:00' },
+        { guid: 'main', title: '重复正片', brief: '', coverUrl: '', time: '2026-01-02 10:00:00' }
+      ])
+      const program = { name: 'Test', columnId: 'TOPC1', itemId: '' }
+
+      const result = await handlers['list-videos']({}, program, '202601')
+
+      expect(mockBrowse.getSupplementaryVideos).toHaveBeenCalledWith(program, '202601')
+      expect(result.map((video: any) => video.guid)).toEqual(['extra', 'main'])
     })
 
     it('calls getAlbumVideoList for album programs', async () => {

@@ -29,6 +29,7 @@ const defaults: StoreSchema = {
     logPath: app?.getPath?.('userData') || '',
     autoOpenFolder: false,
     clipboardWatch: false,
+    includeHighlights: false,
     concurrentVideos: 1,
     coverSavePath: app?.getPath?.('pictures') || ''
   },
@@ -36,6 +37,32 @@ const defaults: StoreSchema = {
   singleVideos: [],
   downloadHistory: [],
   pendingJobs: []
+}
+
+/** Validate and migrate a persisted/imported programme into the current schema. */
+function normalizeProgram(value: unknown): ProgramInfo | null {
+  const p = value as Partial<ProgramInfo> | null
+  if (!p || typeof p.name !== 'string' || !p.name
+    || typeof p.columnId !== 'string' || !p.columnId) return null
+  const program: ProgramInfo = {
+    name: p.name,
+    columnId: p.columnId,
+    itemId: typeof p.itemId === 'string' ? p.itemId : ''
+  }
+  if (typeof p.topicId === 'string' && /^TOPC/.test(p.topicId)) program.topicId = p.topicId
+  if (p.kind === 'album' || p.kind === 'column') program.kind = p.kind
+  if (p.serviceId === 'tvcctv' || p.serviceId === 'cctv4k') program.serviceId = p.serviceId
+  const source = p.listSource
+  if (source?.type === 'vcctv' && typeof source.id === 'string' && source.id
+    && typeof source.chid === 'string' && source.chid) {
+    program.listSource = { type: 'vcctv', id: source.id, chid: source.chid, serviceId: 'tvcctv' }
+  } else if (source && (source.type === 'column' || source.type === 'album')
+    && typeof source.id === 'string' && source.id
+    && (source.serviceId === 'tvcctv' || source.serviceId === 'cctv4k')) {
+    program.listSource = { type: source.type, id: source.id, serviceId: source.serviceId }
+  }
+  if (typeof p.favoritedAt === 'number' && Number.isFinite(p.favoritedAt)) program.favoritedAt = p.favoritedAt
+  return program
 }
 
 export class ConfigStore {
@@ -66,19 +93,8 @@ export class ConfigStore {
     const raw = this.store.get('programs') as unknown
     if (!Array.isArray(raw)) return []
     return raw.flatMap(item => {
-      const p = item as Partial<ProgramInfo>
-      if (!p || typeof p.name !== 'string' || !p.name || typeof p.columnId !== 'string' || !p.columnId) return []
-      const program: ProgramInfo = { name: p.name, columnId: p.columnId, itemId: typeof p.itemId === 'string' ? p.itemId : '' }
-      if (p.kind === 'album' || p.kind === 'column') program.kind = p.kind
-      if (p.serviceId === 'tvcctv' || p.serviceId === 'cctv4k') program.serviceId = p.serviceId
-      const source = p.listSource
-      if (source && (source.type === 'column' || source.type === 'album')
-        && typeof source.id === 'string' && source.id
-        && (source.serviceId === 'tvcctv' || source.serviceId === 'cctv4k')) {
-        program.listSource = { type: source.type, id: source.id, serviceId: source.serviceId }
-      }
-      if (typeof p.favoritedAt === 'number' && Number.isFinite(p.favoritedAt)) program.favoritedAt = p.favoritedAt
-      return [program]
+      const program = normalizeProgram(item)
+      return program ? [program] : []
     })
   }
 
@@ -122,24 +138,8 @@ export class ConfigStore {
     if (!Array.isArray(data)) throw new Error('JSON 格式不正确（应为栏目数组）')
     let added = 0
     for (const item of data) {
-      const p = item as Partial<ProgramInfo>
-      if (p && typeof p.name === 'string' && typeof p.columnId === 'string') {
-        const program: ProgramInfo = {
-          name: p.name,
-          columnId: p.columnId,
-          itemId: typeof p.itemId === 'string' ? p.itemId : ''
-        }
-        if (p.kind === 'album' || p.kind === 'column') program.kind = p.kind
-        if (p.serviceId === 'tvcctv' || p.serviceId === 'cctv4k') program.serviceId = p.serviceId
-        const source = p.listSource
-        if (source && (source.type === 'column' || source.type === 'album')
-          && typeof source.id === 'string' && source.id
-          && (source.serviceId === 'tvcctv' || source.serviceId === 'cctv4k')) {
-          program.listSource = { type: source.type, id: source.id, serviceId: source.serviceId }
-        }
-        if (typeof p.favoritedAt === 'number') program.favoritedAt = p.favoritedAt
-        if (this.addProgram(program)) added++
-      }
+      const program = normalizeProgram(item)
+      if (program && this.addProgram(program)) added++
     }
     return added
   }
@@ -267,7 +267,12 @@ function normalizeVideo(value: unknown): VideoInfo | undefined {
     time: typeof video.time === 'string' ? video.time : '',
     ...(typeof video.m3u8Url === 'string' ? { m3u8Url: video.m3u8Url } : {}),
     ...(typeof video.sourceUrl === 'string' ? { sourceUrl: video.sourceUrl } : {}),
-    ...(typeof video.sourceVideoIndex === 'number' && Number.isInteger(video.sourceVideoIndex) ? { sourceVideoIndex: video.sourceVideoIndex } : {})
+    ...(typeof video.sourceVideoIndex === 'number' && Number.isInteger(video.sourceVideoIndex) ? { sourceVideoIndex: video.sourceVideoIndex } : {}),
+    ...(typeof video.channel === 'string' && video.channel.trim() ? { channel: video.channel } : {}),
+    ...(typeof video.durationSeconds === 'number' && Number.isFinite(video.durationSeconds) && video.durationSeconds >= 0
+      ? { durationSeconds: Math.round(video.durationSeconds) } : {}),
+    ...(video.contentType === 'highlight' || video.contentType === 'fragment'
+      ? { contentType: video.contentType } : {})
   }
 }
 

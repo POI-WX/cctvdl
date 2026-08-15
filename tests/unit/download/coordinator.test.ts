@@ -33,7 +33,8 @@ describe('DownloadCoordinator', () => {
       decryptAll: vi.fn().mockResolvedValue({
         completed: [0, 1],
         failed: []
-      })
+      }),
+      downloadPlainAll: vi.fn().mockResolvedValue({ completed: [0, 1], failed: [] })
     } as unknown as SegmentDecryptor
 
     mockFinalizer = {
@@ -45,7 +46,12 @@ describe('DownloadCoordinator', () => {
     coordinator = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer)
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Some queue-shape tests intentionally assert while work is still active.
+    // Abort and yield once so their background promises settle before mocks and
+    // temporary output directories are replaced by the next test.
+    coordinator.cancelAll()
+    await new Promise(resolve => setTimeout(resolve, 0))
     fs.rmSync(outDir, { recursive: true, force: true })
   })
 
@@ -108,6 +114,21 @@ describe('DownloadCoordinator', () => {
   })
 
   describe('batch processing', () => {
+    it('downloads clear segments without passing them through H5E decryption', async () => {
+      vi.mocked(mockApi.resolveSegmentUrls).mockResolvedValue({
+        segmentUrls: ['https://example.com/clear1.ts', 'https://example.com/clear2.ts'],
+        encrypted: false
+      })
+      const job: DownloadJob = {
+        id: 'clear-job', guid: 'clear-guid', sourceUrl: '', title: 'Clear', savePath: path.join(outDir, 'clear.mp4'),
+        quality: 'auto', threadCount: 2, reencode: false, state: 'Created', stage: 'None', progressPercent: 0
+      }
+      coordinator.appendJobs([job])
+      await new Promise(resolve => setTimeout(resolve, 100))
+      expect(mockDecryptor.downloadPlainAll).toHaveBeenCalled()
+      expect(mockDecryptor.decryptAll).not.toHaveBeenCalled()
+    })
+
     it('processes jobs serially', async () => {
       const job1: DownloadJob = {
         id: 'job-1',

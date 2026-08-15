@@ -9,6 +9,7 @@ import { downloadCoverToDir } from './api/cover'
 import { checkSaveDir } from './preflight'
 import type { ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult } from '../shared/types'
 import { getProgramListSource } from '../shared/programs'
+import { sortVideosChronologically } from '../shared/video-metadata'
 
 export function registerIpcHandlers(
   getWindow: () => BrowserWindow,
@@ -31,6 +32,11 @@ export function registerIpcHandlers(
   ipcMain.handle('browse-program', async (_, url: string) => {
     const info = await browse.resolveColumnInfo(url)
     const source = getProgramListSource(info)
+    if (source.type === 'vcctv') {
+      const anyVideos = await browse.getLatestVcctvVideos(source.id, source.chid).catch(() => [])
+      if (!anyVideos.length) throw new Error('无法解析节目信息')
+      return info
+    }
     if (source.type === 'album') {
       // Import validation only needs proof that the source is non-empty. Do not
       // traverse a multi-year album here; month-specific loading will fetch the
@@ -53,9 +59,12 @@ export function registerIpcHandlers(
 
   ipcMain.handle('list-videos', async (_, program: ProgramInfo, month: string, requestId?: number, forceRefresh = false) => {
     const source = getProgramListSource(program)
-    if (source.type === 'album') {
+    let videos: VideoInfo[]
+    if (source.type === 'vcctv') {
+      videos = await browse.getVcctvVideoList(source.id, source.chid, month)
+    } else if (source.type === 'album') {
       if (forceRefresh) browse.clearAlbumCache(source.id, source.serviceId)
-      const videos = await browse.getAlbumVideoList(
+      videos = await browse.getAlbumVideoList(
         source.id,
         1,
         month,
@@ -66,16 +75,24 @@ export function registerIpcHandlers(
           videos
         })
       )
-      logger.debug(`list-videos: ${program.name}, source=album:${source.id}, month=${month || 'all'}, count=${videos.length}`)
-      return videos
+    } else {
+      videos = await browse.getColumnVideoList(source.id, 1, month)
     }
-    const videos = await browse.getColumnVideoList(source.id, 1, month)
-    logger.debug(`list-videos: ${program.name}, source=column:${source.id}, month=${month || 'all'}, count=${videos.length}`)
+    if (config.getSettings().includeHighlights) {
+      const supplementary = await browse.getSupplementaryVideos(program, month)
+      const seen = new Set(videos.map(video => video.guid))
+      videos = sortVideosChronologically([
+        ...videos,
+        ...supplementary.filter(video => !seen.has(video.guid))
+      ])
+    }
+    logger.debug(`list-videos: ${program.name}, source=${source.type}:${source.id}, month=${month || 'all'}, count=${videos.length}`)
     return videos
   })
 
   ipcMain.handle('get-program-month-bounds', async (_, program: ProgramInfo) => {
     const source = getProgramListSource(program)
+    if (source.type === 'vcctv') return browse.getVcctvMonthBounds(source.id, source.chid)
     return source.type === 'album'
       ? browse.getAlbumMonthBounds(source.id, source.serviceId)
       : browse.getColumnMonthBounds(source.id)
@@ -97,6 +114,7 @@ export function registerIpcHandlers(
   ipcMain.handle('resolve-single-video', (_, url: string) => browse.resolveSingleVideo(url))
   ipcMain.handle('resolve-video-batch', (_, url: string, quality?: Settings['quality']) =>
     browse.resolveSingleVideoBatch(url, quality))
+  ipcMain.handle('get-video-media-metadata', (_, guid: string) => browse.getVideoMediaMetadata(guid))
   ipcMain.handle('get-single-videos', () => config.getSingleVideos())
   ipcMain.handle('add-single-video', (_, v: VideoInfo) => config.addSingleVideo(v))
   ipcMain.handle('delete-single-video', (_, guid: string) => config.deleteSingleVideo(guid))

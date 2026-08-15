@@ -52,6 +52,7 @@ test.describe('真实用户流程', () => {
     // 3. 验证节目已导入（在列表中，现在是自定义 .program-item）
     const programRow = page.locator('.program-item')
     await expect(programRow.first()).toBeVisible({ timeout: 15000 })
+    await expect(programRow.first().locator('.program-name')).toHaveText('世界战史')
 
     // 4. 点击节目，加载视频列表
     await programRow.first().click()

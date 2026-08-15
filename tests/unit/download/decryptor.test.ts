@@ -200,6 +200,77 @@ describe('SegmentDecryptor', () => {
     })
   })
 
+  describe('downloadPlainAll', () => {
+    it('writes a successful segment asynchronously and reports its bytes', async () => {
+      const plainFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: async () => Uint8Array.from([1, 2, 3]).buffer
+      })
+      const decryptor = new SegmentDecryptor(vi.fn(), 1, 3, 1, plainFetch)
+      const progress: any[] = []
+
+      const result = await decryptor.downloadPlainAll(tasks(['https://example/seg.ts']), tempDir, info => progress.push(info))
+
+      expect(result).toEqual({ completed: [0], failed: [] })
+      expect(fs.readFileSync(path.join(tempDir, segmentFileName(0)))).toEqual(Buffer.from([1, 2, 3]))
+      expect(progress[0]).toMatchObject({ bytes: 3, failed: false, completedIndex: 0 })
+    })
+
+    it('rejects an empty response and removes any output file', async () => {
+      const plainFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(0)
+      })
+      const decryptor = new SegmentDecryptor(vi.fn(), 1, 3, 1, plainFetch)
+
+      const result = await decryptor.downloadPlainAll(tasks(['https://example/empty.ts']), tempDir, () => {})
+
+      expect(result.completed).toEqual([])
+      expect(result.failed[0]).toMatchObject({ index: 0 })
+      expect(result.failed[0].error).toContain('empty segment response')
+      expect(fs.existsSync(path.join(tempDir, segmentFileName(0)))).toBe(false)
+    })
+
+    it('reports an HTTP failure without leaving a segment file', async () => {
+      const plainFetch = vi.fn().mockResolvedValue({ ok: false, status: 503 })
+      const decryptor = new SegmentDecryptor(vi.fn(), 1, 3, 1, plainFetch)
+
+      const result = await decryptor.downloadPlainAll(tasks(['https://example/failed.ts']), tempDir, () => {})
+
+      expect(result.failed[0].error).toContain('HTTP 503')
+      expect(fs.existsSync(path.join(tempDir, segmentFileName(0)))).toBe(false)
+    })
+
+    it('retries a transient HTTP failure before succeeding', async () => {
+      const plainFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: false, status: 503 })
+        .mockResolvedValueOnce({ ok: true, arrayBuffer: async () => Uint8Array.from([4, 5]).buffer })
+      const decryptor = new SegmentDecryptor(vi.fn(), 1, 3, 1, plainFetch)
+      const progress: any[] = []
+
+      const result = await decryptor.downloadPlainAll(tasks(['https://example/retry.ts']), tempDir, info => progress.push(info))
+
+      expect(result).toEqual({ completed: [0], failed: [] })
+      expect(plainFetch).toHaveBeenCalledTimes(2)
+      expect(progress[0]).toMatchObject({ failed: false, attempts: 2, bytes: 2 })
+    })
+
+    it('forwards cancellation and does not retain an aborted segment', async () => {
+      const controller = new AbortController()
+      const plainFetch = vi.fn().mockImplementation(async () => {
+        controller.abort()
+        return { ok: true, arrayBuffer: async () => Uint8Array.from([1]).buffer }
+      })
+      const decryptor = new SegmentDecryptor(vi.fn(), 1, 3, 1, plainFetch)
+
+      const result = await decryptor.downloadPlainAll(tasks(['https://example/seg.ts']), tempDir, () => {}, controller.signal)
+
+      expect(result).toEqual({ completed: [], failed: [] })
+      expect(fs.existsSync(path.join(tempDir, segmentFileName(0)))).toBe(false)
+      expect((plainFetch.mock.calls[0][1] as RequestInit).signal).toBe(controller.signal)
+    })
+  })
+
   describe('retry behaviour', () => {
     it('retries a transient failure and succeeds', async () => {
       let n = 0

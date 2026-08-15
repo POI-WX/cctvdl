@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatSpeed, formatTime, relativeTime, formatFileSize } from '../../../src/shared/format'
+import { formatMediaDuration, formatSpeed, formatTime, relativeTime, formatFileSize } from '../../../src/shared/format'
 
 describe('shared/format', () => {
   describe('formatFileSize', () => {
@@ -48,6 +48,18 @@ describe('shared/format', () => {
     })
     it('formats hours and minutes', () => {
       expect(formatTime(3661)).toBe('1时1分')
+    })
+  })
+
+  describe('formatMediaDuration', () => {
+    it.each([
+      [0, '0:00'],
+      [65, '1:05'],
+      [3661, '1:01:01'],
+      [61.6, '1:02'],
+      [-1, '0:00']
+    ])('formats %s seconds as %s', (seconds, expected) => {
+      expect(formatMediaDuration(seconds)).toBe(expected)
     })
   })
 

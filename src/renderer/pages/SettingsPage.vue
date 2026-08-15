@@ -126,6 +126,16 @@
             <el-switch v-model="form.autoOpenFolder" />
           </div>
         </div>
+
+        <div class="settings-item">
+          <div class="settings-item-label">
+            <span class="settings-item-name">加载节目看点和片段</span>
+            <span class="settings-item-desc">开启后，节目列表将同时显示正片、看点和片段</span>
+          </div>
+          <div class="settings-item-control">
+            <el-switch v-model="form.includeHighlights" />
+          </div>
+        </div>
       </div>
 
       <!-- section: appearance -->
@@ -333,6 +343,7 @@ import { relativeTime, formatFileSize } from '../../shared/format'
 const form = ref<Settings>({
   savePath: '', threadCount: 8, quality: 'auto',
   reencode: false, logLevel: 'info', darkMode: false, logPath: '', autoOpenFolder: false, clipboardWatch: false,
+  includeHighlights: false,
   concurrentVideos: 1,
   coverSavePath: ''
 })

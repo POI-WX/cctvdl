@@ -1,70 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { BrowseService, cleanBrief, extractTitle, isCctvNewsSnowBookPage } from '../../../src/main/api/browse'
-
-describe('cleanBrief', () => {
-  it('returns empty string for empty input', () => {
-    expect(cleanBrief('')).toBe('')
-  })
-
-  it('normalises \\r\\n and \\r to \\n without touching spaces', () => {
-    // Spaces in Chinese text must be preserved as-is
-    expect(cleanBrief('Hello World\r\nTest')).toBe('Hello World\nTest')
-    expect(cleanBrief('Hello\rWorld')).toBe('Hello\nWorld')
-  })
-
-  it('strips 本期节目主要内容： prefix', () => {
-    expect(cleanBrief('本期节目主要内容：actual content')).toBe('actual content')
-    expect(cleanBrief('本期节目主要内容:actual content')).toBe('actual content')
-    expect(cleanBrief('主要内容：actual content')).toBe('actual content')
-  })
-
-  it('strips trailing attribution block （《栏目名》…）', () => {
-    const raw = '正文内容。（《世界战史》\n20260619\n突袭雷达站）'
-    expect(cleanBrief(raw)).toBe('正文内容。')
-  })
-
-  it('strips trailing attribution even when title contains nested parentheses', () => {
-    // Real-world: "3D打印...试用。 （《创新进行时》 20260619 建房新妙招（一））"
-    const raw = '3D打印房屋结构牢固，现场用工少，已经开始在低层建筑、特色场馆、应急用房等场景落地试用。 （《创新进行时》 20260619 建房新妙招（一））'
-    const result = cleanBrief(raw)
-    expect(result).toBe('3D打印房屋结构牢固，现场用工少，已经开始在低层建筑、特色场馆、应急用房等场景落地试用。')
-    expect(result).not.toContain('《创新进行时》')
-    expect(result).not.toContain('（一）')
-  })
-
-  it('handles full CCTV brief format', () => {
-    const raw = '本期节目主要内容：1942年2月27日，英军伞兵执行任务。（《世界战史》\r\n20260619\r\n突袭雷达站）'
-    const result = cleanBrief(raw)
-    expect(result).toBe('1942年2月27日，英军伞兵执行任务。')
-    // must NOT have prefix
-    expect(result).not.toContain('本期节目')
-    // must NOT have attribution
-    expect(result).not.toContain('《世界战史》')
-  })
-
-  it('preserves internal spaces in Chinese text', () => {
-    const raw = '本期节目主要内容：内容 A 内容 B'
-    expect(cleanBrief(raw)).toBe('内容 A 内容 B')
-  })
-
-  it('collapses 3+ consecutive newlines to 2', () => {
-    expect(cleanBrief('A\n\n\nB')).toBe('A\n\nB')
-    expect(cleanBrief('A\n\n\n\nB')).toBe('A\n\nB')
-  })
-
-  it('trims leading and trailing whitespace', () => {
-    expect(cleanBrief('  content  ')).toBe('content')
-  })
-
-  it('leaves Unicode line separators as-is (pre-line CSS handles them)', () => {
-    const raw = 'A\u2028B\u2029C'
-    const result = cleanBrief(raw)
-    // Should not crash, and content should be preserved
-    expect(result).toContain('A')
-    expect(result).toContain('B')
-    expect(result).toContain('C')
-  })
-})
+import { BrowseService, isCctvNewsSnowBookPage } from '../../../src/main/api/browse'
 
 describe('BrowseService', () => {
   describe('getColumnVideoList', () => {
@@ -341,6 +276,71 @@ describe('BrowseService', () => {
       expect(videos.map(video => video.guid)).toEqual(['old', 'new'])
     })
 
+    it('uses mode=1 as the full catalogue only when an album has no mode=0 videos', async () => {
+      const mockFetch = vi.fn(async (url: string) => ({
+        ok: true,
+        json: async () => ({ data: { list: url.includes('mode=1')
+          ? [{ guid: 'episode', title: '第1集', time: '2024-03-19 10:00:00' }]
+          : [] } })
+      }))
+      const service = new BrowseService(mockFetch)
+
+      await expect(service.getLatestAlbumVideos('VIDA-mode1')).resolves.toMatchObject([{ guid: 'episode' }])
+      expect(mockFetch.mock.calls.map(([url]) => String(url))).toEqual([
+        expect.stringContaining('mode=0'),
+        expect.stringContaining('mode=1')
+      ])
+    })
+
+    it('does not promote a mode=1 highlights-only catalogue to default full videos', async () => {
+      const mockFetch = vi.fn(async (url: string) => ({
+        ok: true,
+        json: async () => ({ data: { list: url.includes('mode=1')
+          ? [
+              { guid: 'highlight-1', title: '节目看点：精彩片段' },
+              { guid: 'highlight-2', title: '预告：明日内容' }
+            ]
+          : [] } })
+      }))
+
+      await expect(new BrowseService(mockFetch).getLatestAlbumVideos('VIDA-highlights-only'))
+        .resolves.toEqual([])
+    })
+
+    it('shares one primary-mode probe across concurrent album requests', async () => {
+      let release!: () => void
+      const gate = new Promise<void>(resolve => { release = resolve })
+      const mockFetch = vi.fn(async () => {
+        await gate
+        return { ok: true, json: async () => ({ data: { list: [
+          { guid: 'episode', title: '第1集', time: '2024-03-19 10:00:00' }
+        ] } }) }
+      })
+      const service = new BrowseService(mockFetch)
+
+      const first = service.getLatestAlbumVideos('VIDA-shared-probe')
+      const second = service.getLatestAlbumVideos('VIDA-shared-probe')
+      release()
+
+      await expect(Promise.all([first, second])).resolves.toHaveLength(2)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('falls back to the full ascending catalogue when legacy month paging misses', async () => {
+      const matching = { guid: 'legacy', title: 'Legacy', time: '2011-12-22 10:00:00' }
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { list: [
+          { guid: 'old-edge', title: 'Old', time: '2010-01-01 10:00:00' }
+        ] } }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { list: [
+          { guid: 'new-edge', title: 'New', time: '2013-01-01 10:00:00' }
+        ] } }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { list: [matching] } }) })
+      const videos = await new BrowseService(mockFetch).getAlbumVideoList('VIDA-legacy', 1, '201112')
+      expect(videos).toMatchObject([{ guid: 'legacy' }])
+      expect(mockFetch).toHaveBeenCalledTimes(3)
+    })
+
     it('loads every album page and deduplicates repeated videos', async () => {
       const firstPage = Array.from({ length: 100 }, (_, i) => ({ guid: `album-${i}`, title: `Episode ${i}`, brief: '', image: '', time: '' }))
       const secondPage = [
@@ -401,6 +401,18 @@ describe('BrowseService', () => {
     })
   })
 
+  describe('getVideoMediaMetadata', () => {
+    it('reads channel with fallback and parses len duration', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ play_channel: 'CCTV-纪录', len: '00:24:05' })
+      })
+      await expect(new BrowseService(mockFetch).getVideoMediaMetadata('guid')).resolves.toEqual({
+        channel: 'CCTV-纪录', durationSeconds: 1445
+      })
+    })
+  })
+
   describe('getLatestAlbumVideos', () => {
     it('fetches only the newest album page for background checks', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
@@ -417,6 +429,96 @@ describe('BrowseService', () => {
   })
 
   describe('resolveColumnInfo - additional cases', () => {
+    it('routes v.cctv programme pages by their mid/chid catalogue instead of TOPC', async () => {
+      const html = `<meta property="og:title" content="望海观潮"><script>
+        var lm_mid = '24iQzAZ30426\\t';
+        var pd_id = 'EPGC1525679284945000';
+        var api = 'vapi/video/vplist.do?chid='+pd_id+'&mid='+lm_mid+'&p=1';
+      </script>`
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => html })
+      await expect(new BrowseService(mockFetch).resolveColumnInfo('https://v.cctv.com/programme/whgc.shtml'))
+        .resolves.toEqual({
+          name: '望海观潮', columnId: 'vcctv:24iQzAZ30426', itemId: '24iQzAZ30426',
+          kind: 'column', serviceId: 'tvcctv',
+          listSource: { type: 'vcctv', id: '24iQzAZ30426', chid: 'EPGC1525679284945000', serviceId: 'tvcctv' }
+        })
+    })
+
+    it('does not treat an embedded v.cctv widget on another CCTV host as the page catalogue', async () => {
+      const html = `<meta property="og:title" content="普通栏目_CCTV节目官网">
+        <script>var topicID = 'TOPC1234567890123';</script>
+        <script>var related = 'vapi/video/vplist.do?chid=RELATED&mid=WIDGET&p=1';</script>`
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => html })
+
+      await expect(new BrowseService(mockFetch).resolveColumnInfo('https://tv.cctv.com/lm/example/'))
+        .resolves.toMatchObject({ name: '普通栏目', columnId: 'TOPC1234567890123', kind: 'column' })
+    })
+
+    it('routes a legacy event page with an empty TOPC to its real multi-video album', async () => {
+      const html = `<title>奥运乒乓球</title><script>
+        var itemid1='VIDEFXKSsL0eOPfC4Z3GqpIv160818';
+        var column_id='TOPC1468147144785955';
+        var guid='6860a7d7945043bba8aabea4d102c364';
+      </script>`
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: async () => html })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({
+          title: '[奥运会]乒乓球男子团体决赛', cvid: 'VIDEFXKSsL0eOPfC4Z3GqpIv160818',
+          album_id: 'VIDAJWCgstBc3Q3ADY9VIGGE160801', vset_title: '《里约奥运-乒乓球》', tnum: '0'
+        }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({
+          data: { total: 161, list: [{ guid: 'one' }, { guid: 'two' }] }
+        }) })
+      await expect(new BrowseService(mockFetch).resolveColumnInfo(
+        'https://2016.cctv.com/2016/08/18/VIDEFXKSsL0eOPfC4Z3GqpIv160818.shtml'
+      )).resolves.toMatchObject({
+        name: '里约奥运-乒乓球', columnId: 'VIDAJWCgstBc3Q3ADY9VIGGE160801', kind: 'album',
+        listSource: { type: 'album', id: 'VIDAJWCgstBc3Q3ADY9VIGGE160801', serviceId: 'tvcctv' }
+      })
+    })
+
+    it('keeps a year-subdomain video single when its referenced album is not multi-video', async () => {
+      const html = `<title>单条专题视频_CCTV节目官网</title><script>
+        var itemid1='VIDEsingle'; var column_id='TOPC1234567890123'; var guid='single-guid';
+      </script>`
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: async () => html })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({
+          title: '单条专题视频', cvid: 'VIDEsingle', album_id: 'VIDAone', vset_title: '单条专题视频', tnum: '0'
+        }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { total: 1, list: [{ guid: 'only' }] } }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { total: 0, list: [] } }) })
+
+      await expect(new BrowseService(mockFetch).resolveColumnInfo(
+        'https://2019.cctv.com/2019/01/01/VIDEsingle.shtml'
+      )).rejects.toThrow('无法解析节目信息')
+    })
+
+    it('does not let itemguid block a regular column outside culture-travel', async () => {
+      const html = `<title>常规栏目_CCTV节目官网</title><script>
+        var itemguid='19e5f94bf6fe4c53b9df44d6885af4c4'; var topicID='TOPC1234567890123';
+      </script>`
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => html })
+
+      await expect(new BrowseService(mockFetch).resolveColumnInfo('https://tv.cctv.com/lm/regular/'))
+        .resolves.toMatchObject({ name: '常规栏目', columnId: 'TOPC1234567890123', kind: 'column' })
+    })
+
+    it('uses a clip page album as the programme while retaining the clip item for optional highlights', async () => {
+      const html = `<script>
+        var commentTitle='[节目]精彩片段'; var itemid1='VIDEclip';
+        var column_id='TOPC123'; var parentGuid='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+        var guid='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+      </script>`
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: async () => html })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({
+          title: '[节目]精彩片段', cvid: 'VIDEclip', album_id: 'VIDAfull', vset_title: '《节目》', tnum: '0'
+        }) })
+      await expect(new BrowseService(mockFetch).resolveColumnInfo('https://tv.cctv.com/clip.shtml'))
+        .resolves.toMatchObject({ name: '节目', columnId: 'VIDAfull', itemId: 'VIDEclip', kind: 'album' })
+    })
+
     it('extracts column ID from topicID (column homepage)', async () => {
       const html = `<script>var topicID = 'TOPC1564110396694880';</script>
         <title>世界战史_CCTV节目官网</title>`
@@ -427,6 +529,13 @@ describe('BrowseService', () => {
       const info = await service.resolveColumnInfo('https://tv.cctv.com/lm/sjzs/')
       expect(info.columnId).toBe('TOPC1564110396694880')
       expect(info.name).toBe('世界战史')
+    })
+
+    it('extracts legacy column ID from lmtopId videoset pages', async () => {
+      const html = `<script>var lmtopId = 'TOPC1451528971114112';</script><title>新闻联播_CCTV</title>`
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => html })
+      const info = await new BrowseService(mockFetch).resolveColumnInfo('https://tv.cctv.com/lm/xwlb/videoset/')
+      expect(info.columnId).toBe('TOPC1451528971114112')
     })
 
     it('extracts column name from 《》 in commentTitle', async () => {
@@ -693,6 +802,44 @@ describe('BrowseService', () => {
       })
     })
 
+    it('keeps [视频] editorial segments as single-video imports instead of the parent TOPC', async () => {
+      const html = `<title>[视频] 独立新闻报道</title><script>
+        var commentTitle = "[视频] 独立新闻报道";
+        var column_id = "TOPC1451528971114112";
+        var itemid1 = "OTHER";
+        var guid = "segment-guid";
+      </script>`
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(html) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({
+          title: '[视频] 独立新闻报道', album_id: 'VIDA-parent', vset_title: '新闻联播', tnum: '0'
+        }) })
+
+      await expect(new BrowseService(mockFetch).resolveColumnInfo('https://tv.cctv.com/segment.shtml'))
+        .rejects.toThrow('无法解析节目信息')
+    })
+
+    it('forces an explicit VIDA overview to its album when the representative episode has tnum=0', async () => {
+      const overview = `<title>合集页</title><script>
+        var itemid1 = "VIDAoverview"; var column_id = "TOPC1";
+      </script>
+      <a href="https://tv.cctv.com/VIDEepisodeOne.shtml">1</a>
+      <a href="https://tv.cctv.com/VIDEepisodeTwo.shtml">2</a>`
+      const episode = `<script>var guid = "episode-guid"; var column_id = "TOPC1";</script>`
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(overview) })
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(episode) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({
+          album_id: 'VIDAoverview', vset_title: '合集页', cvid: 'VIDEepisode', tnum: '0'
+        }) })
+
+      await expect(new BrowseService(mockFetch).resolveColumnInfo('https://tv.cctv.com/overview.shtml'))
+        .resolves.toMatchObject({
+          kind: 'album', columnId: 'VIDAoverview',
+          listSource: { type: 'album', id: 'VIDAoverview' }
+        })
+    })
+
     it('rejects special columns with a name but no column_id/topicID (no URL-slug fallback)', async () => {
       // 等着我-style microsite: a messy <title> resolves a name, but none of the
       // standard column vars exist. Without the old slug fallback, columnId stays
@@ -744,6 +891,74 @@ describe('BrowseService', () => {
     })
   })
 
+  describe('v.cctv and supplementary lists', () => {
+    it('paginates v.cctv results even when the server returns fewer than the requested 100 items', async () => {
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ count: 3, data: [
+          { guid: 'new', title: '新', pubTime: '2026-07-02 12:00:00', vduration: '00:02:00', mediaName: 'CCTV' },
+          { guid: 'middle', title: '中', pubTime: '2026-07-01 12:00:00', vduration: 60 }
+        ] }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ count: 3, data: [
+          { guid: 'old', title: '旧', pubTime: '2026-06-30 12:00:00' }
+        ] }) })
+      const videos = await new BrowseService(mockFetch).getVcctvVideoList('mid', 'chid', '')
+      expect(videos.map(video => video.guid)).toEqual(['old', 'middle', 'new'])
+      expect(videos[2]).toMatchObject({ channel: 'CCTV', durationSeconds: 120 })
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('labels and deduplicates optional highlights and topic fragments', async () => {
+      const mockFetch = vi.fn(async (url: string) => {
+        if (url.includes('getVideoListByAlbumIdNew')) return { ok: true, json: async () => ({ data: {
+          total: 2, list: [
+            { guid: 'highlight', title: '看点', time: '2026-08-03 10:00:00' },
+            { guid: 'duplicate', title: '重复', time: '2026-08-03 11:00:00' }
+          ]
+        } }) }
+        return { ok: true, json: async () => ({ data: [
+          { guid: 'duplicate', video_title: '重复片段' },
+          { guid: 'fragment', video_title: '片段', video_key_frame_url: 'fragment.jpg', video_shared_code: '2026-08-03' }
+        ] }) }
+      })
+      const videos = await new BrowseService(mockFetch).getSupplementaryVideos({
+        name: '节目', columnId: 'TOPC1', itemId: 'VIDE1', kind: 'album',
+        listSource: { type: 'album', id: 'VIDA1', serviceId: 'tvcctv' }
+      })
+      expect(videos.map(video => [video.guid, video.contentType])).toEqual([
+        ['fragment', 'fragment'], ['highlight', 'highlight'], ['duplicate', 'highlight']
+      ])
+    })
+
+    it('uses cctv4k service parameters when loading optional highlights', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { total: 1, list: [{ guid: '4k-highlight', title: '4K 看点' }] } })
+      })
+
+      await new BrowseService(mockFetch).getSupplementaryVideos({
+        name: '4K 节目', columnId: 'VIDA4K', itemId: 'VIDE4K', topicId: 'TOPC4K', kind: 'album', serviceId: 'cctv4k',
+        listSource: { type: 'album', id: 'VIDA4K', serviceId: 'cctv4k' }
+      })
+
+      const urls = mockFetch.mock.calls.map(([url]) => String(url))
+      const albumRequest = new URL(urls.find(url => url.includes('getVideoListByAlbumIdNew'))!)
+      const topicRequest = new URL(urls.find(url => url.includes('getVideoListByTopicIdInfo'))!)
+      expect(albumRequest.searchParams.get('serviceId')).toBe('cctv4k')
+      expect(albumRequest.searchParams.get('pub')).toBe('2')
+      expect(topicRequest.searchParams.get('serviceId')).toBe('cctv4k')
+    })
+
+    it('does not probe unsupported supplementary content for v.cctv catalogues', async () => {
+      const mockFetch = vi.fn()
+      const videos = await new BrowseService(mockFetch).getSupplementaryVideos({
+        name: 'v.cctv 节目', columnId: 'vcctv:mid', itemId: 'mid', kind: 'column',
+        listSource: { type: 'vcctv', id: 'mid', chid: 'chid', serviceId: 'tvcctv' }
+      })
+      expect(videos).toEqual([])
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+  })
+
   describe('resolveSingleVideo', () => {
     // First fetch = page HTML; second fetch = getHttpVideoInfo (returns empty image/brief
     // so existing assertions still hold — real cover/brief tested in e2e)
@@ -758,6 +973,38 @@ describe('BrowseService', () => {
       const service = new BrowseService(fetchHtml(html))
       const v = await service.resolveSingleVideo('https://tv.cctv.com/2026/06/12/VIDEfgJBdxtUMoAkH5c89ZYZ260612.shtml')
       expect(v.guid).toBe('73dfb7e8070247d7acb90016a365c9e6')
+    })
+
+    it('routes culture/travel itemguid pages to a single video even with a TOPC id', async () => {
+      const html = `<script>
+        var commentTitle = '《二十四节气七十二候》系列高清视频：冬至';
+        var itemid1 = 'VIDEvVu5prXSM14Y8yQk6aiq241221';
+        var itemguid = '19e5f94bf6fe4c53b9df44d6885af4c4';
+        var column_id = 'TOPC1606206918061828';
+      </script>`
+      const pageUrl = 'https://culture-travel.cctv.com/2024/12/21/VIDEvVu5prXSM14Y8yQk6aiq241221.shtml'
+      const columnService = new BrowseService(vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve(html) }))
+      await expect(columnService.resolveColumnInfo(pageUrl)).rejects.toThrow('无法解析节目信息')
+
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(html) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({
+          vid: '19e5f94bf6fe4c53b9df44d6885af4c4', title: '冬至', len: '00:06:17', channel: 'CCTV-文化'
+        }) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) })
+      const video = await new BrowseService(mockFetch).resolveSingleVideo(pageUrl)
+      expect(video.guid).toBe('19e5f94bf6fe4c53b9df44d6885af4c4')
+      expect(video.durationSeconds).toBe(377)
+      expect(video.channel).toBe('CCTV-文化')
+    })
+
+    it('does not treat itemguid as authoritative when videotvCodes marks an album page', async () => {
+      const html = `<script>
+        var itemguid = '19e5f94bf6fe4c53b9df44d6885af4c4';
+        var videotvCodes = 'VIDA123';
+      </script>`
+      const service = new BrowseService(fetchHtml(html))
+      await expect(service.resolveSingleVideo('https://tv.cctv.com/x.shtml')).rejects.toThrow('无法解析视频信息')
     })
 
     it('uses var guid when URL has no VIDE token', async () => {
@@ -939,35 +1186,6 @@ describe('BrowseService', () => {
 
       await expect(service.resolveSingleVideo('https://news.cctv.cn/2026/06/28/ARTIjYR3vK99sMNjxITajoyS260628.shtml'))
         .rejects.toThrow('无法解析视频信息')
-    })
-  })
-
-  describe('extractTitle', () => {
-    it('prefers 《》 from commentTitle', () => {
-      expect(extractTitle('<script>var commentTitle = "《新闻联播》 20260612";</script>')).toBe('新闻联播')
-    })
-    it('cleans <title> suffixes when no commentTitle', () => {
-      expect(extractTitle('<title>世界战史_CCTV节目官网-CCTV-1</title>')).toBe('世界战史')
-    })
-    it('returns empty string when neither present', () => {
-      expect(extractTitle('<html>nothing</html>')).toBe('')
-    })
-    it('commentTitle without 《》 falls back to split-on-digit', () => {
-      // "栏目名 20260612 集名" → takes text before the digit
-      expect(extractTitle('<script>var commentTitle = "新闻联播 20260612 今日精选";</script>')).toBe('新闻联播')
-    })
-    it('strips 节目视频 suffix from <title>', () => {
-      expect(extractTitle('<title>经济半小时节目视频_CCTV节目官网-CCTV-2</title>')).toBe('经济半小时')
-    })
-    it('strips 视频 suffix from <title>', () => {
-      expect(extractTitle('<title>经济半小时视频_CCTV节目官网-CCTV-2</title>')).toBe('经济半小时')
-    })
-    it('strips 节目 suffix from <title>', () => {
-      expect(extractTitle('<title>焦点访谈节目_CCTV节目官网</title>')).toBe('焦点访谈')
-    })
-    it('commentTitle takes priority over <title> when both present', () => {
-      const html = '<title>世界战史_CCTV节目官网</title><script>var commentTitle = "《世界战史》 20260601";</script>'
-      expect(extractTitle(html)).toBe('世界战史')
     })
   })
 

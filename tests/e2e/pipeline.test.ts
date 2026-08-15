@@ -52,7 +52,9 @@ async function runDecryptMergeTest(guid: string, quality: string, label: string)
   try {
     const tasks = resolved.segmentUrls.slice(0, 2).map((url, index) => ({ index, url }))
     const decryptor = new SegmentDecryptor(makeRealDecrypt(), 2)
-    const result = await decryptor.decryptAll(tasks, workDir, () => {})
+    const result = resolved.encrypted
+      ? await decryptor.decryptAll(tasks, workDir, () => {})
+      : await decryptor.downloadPlainAll(tasks, workDir, () => {})
     expect(result.failed).toHaveLength(0)
     expect(result.completed.length).toBe(tasks.length)
 

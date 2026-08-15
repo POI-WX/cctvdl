@@ -2,55 +2,17 @@ import { createResilientFetch, type Fetcher, uaInit } from './http'
 import { CctvNewsService, isCctvNewsSnowBookPage } from './cctvnews'
 import type { VideoInfo, ProgramInfo, ProgramMonthBounds, Quality } from '../../shared/types'
 import { isCctvPageHostname } from '../../shared/cctv-link'
+import { getProgramListSource } from '../../shared/programs'
+import { readVideoDurationSeconds, sortVideosChronologically } from '../../shared/video-metadata'
+import {
+  cleanBrief, cleanProgramName, extractTitle, formatVideoTime, mapTopicFragment,
+  mapVcctvVideoItem, mapVideoItem, monthBoundsFromEdges, monthFromVideoTime,
+  monthNumber, readVideoChannel
+} from './browse-data'
 
 export { isCctvNewsSnowBookPage }
 
 type CctvServiceId = 'tvcctv' | 'cctv4k'
-
-/**
- * Clean a CCTV brief field into display-ready plain text.
- * Strips the leading "本期节目主要内容：" prefix and trailing attribution block
- * （《title》date episode）, normalises line endings, and collapses blank lines.
- */
-export function cleanBrief(raw: string): string {
-  if (!raw) return ''
-  return raw
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .replace(/^(?:本期节目)?(?:主要内容)[：:]\s*/u, '')
-    // Greedy match from the last （《 to end so nested parens (e.g. "第（一）集") don't break it
-    .replace(/\s*（《[\s\S]*$/u, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-}
-
-/**
- * Extract a display name from a CCTV page's HTML — the column name on a column
- * page, or the video title on a single-video page. Priority: commentTitle 《》 →
- * cleaned <title>. Returns '' when neither is present.
- */
-export function extractTitle(html: string): string {
-  const commentTitleMatch = html.match(/var\s+commentTitle\s*=\s*["']([^"']+)["']/)
-  if (commentTitleMatch) {
-    // "《我爱发明》 20190903 集名" — prefer the name inside 《》
-    const bookMatch = commentTitleMatch[1].match(/《([^》]+)》/)
-    return bookMatch ? bookMatch[1] : commentTitleMatch[1].split(/\s+\d/)[0].trim()
-  }
-  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/)
-  if (titleMatch) {
-    const title = titleMatch[1].trim()
-      .replace(/_CCTV节目官网.*$/i, '')
-      .replace(/-CCTV.*$/i, '')
-      .replace(/_央视网.*$/i, '')
-      .replace(/节目视频$/, '')
-      .replace(/视频$/, '')
-      .replace(/节目$/, '')
-      .trim()
-    const bookMatch = title.match(/《([^》]+)》/)
-    return bookMatch ? bookMatch[1] : title
-  }
-  return ''
-}
 
 export class BrowseService {
   private readonly albumCache = new Map<string, { expiresAt: number; videos: VideoInfo[] }>()
@@ -59,6 +21,14 @@ export class BrowseService {
   private readonly monthBoundsInflight = new Map<string, Promise<ProgramMonthBounds>>()
   private readonly albumInflight = new Map<string, Promise<VideoInfo[]>>()
   private readonly albumColumnEdges = new Map<string, Promise<Set<string>>>()
+  private readonly albumPrimaryModes = new Map<string, 0 | 1>()
+  private readonly albumPrimaryModeInflight = new Map<string, Promise<{
+    mode: 0 | 1 | null
+    items: Array<Record<string, unknown>>
+    page: number
+    pageSize: number
+    sort: 'asc' | 'desc'
+  }>>()
 
   constructor(
     private readonly fetch: Fetcher = createResilientFetch(),
@@ -67,6 +37,8 @@ export class BrowseService {
 
   clearAlbumCache(albumId: string, serviceId: CctvServiceId = 'tvcctv'): void {
     this.albumCache.delete(`${serviceId}:${albumId}`)
+    this.albumPrimaryModes.delete(`${serviceId}:${albumId}`)
+    this.albumPrimaryModeInflight.delete(`${serviceId}:${albumId}`)
     const prefix = `${serviceId}:${albumId}:`
     for (const key of this.albumMonthCache.keys()) {
       if (key.startsWith(prefix)) this.albumMonthCache.delete(key)
@@ -86,6 +58,68 @@ export class BrowseService {
     const dataObj = data['data'] as Record<string, unknown> | undefined
     const list = (dataObj?.['list'] as Array<Record<string, unknown>>) || []
     return sortVideosChronologically(list.map(mapVideoItem))
+  }
+
+  async getVcctvVideoList(mid: string, chid: string, month: string): Promise<VideoInfo[]> {
+    const pageSize = 100
+    const videos: VideoInfo[] = []
+    const seen = new Set<string>()
+    let actualPageSize = pageSize
+    for (let page = 1; page <= 100; page++) {
+      const { items, total } = await this.fetchVcctvPage(mid, chid, page, pageSize)
+      if (!items.length) break
+      if (page === 1) actualPageSize = items.length
+      let oldestMonth = ''
+      for (const item of items) {
+        const video = mapVcctvVideoItem(item)
+        const itemMonth = monthFromVideoTime(video.time)
+        if (!oldestMonth || (itemMonth && itemMonth < oldestMonth)) oldestMonth = itemMonth
+        if (month && itemMonth !== month) continue
+        if (!seen.has(video.guid)) { seen.add(video.guid); videos.push(video) }
+      }
+      if (page * actualPageSize >= total || (month && oldestMonth && oldestMonth < month)) break
+    }
+    return sortVideosChronologically(videos)
+  }
+
+  async getLatestVcctvVideos(mid: string, chid: string): Promise<VideoInfo[]> {
+    const { items } = await this.fetchVcctvPage(mid, chid, 1, 100)
+    return items.map(mapVcctvVideoItem)
+  }
+
+  async getVcctvMonthBounds(mid: string, chid: string): Promise<ProgramMonthBounds> {
+    const pageSize = 100
+    const first = await this.fetchVcctvPage(mid, chid, 1, pageSize)
+    if (!first.items.length) return { earliest: null, latest: null }
+    const totalPages = Math.max(1, Math.ceil(first.total / first.items.length))
+    const last = totalPages === 1 ? first : await this.fetchVcctvPage(mid, chid, totalPages, pageSize)
+    const months = [...first.items, ...last.items]
+      .map(item => monthFromVideoTime(formatVideoTime(item['pubTime'])))
+      .filter(Boolean)
+    return {
+      earliest: months.length ? months.reduce((a, b) => a < b ? a : b) : null,
+      latest: months.length ? months.reduce((a, b) => a > b ? a : b) : null
+    }
+  }
+
+  private async fetchVcctvPage(
+    mid: string, chid: string, page: number, pageSize: number
+  ): Promise<{ items: Array<Record<string, unknown>>; total: number }> {
+    const params = new URLSearchParams({ mid, chid, p: String(page), n: String(pageSize) })
+    let resp: Awaited<ReturnType<Fetcher>>
+    try {
+      resp = await this.fetch(`https://media.app.cctv.com/vapi/video/vplist.do?${params}`, uaInit())
+    } catch {
+      // This legacy host still negotiates TLS in a way Node/OpenSSL may reject.
+      // Its public read-only HTTP endpoint serves the same JSON, so use it only
+      // as a compatibility fallback instead of weakening TLS globally.
+      resp = await this.fetch(`http://media.app.cctv.com/vapi/video/vplist.do?${params}`, uaInit())
+    }
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} from vplist.do`)
+    const root = await resp.json() as Record<string, unknown>
+    const items = Array.isArray(root['data']) ? root['data'] as Array<Record<string, unknown>> : []
+    const total = Number(root['count'])
+    return { items, total: Number.isFinite(total) && total > 0 ? total : items.length }
   }
 
   async getColumnMonthBounds(columnId: string): Promise<ProgramMonthBounds> {
@@ -117,10 +151,9 @@ export class BrowseService {
     }
   }
 
-  // `_month` is part of the symmetric signature with getColumnVideoList but the
-  // album endpoint doesn't filter by month, so it's intentionally unused.
-  // Albums can contain more than the API's 100-item page size, so keep fetching
-  // consecutive pages until the final short page and dedupe by guid.
+  // The album endpoint cannot filter by month. For a requested month, start
+  // from the closer chronological edge and stop once paging passes the target;
+  // for an unfiltered list, traverse all pages and dedupe by guid.
   async getAlbumVideoList(
     albumId: string,
     page: number,
@@ -199,22 +232,171 @@ export class BrowseService {
     }
 
     const sortedVideos = sortVideosChronologically(videos)
-    this.albumMonthCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, videos: sortedVideos })
-    return sortedVideos
+    if (sortedVideos.length) {
+      this.albumMonthCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, videos: sortedVideos })
+      return sortedVideos
+    }
+
+    // Some legacy VIDA archives do not honour the requested sort/page
+    // consistently. If edge-directed paging misses the requested month, fall
+    // back to the complete ascending catalogue before declaring it empty.
+    const allVideos = await this.fetchAllAlbumVideos(albumId, 1, serviceId)
+    const fallback = sortVideosChronologically(
+      allVideos.filter(video => monthFromVideoTime(video.time) === month)
+    )
+    if (fallback.length) onProgress?.(fallback)
+    this.albumMonthCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, videos: fallback })
+    return fallback
+  }
+
+  async getVideoMediaMetadata(guid: string): Promise<Pick<VideoInfo, 'channel' | 'durationSeconds'>> {
+    const resp = await this.fetch(
+      `https://vdn.apps.cntv.cn/api/getHttpVideoInfo.do?pid=${encodeURIComponent(guid)}&type=json&ltype=html5`,
+      uaInit()
+    )
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} from getHttpVideoInfo.do`)
+    const info = await resp.json() as Record<string, unknown>
+    const channel = readVideoChannel(info)
+    const durationSeconds = readVideoDurationSeconds(info)
+    return {
+      ...(channel ? { channel } : {}),
+      ...(durationSeconds != null ? { durationSeconds } : {})
+    }
+  }
+
+  async getSupplementaryVideos(program: ProgramInfo, month = ''): Promise<VideoInfo[]> {
+    const result: VideoInfo[] = []
+    const source = getProgramListSource(program)
+    if (source.type === 'vcctv') return []
+    const serviceId = source.serviceId
+    let albumId = source.type === 'album' ? source.id : ''
+    if (!albumId && program.itemId) albumId = await this.resolveAlbumId(program.itemId, serviceId).catch(() => '')
+    if (albumId) result.push(...await this.fetchAlbumModeVideos(albumId, serviceId, 1, 'highlight').catch(() => []))
+    const topicId = program.topicId || (/^TOPC/.test(program.columnId) ? program.columnId : '')
+    if (program.itemId && topicId) {
+      result.push(...await this.fetchTopicFragments(topicId, program.itemId, serviceId).catch(() => []))
+    }
+    const seen = new Set<string>()
+    return sortVideosChronologically(result.filter(video => {
+      if (!video.guid || seen.has(video.guid)) return false
+      if (month && monthFromVideoTime(video.time) !== month) return false
+      seen.add(video.guid)
+      return true
+    }))
+  }
+
+  private async resolveAlbumId(itemId: string, serviceId: CctvServiceId): Promise<string> {
+    const params = new URLSearchParams({ id: itemId, serviceId })
+    const resp = await this.fetch(`https://api.cntv.cn/NewVideoset/getVideoAlbumInfoByVideoId?${params}`, uaInit())
+    if (!resp.ok) return ''
+    const root = await resp.json() as Record<string, unknown>
+    const data = root['data'] as Record<string, unknown> | undefined
+    return String(data?.['id'] || '')
+  }
+
+  private async fetchAlbumModeVideos(
+    albumId: string, serviceId: CctvServiceId, mode: 0 | 1, contentType: 'highlight'
+  ): Promise<VideoInfo[]> {
+    const result: VideoInfo[] = []
+    const pageSize = 100
+    for (let page = 1; page <= 100; page++) {
+      let pageResult: { items: Array<Record<string, unknown>>; total: number }
+      try {
+        pageResult = await this.fetchAlbumModePage(albumId, page, pageSize, serviceId, 'asc', mode)
+      } catch {
+        break
+      }
+      const { items, total } = pageResult
+      result.push(...items.map(item => ({ ...mapVideoItem(item), contentType })))
+      if (items.length < pageSize || page * pageSize >= total) break
+    }
+    return result
+  }
+
+  private async fetchTopicFragments(
+    columnId: string, itemId: string, serviceId: CctvServiceId
+  ): Promise<VideoInfo[]> {
+    const params = new URLSearchParams({
+      videoid: itemId, topicid: columnId, serviceId, type: '1'
+    })
+    const resp = await this.fetch(`https://api.cntv.cn/video/getVideoListByTopicIdInfo?${params}`, uaInit())
+    if (!resp.ok) return []
+    const root = await resp.json() as Record<string, unknown>
+    const items = Array.isArray(root['data']) ? root['data'] as Array<Record<string, unknown>> : []
+    return items.map(mapTopicFragment)
   }
 
   private async fetchAlbumPage(
     albumId: string, page: number, pageSize: number, serviceId: CctvServiceId, sort: 'asc' | 'desc'
   ): Promise<Array<Record<string, unknown>>> {
+    const cacheKey = `${serviceId}:${albumId}`
+    const selectedMode = this.albumPrimaryModes.get(cacheKey)
+    if (selectedMode != null) {
+      return this.fetchAlbumPageByMode(albumId, page, pageSize, serviceId, sort, selectedMode)
+    }
+    let resolution = this.albumPrimaryModeInflight.get(cacheKey)
+    if (!resolution) {
+      resolution = this.resolveAlbumPrimaryMode(albumId, page, pageSize, serviceId, sort)
+      this.albumPrimaryModeInflight.set(cacheKey, resolution)
+    }
+    try {
+      const resolved = await resolution
+      if (resolved.mode == null) return []
+      this.albumPrimaryModes.set(cacheKey, resolved.mode)
+      if (resolved.page === page && resolved.pageSize === pageSize && resolved.sort === sort) return resolved.items
+      return this.fetchAlbumPageByMode(albumId, page, pageSize, serviceId, sort, resolved.mode)
+    } finally {
+      if (this.albumPrimaryModeInflight.get(cacheKey) === resolution) this.albumPrimaryModeInflight.delete(cacheKey)
+    }
+  }
+
+  private async resolveAlbumPrimaryMode(
+    albumId: string, page: number, pageSize: number, serviceId: CctvServiceId, sort: 'asc' | 'desc'
+  ): Promise<{
+    mode: 0 | 1 | null
+    items: Array<Record<string, unknown>>
+    page: number
+    pageSize: number
+    sort: 'asc' | 'desc'
+  }> {
+    const primary = await this.fetchAlbumPageByMode(albumId, page, pageSize, serviceId, sort, 0)
+    if (primary.length) return { mode: 0, items: primary, page, pageSize, sort }
+    // A small family of VIDA sets (notably upstream issue #98) stores full
+    // episodes in mode=1 while mode=0 is empty. Accept mode=1 only when at
+    // least 80% of its titles look like complete episodes; this keeps ordinary
+    // highlight catalogues out of the default programme list.
+    const fallback = await this.fetchAlbumPageByMode(albumId, page, pageSize, serviceId, sort, 1)
+    return looksLikeFullEpisodeCatalogue(fallback)
+      ? { mode: 1, items: fallback, page, pageSize, sort }
+      : { mode: null, items: [], page, pageSize, sort }
+  }
+
+  private async fetchAlbumPageByMode(
+    albumId: string, page: number, pageSize: number, serviceId: CctvServiceId,
+    sort: 'asc' | 'desc', mode: 0 | 1
+  ): Promise<Array<Record<string, unknown>>> {
+    return (await this.fetchAlbumModePage(albumId, page, pageSize, serviceId, sort, mode)).items
+  }
+
+  /** Single boundary for the album API's parameters and response normalization. */
+  private async fetchAlbumModePage(
+    albumId: string, page: number, pageSize: number, serviceId: CctvServiceId,
+    sort: 'asc' | 'desc', mode: 0 | 1
+  ): Promise<{ items: Array<Record<string, unknown>>; total: number }> {
     const params = new URLSearchParams({
       id: albumId, pub: serviceId === 'cctv4k' ? '2' : '1', sort,
-      mode: '0', p: String(page), n: String(pageSize), serviceId
+      mode: String(mode), p: String(page), n: String(pageSize), serviceId
     })
     const resp = await this.fetch(`https://api.cntv.cn/NewVideo/getVideoListByAlbumIdNew?${params}`, uaInit())
     if (!resp.ok) throw new Error(`HTTP ${resp.status} from getVideoListByAlbumIdNew`)
     const data = await resp.json() as Record<string, unknown>
     const dataObj = data['data'] as Record<string, unknown> | undefined
-    return (dataObj?.['list'] as Array<Record<string, unknown>>) || []
+    const items = (dataObj?.['list'] as Array<Record<string, unknown>>) || []
+    const rawTotal = Number(dataObj?.['total'])
+    return {
+      items,
+      total: Number.isFinite(rawTotal) && rawTotal >= 0 ? rawTotal : items.length
+    }
   }
 
   private async fetchAllAlbumVideos(
@@ -228,21 +410,7 @@ export class BrowseService {
     const seen = new Set<string>()
     const videos: VideoInfo[] = []
     for (let currentPage = page; currentPage < page + maxPages; currentPage++) {
-      const params = new URLSearchParams({
-        id: albumId,
-        pub: serviceId === 'cctv4k' ? '2' : '1',
-        sort: 'asc',
-        mode: '0',
-        p: String(currentPage),
-        n: String(pageSize),
-        serviceId
-      })
-      const url = `https://api.cntv.cn/NewVideo/getVideoListByAlbumIdNew?${params}`
-      const resp = await this.fetch(url, uaInit())
-      if (!resp.ok) throw new Error(`HTTP ${resp.status} from getVideoListByAlbumIdNew`)
-      const data = await resp.json() as Record<string, unknown>
-      const dataObj = data['data'] as Record<string, unknown> | undefined
-      const list = (dataObj?.['list'] as Array<Record<string, unknown>>) || []
+      const list = await this.fetchAlbumPage(albumId, currentPage, pageSize, serviceId, 'asc')
       let addedOnPage = 0
       const newVideos: VideoInfo[] = []
       for (const item of list) {
@@ -262,21 +430,7 @@ export class BrowseService {
   // deliberately asks for only the newest API page, avoiding a full traversal
   // of long-running programmes at every application startup.
   async getLatestAlbumVideos(albumId: string, serviceId: CctvServiceId = 'tvcctv'): Promise<VideoInfo[]> {
-    const params = new URLSearchParams({
-      id: albumId,
-      pub: serviceId === 'cctv4k' ? '2' : '1',
-      sort: 'desc',
-      mode: '0',
-      p: '1',
-      n: '100',
-      serviceId
-    })
-    const resp = await this.fetch(`https://api.cntv.cn/NewVideo/getVideoListByAlbumIdNew?${params}`, uaInit())
-    if (!resp.ok) throw new Error(`HTTP ${resp.status} from getVideoListByAlbumIdNew`)
-    const data = await resp.json() as Record<string, unknown>
-    const dataObj = data['data'] as Record<string, unknown> | undefined
-    const list = (dataObj?.['list'] as Array<Record<string, unknown>>) || []
-    return list.map(mapVideoItem)
+    return (await this.fetchAlbumPage(albumId, 1, 100, serviceId, 'desc')).map(mapVideoItem)
   }
 
   async getAlbumMonthBounds(
@@ -307,55 +461,42 @@ export class BrowseService {
     if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching page`)
     const html = await resp.text()
 
-    // Clip pages expose parent program metadata, but the page itself is a
-    // standalone playable video. Let the caller fall back to resolveSingleVideo.
-    if (isTvClipVideoPage(html)) throw new Error('无法解析节目信息')
-
-    const htmlGuidMatch = html.match(/var\s+guid\s*=\s*["']([^"']+)["']/)
-    const guid = htmlGuidMatch ? htmlGuidMatch[1] : ''
-    if (guid) {
-      const serviceId = detectTvServiceId(pageUrl, html)
-      const videoInfo = await this.fetchVideoInfoByGuid(guid, serviceId).catch(() => null)
-      if (videoInfo && isClipVideoInfo(videoInfo)) throw new Error('无法解析节目信息')
-      const aggregate = videoInfo && await this.monthlyColumnFromEpisode(
-        videoInfo, serviceId, extractTitle(html), extractItemId(html), extractColumnId(html)
-      )
-      if (aggregate) return aggregate
-      const album = videoInfo && this.albumProgramFromVideoInfo(videoInfo, serviceId, extractTitle(html), extractItemId(html))
-      if (album) return album
-    }
-
-    // Some programme overview pages list episodes but do not expose their own
-    // playable guid or a column id. Resolve one linked episode through the same
-    // metadata path as a directly pasted episode, then identify its album.
-    const episodeUrl = extractRepresentativeEpisodeUrl(pageUrl, html)
-    if (episodeUrl) {
-      const episodeResp = await this.fetch(episodeUrl, uaInit())
-      if (episodeResp.ok) {
-        const episodeHtml = await episodeResp.text()
-        const episodeGuid = extractPageGuid(episodeHtml)
-        if (episodeGuid) {
-          const serviceId = detectTvServiceId(episodeUrl, episodeHtml)
-          const videoInfo = await this.fetchVideoInfoByGuid(episodeGuid, serviceId).catch(() => null)
-          const overviewItemId = extractItemId(html)
-          const overviewColumnId = extractColumnId(html)
-          const episodeColumnId = extractColumnId(episodeHtml)
-          const aggregate = videoInfo && /^VIDA[A-Za-z0-9]+$/.test(overviewItemId)
-            && overviewColumnId && episodeColumnId && overviewColumnId !== episodeColumnId
-            ? this.monthlyAlbumColumnFromVideoInfo(videoInfo, serviceId, extractTitle(html), overviewItemId)
-            : null
-          if (aggregate) return aggregate
-          const album = videoInfo && this.albumProgramFromVideoInfo(videoInfo, serviceId, extractTitle(html), overviewItemId)
-          if (album) return album
-        }
+    const vcctv = isVcctvProgrammePage(pageUrl) ? extractVcctvCatalogue(html) : null
+    if (vcctv) {
+      const name = extractTitle(html)
+      if (!name) throw new Error('无法解析节目信息')
+      return {
+        name, columnId: `vcctv:${vcctv.mid}`, itemId: vcctv.mid, kind: 'column', serviceId: 'tvcctv',
+        listSource: { type: 'vcctv', id: vcctv.mid, chid: vcctv.chid, serviceId: 'tvcctv' }
       }
     }
 
-    // 1. Extract column ID (priority: column_id → topicID → AJAX URL in page JS)
+    // Some culture/travel pages expose a real playable itemguid alongside a
+    // decorative TOPC column id, but no videotvCodes album marker. They are
+    // single videos; allowing the generic column fallback below would import a
+    // misleading or empty programme instead.
+    if (isCultureTravelSingleVideoPage(pageUrl, html)) throw new Error('无法解析节目信息')
+
+    // Clip pages expose parent programme metadata. Prefer that album when it is
+    // available; otherwise reject column resolution so the caller imports the
+    // pasted clip itself as a single video.
+    const clipPage = isTvClipVideoPage(html)
+
+    const guid = extractPageGuid(html)
+    if (guid) {
+      const guidProgram = await this.resolveGuidBackedProgram(pageUrl, html, guid, clipPage)
+      if (guidProgram) return guidProgram
+    }
+    if (clipPage) throw new Error('无法解析节目信息')
+
+    const overviewProgram = await this.resolveOverviewProgram(pageUrl, html)
+    if (overviewProgram) return overviewProgram
+
+    // 1. Extract column ID (priority: column_id → topicID/lmtopId → AJAX URL in page JS)
     let columnId = extractColumnId(html)
 
     if (!columnId) {
-      const topicIdMatch = html.match(/var\s+topicID\s*=\s*["']([^"']+)["']/)
+      const topicIdMatch = html.match(/var\s+(?:topicID|lmtopId)\s*=\s*["']([^"']+)["']/)
       if (topicIdMatch) columnId = topicIdMatch[1]
     }
 
@@ -383,6 +524,80 @@ export class BrowseService {
     return {
       name, columnId, itemId, kind: 'column', serviceId: 'tvcctv',
       listSource: { type: 'column', id: columnId, serviceId: 'tvcctv' }
+    }
+  }
+
+  private async resolveGuidBackedProgram(
+    pageUrl: string, html: string, guid: string, clipPage: boolean
+  ): Promise<ProgramInfo | null> {
+    const serviceId = detectTvServiceId(pageUrl, html)
+    const videoInfo = await this.fetchVideoInfoByGuid(guid, serviceId).catch(() => null)
+    if (!videoInfo) return null
+    const title = extractTitle(html)
+    const itemId = extractItemId(html)
+
+    if (clipPage) {
+      const album = this.albumProgramFromVideoInfo(videoInfo, serviceId, title, itemId, true)
+      if (album) return album
+    }
+    if (isLegacyThemedVideoPage(pageUrl)) {
+      const album = await this.multiVideoAlbumFromVideoInfo(videoInfo, serviceId, title, itemId)
+      if (album) return album
+      // A year-themed direct video URL is not collection evidence by itself.
+      throw new Error('无法解析节目信息')
+    }
+    if (isClipVideoInfo(videoInfo)) throw new Error('无法解析节目信息')
+
+    const aggregate = await this.monthlyColumnFromEpisode(
+      videoInfo, serviceId, title, itemId, extractColumnId(html)
+    )
+    if (aggregate) return aggregate
+    // A programme TOPC is also attached to many short editorial segments; the
+    // pasted link still represents that single segment (upstream issue #96).
+    if (isStandaloneSegmentVideoInfo(videoInfo)) throw new Error('无法解析节目信息')
+    return this.albumProgramFromVideoInfo(videoInfo, serviceId, title, itemId)
+  }
+
+  private async resolveOverviewProgram(pageUrl: string, html: string): Promise<ProgramInfo | null> {
+    // Static overview pages can be identified through one representative episode.
+    const episodeUrl = extractRepresentativeEpisodeUrl(pageUrl, html)
+    if (episodeUrl) {
+      const episodeResp = await this.fetch(episodeUrl, uaInit())
+      if (episodeResp.ok) {
+        const episodeHtml = await episodeResp.text()
+        const episodeGuid = extractPageGuid(episodeHtml)
+        if (episodeGuid) {
+          const serviceId = detectTvServiceId(episodeUrl, episodeHtml)
+          const videoInfo = await this.fetchVideoInfoByGuid(episodeGuid, serviceId).catch(() => null)
+          const itemId = extractItemId(html)
+          const isAlbumOverview = /^VIDA[A-Za-z0-9]+$/.test(itemId)
+          const overviewColumnId = extractColumnId(html)
+          const episodeColumnId = extractColumnId(episodeHtml)
+          const columnsChanged = Boolean(
+            overviewColumnId && episodeColumnId && overviewColumnId !== episodeColumnId
+          )
+          if (videoInfo && isAlbumOverview && columnsChanged) {
+            const aggregate = this.monthlyAlbumColumnFromVideoInfo(videoInfo, serviceId, extractTitle(html), itemId)
+            if (aggregate) return aggregate
+          }
+          // VIDA itself is explicit collection evidence even when metadata reports tnum=0 (#98).
+          if (videoInfo) {
+            const album = this.albumProgramFromVideoInfo(
+              videoInfo, serviceId, extractTitle(html), itemId, isAlbumOverview
+            )
+            if (album) return album
+          }
+        }
+      }
+    }
+
+    // Dynamic overview templates may omit episode links; their VIDA item id is sufficient.
+    const albumId = extractItemId(html)
+    const name = extractTitle(html)
+    if (!/^VIDA[A-Za-z0-9]+$/.test(albumId) || !name) return null
+    return {
+      name, columnId: albumId, itemId: albumId, kind: 'album', serviceId: 'tvcctv',
+      listSource: { type: 'album', id: albumId, serviceId: 'tvcctv' }
     }
   }
 
@@ -428,7 +643,7 @@ export class BrowseService {
     // URL's VIDE token is a CMS content ID, not the playable guid used by the
     // download API. Require the page's actual guid declaration.
     const htmlGuidMatch = html.match(/var\s+guid\s*=\s*["']([^"']+)["']/)
-    const guid = htmlGuidMatch ? htmlGuidMatch[1] : ''
+    const guid = htmlGuidMatch ? htmlGuidMatch[1] : extractAuthoritativeItemGuid(html)
     if (!guid) throw new Error('无法解析视频信息')
 
     const serviceId = detectTvServiceId(pageUrl, html)
@@ -439,12 +654,16 @@ export class BrowseService {
     let apiBrief = ''
     let apiTitle = ''
     let apiTime = ''
+    let channel = ''
+    let durationSeconds: number | undefined
     try {
       const videoInfo = await this.fetchVideoInfoByGuid(guid, serviceId)
       apiTitle = String(videoInfo['title'] || '')
       apiCoverUrl = String(videoInfo['img'] || videoInfo['image'] || '')
       apiBrief = cleanBrief(String(videoInfo['brief'] || ''))
       apiTime = formatVideoTime(videoInfo['focus_date']) || String(videoInfo['time'] || '')
+      channel = readVideoChannel(videoInfo)
+      durationSeconds = readVideoDurationSeconds(videoInfo)
     } catch { /* fall through to getHttpVideoInfo */ }
 
     try {
@@ -456,6 +675,8 @@ export class BrowseService {
         const info = await infoResp.json() as Record<string, unknown>
         if (!apiCoverUrl) apiCoverUrl = String(info['image'] || '')
         if (!apiBrief) apiBrief = cleanBrief(String(info['brief'] || ''))
+        if (!channel) channel = readVideoChannel(info)
+        if (durationSeconds == null) durationSeconds = readVideoDurationSeconds(info)
       }
     } catch { /* silent — og:image fallback below */ }
 
@@ -474,7 +695,11 @@ export class BrowseService {
       ?? html.match(/<meta[^>]+content=["']([^"']{10,}?)["'][^>]+property=["']og:description["']/i)
     const brief = apiBrief || (briefMatch ? cleanBrief(briefMatch[1]) : '')
 
-    return { guid, title, brief, coverUrl, time }
+    return {
+      guid, title, brief, coverUrl, time,
+      ...(channel ? { channel } : {}),
+      ...(durationSeconds != null ? { durationSeconds } : {})
+    }
   }
 
   private async resolveNewsArticleVideo(pageUrl: string, html: string): Promise<VideoInfo> {
@@ -495,7 +720,13 @@ export class BrowseService {
     const rawTime = String(info['time'] || '')
     const time = formatVideoTime(info['focus_date']) || rawTime || dateFromUrl(pageUrl)
 
-    return { guid, title, brief, coverUrl, time }
+    const channel = readVideoChannel(info)
+    const durationSeconds = readVideoDurationSeconds(info)
+    return {
+      guid, title, brief, coverUrl, time,
+      ...(channel ? { channel } : {}),
+      ...(durationSeconds != null ? { durationSeconds } : {})
+    }
   }
 
   private async fetchVideoInfoByGuid(guid: string, serviceId: CctvServiceId): Promise<Record<string, unknown>> {
@@ -508,16 +739,34 @@ export class BrowseService {
   }
 
   private albumProgramFromVideoInfo(
-    info: Record<string, unknown>, serviceId: CctvServiceId, fallbackName: string, fallbackItemId: string
+    info: Record<string, unknown>, serviceId: CctvServiceId, fallbackName: string, fallbackItemId: string,
+    forceCollection = false
   ): ProgramInfo | null {
-    if (!isAlbumProgram(info, serviceId)) return null
+    if (!forceCollection && !isAlbumProgram(info, serviceId)) return null
     const columnId = String(info['album_id'] || '')
     const name = cleanProgramName(String(info['vset_title'] || '')) || fallbackName
     if (!columnId || !name) return null
     return {
       name, columnId, itemId: String(info['cvid'] || fallbackItemId), kind: 'album', serviceId,
-      listSource: { type: 'album', id: columnId, serviceId }
+      listSource: { type: 'album', id: columnId, serviceId },
+      ...(String(info['ctid'] || '') ? { topicId: String(info['ctid']) } : {})
     }
+  }
+
+  private async multiVideoAlbumFromVideoInfo(
+    info: Record<string, unknown>, serviceId: CctvServiceId, fallbackName: string, fallbackItemId: string
+  ): Promise<ProgramInfo | null> {
+    const program = this.albumProgramFromVideoInfo(info, serviceId, fallbackName, fallbackItemId, true)
+    if (!program) return null
+    for (const mode of [0, 1] as const) {
+      try {
+        const { items, total } = await this.fetchAlbumModePage(program.columnId, 1, 2, serviceId, 'asc', mode)
+        if (total > 1 || items.length > 1) return program
+      } catch {
+        // Try the alternate legacy album mode before treating the page as a single video.
+      }
+    }
+    return null
   }
 
   private monthlyAlbumColumnFromVideoInfo(
@@ -528,7 +777,8 @@ export class BrowseService {
     if (!sourceId || !name) return null
     return {
       name, columnId: sourceId, itemId: fallbackItemId, kind: 'column', serviceId,
-      listSource: { type: 'album', id: sourceId, serviceId }
+      listSource: { type: 'album', id: sourceId, serviceId },
+      ...(String(info['ctid'] || '') ? { topicId: String(info['ctid']) } : {})
     }
   }
 
@@ -564,18 +814,14 @@ export class BrowseService {
   ): Promise<Set<string>> {
     const columns = new Set<string>()
     const edgeUrls: string[] = []
-    for (const sort of ['asc', 'desc']) {
-      const params = new URLSearchParams({
-        id: albumId, pub: serviceId === 'cctv4k' ? '2' : '1', sort,
-        mode: '0', p: '1', n: '1', serviceId
-      })
-      const resp = await this.fetch(`https://api.cntv.cn/NewVideo/getVideoListByAlbumIdNew?${params}`, uaInit())
-      if (!resp.ok) continue
-      const data = await resp.json() as Record<string, unknown>
-      const dataObj = data['data'] as Record<string, unknown> | undefined
-      const list = (dataObj?.['list'] as Array<Record<string, unknown>>) || []
-      const url = String(list[0]?.['url'] || '')
-      if (url) edgeUrls.push(url)
+    for (const sort of ['asc', 'desc'] as const) {
+      try {
+        const { items } = await this.fetchAlbumModePage(albumId, 1, 1, serviceId, sort, 0)
+        const url = String(items[0]?.['url'] || '')
+        if (url) edgeUrls.push(url)
+      } catch {
+        // One unavailable edge must not discard evidence from the other edge.
+      }
     }
     for (const edgeUrl of new Set(edgeUrls)) {
       let parsed: URL
@@ -590,15 +836,58 @@ export class BrowseService {
   }
 }
 
-function mapVideoItem(item: Record<string, unknown>): VideoInfo {
-  const focusDate = formatVideoTime(item['focus_date'])
-  return {
-    guid: String(item['guid'] || ''),
-    title: String(item['title'] || ''),
-    brief: cleanBrief(String(item['brief'] || '')),
-    coverUrl: String(item['image'] || ''),
-    time: focusDate || String(item['time'] || '')
+function extractVcctvCatalogue(html: string): { mid: string; chid: string } | null {
+  const requestIndex = html.search(/vplist\.do\?/i)
+  if (requestIndex < 0) return null
+  const requestSource = html.slice(requestIndex, requestIndex + 1600)
+  const extract = (name: 'mid' | 'chid'): string => {
+    const direct = requestSource.match(new RegExp(`\\b${name}\\s*=\\s*([A-Za-z0-9_-]+)`, 'i'))
+    if (direct) return direct[1].trim()
+    const variable = requestSource.match(
+      new RegExp(`\\b${name}\\s*=\\s*["']?\\s*\\+\\s*([A-Za-z_$][A-Za-z0-9_$]*)`, 'i')
+    )?.[1]
+    if (!variable) return ''
+    const declaration = html.match(new RegExp(`\\b${escapeRegExp(variable)}\\s*=\\s*["']([^"']+)["']`))
+    return (declaration?.[1] || '').replace(/(?:\\t|\t)+$/g, '').trim()
   }
+  const mid = extract('mid')
+  const chid = extract('chid')
+  return mid && chid ? { mid, chid } : null
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function isLegacyThemedVideoPage(pageUrl: string): boolean {
+  try {
+    return /^\d{4}\.cctv\.com$/i.test(new URL(pageUrl).hostname)
+  } catch {
+    return false
+  }
+}
+
+function isVcctvProgrammePage(pageUrl: string): boolean {
+  try {
+    return new URL(pageUrl).hostname.toLowerCase() === 'v.cctv.com'
+  } catch {
+    return false
+  }
+}
+
+function isCultureTravelSingleVideoPage(pageUrl: string, html: string): boolean {
+  try {
+    return new URL(pageUrl).hostname.toLowerCase() === 'culture-travel.cctv.com'
+      && Boolean(extractAuthoritativeItemGuid(html))
+  } catch {
+    return false
+  }
+}
+
+function extractAuthoritativeItemGuid(html: string): string {
+  if (/\bvar\s+videotvCodes\s*=/i.test(html)) return ''
+  const match = html.match(/\bvar\s+itemguid\s*=\s*["']([0-9a-fA-F]{32})["']/i)
+  return match ? match[1] : ''
 }
 
 function isNewsArticlePage(pageUrl: string): boolean {
@@ -648,7 +937,10 @@ function extractCommentTitle(html: string): string {
 }
 
 function detectTvServiceId(pageUrl: string, html: string): CctvServiceId {
-  return /cctv4k|4K专区|configType\s*=\s*["']cctv4k["']/i.test(pageUrl + html) ? 'cctv4k' : 'tvcctv'
+  return /cctv4k/i.test(pageUrl)
+    || /configType\s*=\s*["']cctv4k["']/i.test(html)
+    || /<title[^>]*>[^<]*4K专区/i.test(html)
+    ? 'cctv4k' : 'tvcctv'
 }
 
 function isAlbumProgram(info: Record<string, unknown>, serviceId: CctvServiceId): boolean {
@@ -666,8 +958,20 @@ function isClipVideoInfo(info: Record<string, unknown>): boolean {
     || (/^(00:00|00:01):/.test(len) && /^\[[^\]]+\]/.test(title))
 }
 
-function cleanProgramName(name: string): string {
-  return name.trim().replace(/^《([^》]+)》(.*)$/, '$1$2')
+function isStandaloneSegmentVideoInfo(info: Record<string, unknown>): boolean {
+  const title = String(info['title'] || '').trim()
+  return /^\[视频\]/.test(title) || /^【视频】/.test(title)
+}
+
+function looksLikeFullEpisodeCatalogue(items: Array<Record<string, unknown>>): boolean {
+  const titles = items.map(item => String(item['title'] || '').trim()).filter(Boolean)
+  if (!titles.length) return false
+  const fullEpisodeCount = titles.filter(title =>
+    /第\s*[0-9一-龥]+\s*[集期回部]/.test(title) || /(?:全集|完整版)/.test(title)
+  ).length
+  // Keep the fallback conservative: a few episode-like titles mixed into a
+  // highlight catalogue must not turn the entire mode into default full videos.
+  return fullEpisodeCount / titles.length >= 0.8
 }
 
 function extractPageGuid(html: string): string {
@@ -686,63 +990,4 @@ function extractRepresentativeEpisodeUrl(pageUrl: string, html: string): string 
   // Requiring several episode links avoids turning a page with one related-video
   // link into a programme set.
   return candidates.size >= 2 ? [...candidates][0] : ''
-}
-
-function formatVideoTime(value: unknown): string {
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return formatUnixMsChina(value)
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    if (!trimmed) return ''
-    if (/^\d+$/.test(trimmed)) return formatUnixMsChina(Number(trimmed))
-    return trimmed
-  }
-  return ''
-}
-
-function formatUnixMsChina(ms: number): string {
-  const date = new Date(ms + 8 * 60 * 60 * 1000)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`
-}
-
-function monthFromVideoTime(time: string): string {
-  const match = time.match(/^(\d{4})[-/]?(\d{2})/)
-  return match ? `${match[1]}${match[2]}` : ''
-}
-
-// CCTV's legacy column/album endpoints do not consistently honor their
-// `sort` parameter. Normalize at our boundary so old and new column IDs render
-// in the same (oldest-to-newest) order. Unknown dates retain their source order
-// and are placed after dated entries.
-function sortVideosChronologically(videos: VideoInfo[]): VideoInfo[] {
-  return videos
-    .map((video, index) => ({ video, index }))
-    .sort((a, b) => {
-      if (!a.video.time && !b.video.time) return a.index - b.index
-      if (!a.video.time) return 1
-      if (!b.video.time) return -1
-      return a.video.time.localeCompare(b.video.time) || a.index - b.index
-    })
-    .map(({ video }) => video)
-}
-
-function monthBoundsFromEdges(
-  earliestItems: Array<Record<string, unknown>>,
-  latestItems: Array<Record<string, unknown>>
-): ProgramMonthBounds {
-  const months = (items: Array<Record<string, unknown>>): string[] => items
-    .map(item => monthFromVideoTime(formatVideoTime(item['focus_date']) || String(item['time'] || '')))
-    .filter(Boolean)
-  const earliestMonths = months(earliestItems)
-  const latestMonths = months(latestItems)
-  return {
-    earliest: earliestMonths.length ? earliestMonths.reduce((a, b) => a < b ? a : b) : null,
-    latest: latestMonths.length ? latestMonths.reduce((a, b) => a > b ? a : b) : null
-  }
-}
-
-function monthNumber(value: string): number | null {
-  const month = monthFromVideoTime(value)
-  if (!month) return null
-  return Number(month.slice(0, 4)) * 12 + Number(month.slice(4, 6)) - 1
 }

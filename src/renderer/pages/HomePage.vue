@@ -234,7 +234,14 @@
                   <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
                        @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
-                    <span class="video-item-title" :title="v.title" v-html="highlightText(v.title, debouncedSearch)" />
+                    <div class="video-item-heading">
+                      <span
+                        v-if="v.contentType"
+                        class="video-type-badge"
+                        :class="`video-type-badge--${v.contentType}`"
+                      >{{ contentTypeLabel(v.contentType) }}</span>
+                      <span class="video-item-title" :title="v.title" v-html="highlightText(v.title, debouncedSearch)" />
+                    </div>
                     <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
                   </div>
                   <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
@@ -253,7 +260,14 @@
                   <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
                        @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
-                    <span class="video-item-title" :title="v.title" v-html="highlightText(v.title, debouncedSearch)" />
+                    <div class="video-item-heading">
+                      <span
+                        v-if="v.contentType"
+                        class="video-type-badge"
+                        :class="`video-type-badge--${v.contentType}`"
+                      >{{ contentTypeLabel(v.contentType) }}</span>
+                      <span class="video-item-title" :title="v.title" v-html="highlightText(v.title, debouncedSearch)" />
+                    </div>
                     <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
                   </div>
                   <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
@@ -275,7 +289,14 @@
                   <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
                        @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
                   <div class="video-item-info">
-                    <span class="video-item-title" :title="v.title">{{ v.title }}</span>
+                    <div class="video-item-heading">
+                      <span
+                        v-if="v.contentType"
+                        class="video-type-badge"
+                        :class="`video-type-badge--${v.contentType}`"
+                      >{{ contentTypeLabel(v.contentType) }}</span>
+                      <span class="video-item-title" :title="v.title">{{ v.title }}</span>
+                    </div>
                   </div>
                   <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
                 </div>
@@ -380,7 +401,14 @@
             <h2 class="preview-title">{{ selectedVideo.title }}</h2>
             <div class="preview-meta">
               <span v-if="viewMode === 'single'" class="preview-single-badge">📌 单个视频</span>
+              <span
+                v-if="selectedVideo.contentType"
+                class="video-type-badge preview-type-badge"
+                :class="`video-type-badge--${selectedVideo.contentType}`"
+              >{{ contentTypeLabel(selectedVideo.contentType) }}</span>
               <span v-if="selectedVideo.time" class="preview-date">🗓 {{ selectedVideo.time }}</span>
+              <span v-if="selectedVideo.channel" class="preview-date">📺 {{ selectedVideo.channel }}</span>
+              <span v-if="selectedVideo.durationSeconds != null" class="preview-date">⏱ {{ formatMediaDuration(selectedVideo.durationSeconds) }}</span>
               <span
                 v-if="downloadedSet.has(selectedVideo.guid)"
                 class="preview-downloaded-badge"
@@ -465,8 +493,10 @@ import type { ProgramInfo, ProgramMonthBounds, VideoInfo, DownloadJob } from '..
 import { isProgramDeleteKey } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
 import { buildOutputPath, safeFilename } from '../../shared/filename'
+import { formatMediaDuration } from '../../shared/format'
 import { QUALITY_LABELS } from '../../shared/settings'
 import { createLatestRequestGuard } from '../../shared/latest-request'
+import { VideoMetadataLoader } from '../../shared/video-metadata'
 import { useContentStore } from '../stores/content'
 
 const contentStore = useContentStore()
@@ -486,6 +516,9 @@ const selectedIsAlbum = computed(() => (selectedProgram.value?.kind ?? 'column')
 const programMonthBounds = ref<ProgramMonthBounds | null>(null)
 const monthBoundsLoading = ref(false)
 let monthBoundsRequestId = 0
+const videoMetadataLoader = new VideoMetadataLoader(guid =>
+  window.cctvdlApi.getVideoMediaMetadata(guid)
+)
 
 watch(selectedProgram, async program => {
   const requestId = ++monthBoundsRequestId
@@ -926,10 +959,16 @@ function sortDisplayedAlbum() {
   if (selectedIsAlbum.value) videos.value = sortAlbumList(videos.value)
 }
 
-function onVideoClick(row: VideoInfo) {
+async function onVideoClick(row: VideoInfo) {
   selectedVideo.value = row
   coverError.value = false
   coverLoading.value = true
+  if (row.channel && row.durationSeconds != null) return
+  const guid = row.guid
+  const metadata = await videoMetadataLoader.get(guid)
+  // Metadata enrichment is best-effort; list browsing remains usable offline.
+  if (!metadata || selectedVideo.value?.guid !== guid) return
+  Object.assign(row, metadata)
 }
 
 function jumpMonth(offset: number) {
@@ -958,6 +997,10 @@ function highlightText(text: string, query: string): string {
     new RegExp(escapeHtml(escaped), 'gi'),
     m => `<mark class="hl">${m}</mark>`
   )
+}
+
+function contentTypeLabel(type: NonNullable<VideoInfo['contentType']>): string {
+  return type === 'highlight' ? '看点' : '片段'
 }
 
 function escapeHtml(s: string): string {
@@ -1346,11 +1389,60 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false, consumeS
 }
 
 .video-item-title {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--el-text-color-primary);
+}
+
+.video-item-heading {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.video-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: var(--app-font-weight-normal);
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+.video-type-badge--highlight {
+  color: #b45309;
+  background: #fff7ed;
+}
+
+.video-type-badge--fragment {
+  color: #2563eb;
+  background: #eff6ff;
+}
+
+html.dark .video-type-badge--highlight {
+  color: #fdba74;
+  background: rgba(194, 65, 12, .16);
+}
+
+html.dark .video-type-badge--fragment {
+  color: #93c5fd;
+  background: rgba(37, 99, 235, .18);
+}
+
+.preview-type-badge {
+  padding: 0 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 20px;
 }
 
 .video-item-date {
