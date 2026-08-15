@@ -62,6 +62,13 @@ designTokens.textContent = `
     --app-spacing-xl: 24px;
     --app-spacing-2xl: 32px;
 
+    /* 控件尺寸：普通操作与主操作使用一致的几何规则 */
+    --app-control-height: 32px;
+    --app-primary-action-height: 36px;
+    --app-primary-action-font-size: 13px;
+    --app-control-radius: 8px;
+    --app-focus-ring: 0 0 0 3px rgba(37, 99, 235, .22);
+
     /* 背景层次 */
     --app-bg-page: #f0f4f8;
     --app-bg-card: #ffffff;
@@ -89,6 +96,7 @@ designTokens.textContent = `
     --app-bg-card: #1e293b;
     --app-bg-sidebar: #1e293b;
     --app-border-subtle: rgba(255,255,255,.06);
+    --app-focus-ring: 0 0 0 3px rgba(59, 130, 246, .32);
   }
 
   /* === 全局基础样式 === */
@@ -122,6 +130,14 @@ designTokens.textContent = `
 
   /* 统一按钮字重 */
   .el-button { font-weight: var(--app-font-weight-medium); }
+
+  /* 所有自定义操作都具有一致、清晰的键盘焦点反馈 */
+  button:focus-visible,
+  [role='button']:focus-visible,
+  .el-button:focus-visible {
+    outline: none;
+    box-shadow: var(--app-focus-ring);
+  }
 
   /* 统一表格行高 */
   .el-table .el-table__cell { padding: 8px 0; }

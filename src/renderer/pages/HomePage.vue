@@ -19,10 +19,11 @@
             v-model="importUrl"
             :placeholder="importPlaceholder"
             size="small"
+            class="import-input"
             clearable
             @keyup.enter="handleImport"
           />
-          <el-button size="small" type="primary" :loading="importing" :class="{ 'import-success': importSuccess }" @click="handleImport">导入</el-button>
+          <el-button size="small" type="primary" :loading="importing" class="import-btn" :class="{ 'import-success': importSuccess }" @click="handleImport">导入</el-button>
         </div>
         <!-- program search -->
         <el-input
@@ -138,9 +139,15 @@
           </div>
           <div v-else class="single-mode-label">
             <span>选集 · {{ loadingVideos ? `正在加载 ${albumLoadedCount} 集` : videos.length }}</span>
-            <el-select v-model="albumSort" size="small" style="width: 104px" @change="sortDisplayedAlbum">
-              <el-option label="正序（最早在前）" value="asc" />
-              <el-option label="倒序（最新在前）" value="desc" />
+            <el-select
+              v-model="albumSort"
+              size="small"
+              class="album-sort-select"
+              popper-class="album-sort-popper"
+              @change="sortDisplayedAlbum"
+            >
+              <el-option label="从早到晚" value="asc" />
+              <el-option label="从晚到早" value="desc" />
             </el-select>
           </div>
           <div class="section-actions">
@@ -318,7 +325,7 @@
           >下载本月</button>
           <button
             v-if="selectedCount"
-            class="footer-btn footer-btn-ghost"
+            class="footer-btn footer-btn-clear"
             @click="contentStore.clearAllSelection()"
           >清空已选</button>
           <el-popover v-if="selectedCount" placement="top" :width="340" trigger="click">
@@ -326,12 +333,18 @@
               <button class="footer-btn footer-btn-ghost">查看已选</button>
             </template>
             <div class="selected-videos-panel">
-              <div class="selected-videos-title">已选 {{ selectedCount }} 个视频</div>
+              <div class="selected-videos-summary">
+                <span class="selected-videos-title">已选内容</span>
+                <span class="selected-videos-count">{{ selectedCount }} 个视频</span>
+              </div>
               <div v-for="group in selectedVideoGroups" :key="group.name" class="selected-video-group">
-                <div class="selected-video-group-name">{{ group.name }} · {{ group.videos.length }}</div>
+                <div class="selected-video-group-name">
+                  <span :title="group.name">{{ group.name }}</span>
+                  <span>{{ group.videos.length }}</span>
+                </div>
                 <div v-for="video in group.videos" :key="video.guid" class="selected-video-row">
                   <span :title="video.title">{{ video.title }}</span>
-                  <button title="移除" @click="contentStore.removeVideoSelection(video.guid)">×</button>
+                  <button title="从已选内容移除" aria-label="从已选内容移除" @click="contentStore.removeVideoSelection(video.guid)">×</button>
                 </div>
               </div>
             </div>
@@ -418,7 +431,6 @@
               <div class="preview-section-label">节目简介</div>
               <p class="preview-brief">{{ selectedVideo.brief }}</p>
             </div>
-            <!-- download button -->
             <div class="preview-download-wrap">
               <button
                 class="preview-download-btn"
@@ -428,12 +440,9 @@
                 }"
                 @click="downloadVideos([selectedVideo], viewMode === 'single')"
               >
-                <span>⬇</span>
                 {{ downloadedSet.has(selectedVideo.guid) ? '重新下载' : (viewMode === 'single' ? '下载此视频' : '下载此集') }}
+                <el-icon class="preview-download-icon"><Download /></el-icon>
               </button>
-              <span v-if="currentListSelectedCount > 0" class="preview-download-hint">
-                已选 {{ selectedCount }}<template v-if="currentListSelectedCount !== selectedCount">（当前列表 {{ currentListSelectedCount }}）</template> 个，可在下方批量下载
-              </span>
             </div>
           </div>
         </div>
@@ -488,7 +497,7 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { storeToRefs } from 'pinia'
-import { Search } from '@element-plus/icons-vue'
+import { Download, Search } from '@element-plus/icons-vue'
 import type { ProgramInfo, ProgramMonthBounds, VideoInfo, DownloadJob } from '../../shared/types'
 import { isProgramDeleteKey } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
@@ -949,10 +958,18 @@ async function loadVideos(forceRefresh = false) {
 
 function sortAlbumList(list: VideoInfo[]): VideoInfo[] {
   const direction = albumSort.value === 'asc' ? 1 : -1
-  return [...list].sort((a, b) => {
-    const byTime = String(a.time || '').localeCompare(String(b.time || ''))
-    return byTime === 0 ? direction * a.guid.localeCompare(b.guid) : direction * byTime
-  })
+  return list
+    .map((video, index) => ({ video, index }))
+    .sort((a, b) => {
+      // Undated entries cannot participate in chronological ordering. Keep
+      // them stable at the end in both ascending and descending modes.
+      if (!a.video.time && !b.video.time) return a.index - b.index
+      if (!a.video.time) return 1
+      if (!b.video.time) return -1
+      const byTime = a.video.time.localeCompare(b.video.time)
+      return byTime === 0 ? a.index - b.index : direction * byTime
+    })
+    .map(({ video }) => video)
 }
 
 function sortDisplayedAlbum() {
@@ -1162,8 +1179,8 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false, consumeS
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -1182,6 +1199,17 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false, consumeS
   display: flex;
   gap: var(--app-spacing-sm);
 }
+
+.import-input { flex: 1; min-width: 0; }
+.import-btn {
+  font-family: var(--el-font-family);
+  font-weight: var(--app-font-weight-medium);
+  line-height: 1;
+  box-shadow: none;
+}
+.import-btn :deep(span) { line-height: 1; }
+.import-btn:hover,
+.import-btn:active { transform: none; box-shadow: none; }
 
 /* 栏目列表 */
 .program-list {
@@ -1213,6 +1241,12 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false, consumeS
 .program-item.active {
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
+}
+
+html.dark .program-item.active,
+html.dark .single-entry.active {
+  background: rgba(37, 99, 235, .18);
+  color: #93c5fd;
 }
 
 .program-dot {
@@ -1329,6 +1363,23 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false, consumeS
   gap: 2px;
 }
 
+.album-sort-select { width: 88px; }
+.album-sort-select :deep(.el-select__wrapper) {
+  gap: 4px;
+  padding-right: 6px;
+  padding-left: 8px;
+}
+.album-sort-select :deep(.el-select__selected-item) {
+  font-family: var(--el-font-family);
+  font-size: 12px;
+  font-weight: var(--app-font-weight-normal);
+}
+:global(.album-sort-popper .el-select-dropdown__item) {
+  font-family: var(--el-font-family);
+  font-size: 12px;
+  font-weight: var(--app-font-weight-normal);
+}
+
 /* 视频搜索 */
 .video-search { margin-bottom: 0; }
 
@@ -1371,14 +1422,41 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false, consumeS
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  min-height: 36px;
+  padding: 5px 8px;
+  box-sizing: border-box;
+  border-left: 2px solid transparent;
   border-radius: 6px;
   cursor: pointer;
   transition: background .12s;
 }
 
 .video-item:hover { background: var(--el-fill-color-light); }
-.video-item.active { background: var(--el-color-primary-light-9); }
+.video-item.active {
+  border-left-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  padding-left: 6px;
+}
+
+html.dark .video-item.active {
+  background: rgba(37, 99, 235, .18);
+}
+html.dark .video-item.active .video-item-title { color: #f8fafc; }
+html.dark .video-item.active .video-item-date { color: #bfdbfe; }
+
+.video-item :deep(.el-checkbox) {
+  min-width: 28px;
+  min-height: 28px;
+  margin-right: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+html.dark .video-item :deep(.el-checkbox:not(.is-checked) .el-checkbox__inner) {
+  background: #111827;
+  border-color: #64748b;
+}
 
 .video-item-info {
   flex: 1;
@@ -1477,6 +1555,9 @@ html.dark .video-type-badge--fragment {
   color: var(--el-text-color-secondary);
 }
 
+.video-item.active.downloaded { border-left-color: var(--el-color-primary); }
+html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
+
 .v-dl-check {
   flex-shrink: 0;
   font-size: 11px;
@@ -1524,7 +1605,7 @@ html.dark .video-type-badge--fragment {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 30px;
+  height: var(--app-control-height);
   padding: 0 12px;
   border-radius: var(--el-border-radius-base);
   font-size: 12px;
@@ -1547,13 +1628,42 @@ html.dark .video-type-badge--fragment {
   background: var(--el-color-primary-light-9);
 }
 
-.selected-videos-panel { max-height: 280px; overflow: auto; }
-.selected-videos-title { margin-bottom: 8px; font-weight: 600; }
-.selected-video-group + .selected-video-group { margin-top: 10px; }
-.selected-video-group-name { color: var(--el-text-color-secondary); font-size: 12px; }
-.selected-video-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.footer-btn-clear {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--el-color-danger);
+  padding: 0 6px;
+}
+.footer-btn-clear:hover { background: var(--el-color-danger-light-9); }
+
+.selected-videos-panel { max-height: 300px; overflow: auto; padding: 2px; }
+.selected-videos-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+.selected-videos-title { font-size: 14px; font-weight: var(--app-font-weight-semibold); color: var(--el-text-color-primary); }
+.selected-videos-count { font-size: 12px; color: var(--el-text-color-secondary); }
+.selected-video-group + .selected-video-group { margin-top: 12px; }
+.selected-video-group-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 4px 4px;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  font-weight: var(--app-font-weight-medium);
+}
+.selected-video-group-name span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selected-video-row { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 2px 4px 2px 8px; border-radius: 6px; }
+.selected-video-row:hover { background: var(--el-fill-color-light); }
 .selected-video-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.selected-video-row button { border: 0; background: transparent; color: var(--el-color-danger); cursor: pointer; font-size: 18px; line-height: 1; }
+.selected-video-row button { width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--el-text-color-secondary); cursor: pointer; font-size: 17px; line-height: 1; }
+.selected-video-row button:hover { color: var(--el-color-danger); background: var(--el-color-danger-light-9); }
 
 /* 主操作：有选中时 */
 .footer-btn-primary {
@@ -1590,7 +1700,7 @@ html.dark .video-type-badge--fragment {
 /* ── 右侧预览区 ─────────────────────────────────── */
 .home-preview {
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--el-bg-color);
   position: relative;
   min-width: 0;
@@ -1600,12 +1710,15 @@ html.dark .video-type-badge--fragment {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* 封面 */
 .preview-cover-wrap {
   width: 100%;
   aspect-ratio: 16 / 9;
+  height: min(46vh, 380px);
   flex-shrink: 0;
   overflow: hidden;
   background: var(--el-fill-color-light);
@@ -1683,11 +1796,13 @@ html.dark .video-type-badge--fragment {
 
 /* 内容区 */
 .preview-content {
-  padding: var(--app-spacing-xl);
+  padding: var(--app-spacing-xl) var(--app-spacing-xl) var(--app-spacing-md);
   display: flex;
   flex-direction: column;
   gap: var(--app-spacing-md);
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .preview-title {
@@ -1711,7 +1826,15 @@ html.dark .video-type-badge--fragment {
   color: var(--el-text-color-secondary);
 }
 
-.preview-brief-wrap { display: flex; flex-direction: column; gap: 6px; }
+.preview-brief-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
 
 .preview-section-label {
   font-size: 11px;
@@ -1741,7 +1864,8 @@ html.dark .video-type-badge--fragment {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
+  min-height: 30px;
+  padding: 0 10px;
   border: 1px solid var(--el-border-color);
   border-radius: var(--el-border-radius-base);
   background: transparent;
@@ -1791,42 +1915,52 @@ html.dark .preview-downloaded-badge {
 }
 
 .preview-download-wrap {
-  align-self: flex-start;
+  width: 100%;
+  box-sizing: border-box;
   margin-top: auto;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--app-spacing-md);
+  padding-top: var(--app-spacing-sm);
+  border-top: 1px solid var(--app-border-subtle);
 }
 
 .preview-download-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 40px;
-  padding: 0 24px;
+  height: var(--app-control-height);
+  padding: 0 12px;
   border: none;
-  border-radius: 20px;
+  border-radius: var(--app-control-radius);
   background: var(--el-color-primary);
   color: #fff;
-  font-size: 14px;
-  font-weight: var(--app-font-weight-semibold);
+  font-size: 12px;
+  font-weight: var(--app-font-weight-medium);
   font-family: var(--el-font-family);
+  line-height: 1;
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(37, 99, 235, .3);
-  transition: background .15s, box-shadow .15s, transform .15s, color .15s;
+  box-shadow: none;
+  transition: background .15s, color .15s, border-color .15s;
   white-space: nowrap;
   letter-spacing: 0.2px;
 }
 
+.preview-download-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+}
+
 .preview-download-btn:hover {
   background: var(--el-color-primary-dark-2);
-  box-shadow: 0 4px 16px rgba(37, 99, 235, .4);
-  transform: translateY(-1px);
+  box-shadow: none;
 }
 
 .preview-download-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 1px 5px rgba(37, 99, 235, .3);
+  box-shadow: none;
 }
 
 /* 弱化态：有批量选中时单集按钮降优先级 */
@@ -1851,13 +1985,7 @@ html.dark .preview-downloaded-badge {
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
   box-shadow: none;
-  transform: translateY(-1px);
-}
-
-.preview-download-hint {
-  font-size: 11px;
-  color: var(--el-color-primary);
-  opacity: .8;
+  transform: none;
 }
 
 /* 预览空状态 / 引导 */

@@ -133,13 +133,14 @@ describe('IPC Handlers', () => {
       expect(mockBrowse.getSupplementaryVideos).not.toHaveBeenCalled()
     })
 
-    it('merges optional content by guid and sorts the result chronologically', async () => {
+    it('merges full episodes, highlights, and fragments by guid in chronological order', async () => {
       vi.mocked(mockConfig.getSettings).mockReturnValueOnce({ includeHighlights: true } as any)
       vi.mocked(mockBrowse.getColumnVideoList).mockResolvedValueOnce([
         { guid: 'main', title: '正片', brief: '', coverUrl: '', time: '2026-01-03 10:00:00' }
       ])
       vi.mocked(mockBrowse.getSupplementaryVideos).mockResolvedValueOnce([
-        { guid: 'extra', title: '看点', brief: '', coverUrl: '', time: '2026-01-01 10:00:00' },
+        { guid: 'highlight', title: '看点', brief: '', coverUrl: '', time: '2026-01-01 10:00:00', contentType: 'highlight' },
+        { guid: 'fragment', title: '片段', brief: '', coverUrl: '', time: '2026-01-02 10:00:00', contentType: 'fragment' },
         { guid: 'main', title: '重复正片', brief: '', coverUrl: '', time: '2026-01-02 10:00:00' }
       ])
       const program = { name: 'Test', columnId: 'TOPC1', itemId: '' }
@@ -147,7 +148,7 @@ describe('IPC Handlers', () => {
       const result = await handlers['list-videos']({}, program, '202601')
 
       expect(mockBrowse.getSupplementaryVideos).toHaveBeenCalledWith(program, '202601')
-      expect(result.map((video: any) => video.guid)).toEqual(['extra', 'main'])
+      expect(result.map((video: any) => video.guid)).toEqual(['highlight', 'fragment', 'main'])
     })
 
     it('calls getAlbumVideoList for album programs', async () => {

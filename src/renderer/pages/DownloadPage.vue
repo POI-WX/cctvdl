@@ -59,8 +59,12 @@
         </button>
         <div v-if="!groupCollapsed.active" class="dl-group-body"
              @dragover.prevent @drop.prevent="onDrop($event)">
-          <div v-for="(job, idx) in activeJobs" :key="job.id" class="dl-card active"
-               :class="{ 'drag-over': dragOverId === job.id }"
+          <div v-for="(job, idx) in activeJobs" :key="job.id" class="dl-card"
+               :class="{
+                 active: job.state !== 'Queued',
+                 queued: job.state === 'Queued',
+                 'drag-over': dragOverId === job.id
+               }"
                :draggable="job.state === 'Queued'"
                @dragstart="job.state === 'Queued' && onDragStart($event, job.id)"
                @dragend="onDragEnd"
@@ -92,16 +96,17 @@
                   </div>
                 </div>
                 <div class="dl-card-right">
+                  <span v-if="job.state !== 'Queued'" class="dl-card-pct">{{ job.percent }}%</span>
                   <button
                     v-if="job.state === 'Queued' && idx > 0"
                     class="dl-card-btn dl-pin-btn"
                     title="置顶"
                     @click.stop="pinToTop(job.id)"
                   >↑ 置顶</button>
-                  <span v-else class="dl-card-pct">{{ job.percent }}%</span>
+                  <button class="dl-card-btn" @click="cancel(job.id)">取消</button>
                 </div>
               </div>
-              <div class="dl-card-progress">
+              <div v-if="job.state !== 'Queued'" class="dl-card-progress">
                 <div class="dl-progress-track">
                   <div class="dl-progress-fill"
                     :class="{
@@ -110,9 +115,6 @@
                     }"
                     :style="job.stage !== 'MergingShards' ? { width: job.percent + '%' } : {}" />
                 </div>
-              </div>
-              <div class="dl-card-actions">
-                <button class="dl-card-btn" @click="cancel(job.id)">取消</button>
               </div>
           </div>
         </div>
@@ -473,7 +475,8 @@ function ctxRetry() {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 12px;
+  height: var(--app-control-height);
+  padding: 0 12px;
   border: 1px solid var(--el-border-color);
   border-radius: var(--el-border-radius-base);
   background: var(--el-bg-color);
@@ -617,7 +620,13 @@ function ctxRetry() {
 
 .dl-card.active {
   border-color: var(--el-color-primary-light-5);
-  box-shadow: var(--app-shadow-md);
+  box-shadow: 0 0 0 1px var(--el-color-primary-light-8);
+}
+
+.dl-card.queued {
+  border-color: var(--app-border-subtle);
+  background: var(--app-bg-card);
+  box-shadow: var(--app-shadow-sm);
 }
 
 /* 卡片头部 */
@@ -682,7 +691,12 @@ html.dark .ind-error   { background: #2d0a0a; }
 }
 
 /* 右侧徽章/百分比 */
-.dl-card-right { flex-shrink: 0; }
+.dl-card-right {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--app-spacing-sm);
+}
 
 .dl-card-pct {
   font-size: 16px;
@@ -781,7 +795,8 @@ html.dark .badge-error   { background: #2d0a0a; }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
+  min-height: 28px;
+  padding: 0 10px;
   border: 1px solid var(--el-border-color);
   border-radius: var(--el-border-radius-base);
   background: transparent;
@@ -812,7 +827,8 @@ html.dark .badge-error   { background: #2d0a0a; }
   color: var(--el-color-primary);
   border-color: var(--el-color-primary-light-5);
   font-size: 11px;
-  padding: 3px 8px;
+  min-height: 28px;
+  padding: 0 8px;
 }
 .dl-pin-btn:hover { background: var(--el-color-primary-light-9); }
 

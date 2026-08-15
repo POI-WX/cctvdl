@@ -320,9 +320,9 @@
       <!-- sticky save footer -->
       <div class="settings-save-footer">
         <Transition name="saved-fade">
-          <span v-if="lastSaved" class="settings-last-saved">✓ {{ lastSaved }}</span>
+          <span v-if="lastSaved && !isDirty" class="settings-last-saved">✓ {{ lastSaved }}</span>
         </Transition>
-        <button class="settings-save-btn" @click="save">保存设置</button>
+        <button class="settings-save-btn" :disabled="!isDirty" @click="save">保存设置</button>
       </div>
 
     </div>
@@ -357,6 +357,10 @@ const filteredHistory = computed(() => {
 })
 const appVersion = __APP_VERSION__ // replaced by vite define at build/dev time
 const lastSaved = ref('')
+const settingsLoaded = ref(false)
+const savedSettingsFingerprint = ref('')
+const settingsFingerprint = (settings: Settings) => JSON.stringify(settings)
+const isDirty = computed(() => settingsLoaded.value && settingsFingerprint(form.value) !== savedSettingsFingerprint.value)
 
 const threadHint = computed(() => {
   const n = form.value.threadCount
@@ -395,6 +399,8 @@ function setAccent(color: string) {
 onMounted(async () => {
   const loaded = await window.cctvdlApi.getSettings()
   form.value = { ...form.value, ...loaded }
+  savedSettingsFingerprint.value = settingsFingerprint(form.value)
+  settingsLoaded.value = true
   applyDarkMode(form.value.darkMode ?? false)
   applyAccentColor(accentColor.value)
   history.value = await window.cctvdlApi.getDownloadHistory()
@@ -476,11 +482,12 @@ async function redownload(entry: import('../../shared/types').HistoryEntry) {
 }
 
 async function save() {
+  if (!isDirty.value) return
   if (!form.value.savePath) { ElMessage.warning('请先在设置中配置视频保存目录'); return }
   await window.cctvdlApi.saveSettings(toRaw(form.value))
+  savedSettingsFingerprint.value = settingsFingerprint(form.value)
   const now = new Date()
   lastSaved.value = `已保存 ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
-  ElMessage.success('保存成功')
 }
 </script>
 
@@ -493,7 +500,7 @@ async function save() {
 }
 
 .settings-inner {
-  max-width: 640px;
+  max-width: 740px;
   margin: 0 auto;
   padding: var(--app-spacing-xl) var(--app-spacing-lg);
   display: flex;
@@ -540,26 +547,27 @@ async function save() {
   height: 36px;
   padding: 0 22px;
   border: none;
-  border-radius: 18px;
+  border-radius: var(--app-control-radius);
   background: var(--el-color-primary);
   color: #fff;
-  font-size: 13px;
-  font-weight: var(--app-font-weight-semibold);
+  font-size: var(--app-primary-action-font-size);
+  font-weight: var(--app-font-weight-medium);
   font-family: var(--el-font-family);
+  line-height: 1;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, .3);
-  transition: background .15s, box-shadow .15s, transform .15s;
+  box-shadow: none;
+  transition: background .15s, opacity .15s;
 }
 
 .settings-save-btn:hover {
   background: var(--el-color-primary-dark-2);
-  box-shadow: 0 4px 14px rgba(37, 99, 235, .4);
-  transform: translateY(-1px);
 }
 
-.settings-save-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 1px 4px rgba(37, 99, 235, .3);
+.settings-save-btn:disabled {
+  background: var(--el-fill-color);
+  color: var(--el-text-color-placeholder);
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 .saved-fade-enter-active, .saved-fade-leave-active { transition: opacity .3s ease; }

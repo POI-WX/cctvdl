@@ -225,11 +225,16 @@ test.describe('cctvdl GUI 测试', () => {
     await expect(downloadTitle).toBeVisible()
   })
 
-  test('设置页保存按钮可点击', async () => {
+  test('设置页保存按钮仅在设置变更后启用', async () => {
     await navTab(page, '设置').click()
     await page.waitForTimeout(500)
     const saveBtn = page.locator('.settings-save-btn')
+    const darkSwitch = page.locator('.settings-item', { hasText: '深色模式' }).locator('.el-switch')
+    await expect(saveBtn).toBeDisabled()
+    await darkSwitch.click()
     await expect(saveBtn).toBeEnabled()
+    await darkSwitch.click()
+    await expect(saveBtn).toBeDisabled()
   })
 
   test('设置页下载线程数默认为8', async () => {
@@ -249,12 +254,20 @@ test.describe('cctvdl GUI 测试', () => {
     const slider = page.locator('.el-slider__runway').first()
     await expect(slider).toBeVisible()
 
+    const darkSwitch = page.locator('.settings-item', { hasText: '深色模式' }).locator('.el-switch')
+    await darkSwitch.click()
     const saveBtn = page.locator('.settings-save-btn')
+    await expect(saveBtn).toBeEnabled()
     await saveBtn.click()
     await page.waitForTimeout(300)
 
-    const successMsg = page.locator('.el-message--success')
-    await expect(successMsg).toBeVisible({ timeout: 3000 })
+    await expect(saveBtn).toBeDisabled()
+    await expect(page.locator('.settings-last-saved')).toContainText('已保存')
+
+    // restore the original setting for subsequent tests
+    await darkSwitch.click()
+    await saveBtn.click()
+    await expect(saveBtn).toBeDisabled()
   })
 
   test('首页导入输入框可输入', async () => {

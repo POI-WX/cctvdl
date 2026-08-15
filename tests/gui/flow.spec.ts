@@ -171,8 +171,7 @@ test.describe('真实用户流程', () => {
     await expect(page.locator('.video-item').first()).toBeVisible({ timeout: 30000 })
   })
 
-  test('设置页修改并发数后保存，下载任务使用新并发数', async () => {
-    // Change settings
+  test('设置页修改后保存并恢复为未修改状态', async () => {
     const settingsTab = page.locator('.sidebar-nav-item', { hasText: '设置' })
     await settingsTab.click()
     await page.waitForTimeout(500)
@@ -182,15 +181,14 @@ test.describe('真实用户流程', () => {
     const currentVal = await concurrencySpan.textContent()
     expect(['8', '4', '2', '1', '3', '5', '6', '7', '9', '10', '11', '12', '13', '14', '15', '16']).toContain(currentVal?.trim())
 
-    // Save settings
+    const darkSwitch = page.locator('.settings-item', { hasText: '深色模式' }).locator('.el-switch')
+    await darkSwitch.click()
     const saveBtn = page.locator('.settings-save-btn')
+    await expect(saveBtn).toBeEnabled()
     await saveBtn.click()
     await page.waitForTimeout(500)
 
-    // Verify success message. Scope to this action's toast and take the latest:
-    // a success toast from an earlier test can still be in its fade-out
-    // animation, which otherwise trips Playwright's strict-mode (>1 match).
-    const successMsg = page.locator('.el-message--success', { hasText: '保存成功' }).last()
-    await expect(successMsg).toBeVisible({ timeout: 3000 })
+    await expect(saveBtn).toBeDisabled()
+    await expect(page.locator('.settings-last-saved')).toContainText('已保存')
   })
 })
