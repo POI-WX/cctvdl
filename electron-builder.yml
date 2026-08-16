@@ -44,13 +44,9 @@ nsis:
   createStartMenuShortcut: true
   # Clear %APPDATA% config/cache on a real uninstall (kept on upgrade).
   deleteAppDataOnUninstall: true
-  artifactName: ${productName} v${version}.${ext}
+  artifactName: ${productName} v${version} ${arch}.${ext}
 mac:
-  target:
-    - target: dmg
-      arch:
-        - x64
-        - arm64
+  target: dmg
   icon: resources/icons/icon.icns
   category: public.app-category.video
   # Ad-hoc signature ("-"): no Apple cert, but a self-consistent bundle signature
@@ -60,7 +56,6 @@ mac:
   identity: "-"
   # Hardened runtime is for notarized apps only — keep off for ad-hoc builds.
   hardenedRuntime: false
-# ${arch} is required, else the two dmgs collide on a single filename.
 dmg:
   artifactName: ${productName} v${version} ${arch}.${ext}
 linux:
@@ -70,4 +65,4 @@ linux:
   description: Download CCTV programs in HD — browse, search, batch download, resume. Works out of the box.
   category: AudioVideo
   icon: resources/icons/icon.png
-  artifactName: ${productName} v${version}.${ext}
+  artifactName: ${productName} v${version} ${arch}.${ext}

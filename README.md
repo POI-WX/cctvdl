@@ -58,21 +58,21 @@
 
 ## 💻 系统要求
 
-- **Windows** 10 及以上（64 位）
-- **macOS** 11 Big Sur 及以上（Intel 与 Apple Silicon 均支持）
-- **64 位主流 Linux 发行版**（通过 AppImage 运行）
+- **Windows** 10 及以上（x64，暂不提供 arm64 安装包）
+- **macOS** 11 Big Sur 及以上（Intel 与 Apple Silicon）
+- **64 位主流 Linux 发行版**（x64 与 arm64，通过 AppImage 运行）
 
 ## 📦 下载安装
 
-前往 [Releases](../../releases) 页面，下载对应平台的安装包：
+前往 [Releases](../../releases) 页面，根据系统与架构选择安装包：
 
-| 平台 | 安装包 |
-|------|--------|
-| Windows | `.exe` |
-| macOS | `.dmg` |
-| Linux | `.AppImage` |
-
-macOS 分别提供 Intel 与 Apple Silicon 安装包，请按设备芯片选择。
+| 系统与架构 | 文件名结尾 |
+|------------|------------|
+| Windows x64 | `x64.exe` |
+| macOS Intel | `x64.dmg` |
+| macOS Apple Silicon | `arm64.dmg` |
+| Linux x64 | `x64.AppImage` |
+| Linux arm64 | `arm64.AppImage` |
 
 > 安装包已包含下载所需组件，无需额外安装软件，下载安装包即可使用。
 >

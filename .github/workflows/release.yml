@@ -11,18 +11,37 @@ permissions:
 jobs:
   # Build each platform's installers and stash them as workflow artifacts.
   build:
-    name: Build (${{ matrix.os }})
+    name: Build (${{ matrix.platform }} ${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            script: dist:linux
-          - os: windows-latest
+          - platform: Windows
+            os: windows-2022
+            arch: x64
+            extension: exe
             script: dist:win
-          - os: macos-latest
+          - platform: macOS
+            os: macos-15-intel
+            arch: x64
+            extension: dmg
             script: dist:mac
+          - platform: macOS
+            os: macos-15
+            arch: arm64
+            extension: dmg
+            script: dist:mac
+          - platform: Linux
+            os: ubuntu-22.04
+            arch: x64
+            extension: AppImage
+            script: dist:linux
+          - platform: Linux
+            os: ubuntu-22.04-arm
+            arch: arm64
+            extension: AppImage
+            script: dist:linux
     steps:
       - uses: actions/checkout@v4
 
@@ -44,17 +63,43 @@ jobs:
 
       - run: npm ci
 
+      - name: Verify build architecture and ffmpeg
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: node -e "const cp=require('node:child_process');const ffmpeg=require('ffmpeg-static');if(process.arch!==process.env.EXPECTED_ARCH)throw new Error('Expected '+process.env.EXPECTED_ARCH+', got '+process.arch);cp.execFileSync(ffmpeg,['-version'],{stdio:'inherit'})"
+
       # No auto-update: publish:null + nsis.differentialPackage:false (in
       # electron-builder.yml) stop latest*.yml / *.blockmap from being generated
       # at all. --publish never is just belt-and-suspenders. macOS builds use an
       # ad-hoc signature (identity: "-") — no Apple cert, but a self-consistent
       # bundle so Gatekeeper won't report "damaged".
-      - run: npm run ${{ matrix.script }} -- --publish never
+      - run: npm run ${{ matrix.script }} -- --${{ matrix.arch }} --publish never
+
+      # electron-builder uses the Linux convention "x86_64" for AppImage;
+      # public package names consistently use "x64" on all three platforms.
+      - name: Normalize Linux x64 artifact name
+        if: matrix.platform == 'Linux' && matrix.arch == 'x64'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for file in dist-electron/*x86_64.AppImage; do
+            mv "$file" "${file/x86_64/x64}"
+          done
+
+      - name: Verify installer name
+        shell: bash
+        run: |
+          count="$(find dist-electron -maxdepth 1 -type f -name "* ${{ matrix.arch }}.${{ matrix.extension }}" | wc -l | tr -d ' ')"
+          if [ "$count" -ne 1 ]; then
+            echo "::error::Expected exactly one ${{ matrix.platform }} ${{ matrix.arch }} installer"
+            find dist-electron -maxdepth 1 -type f -print
+            exit 1
+          fi
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: installers-${{ matrix.os }}
+          name: installer-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             dist-electron/*.exe
             dist-electron/*.dmg
