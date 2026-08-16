@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, Tray, Notification, nativeImage, screen, clipboard } from 'electron'
+import { spawnSync } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import { registerIpcHandlers } from './ipc'
@@ -7,6 +8,7 @@ import { CctvApiService } from './api/cctv'
 import { BrowseService } from './api/browse'
 import { SegmentDecryptor, createDefaultDecrypt } from './download/decryptor'
 import { Finalizer } from './download/finalizer'
+import { bundledFfmpegPath } from './download/ffmpeg'
 import { DownloadCoordinator } from './download/coordinator'
 import { ConfigStore } from './config'
 import { setLogLevel, setLogPath, logger } from './logger'
@@ -18,9 +20,10 @@ import type { BatchResult, DownloadProgress } from '../shared/types'
 
 const isMac   = process.platform === 'darwin'
 const isPackaged = app.isPackaged
+const isSmokeTest = process.argv.includes('--smoke-test')
 
 // ─── Single-instance lock ──────────────────────────────────────────────────
-const gotLock = app.requestSingleInstanceLock()
+const gotLock = isSmokeTest || app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 }
@@ -38,6 +41,32 @@ function getResourcePath(...segments: string[]): string {
     return path.join(process.resourcesPath, ...segments)
   }
   return path.join(app.getAppPath(), 'resources', ...segments)
+}
+
+function runPackagedSmokeTest(): void {
+  if (!isPackaged) throw new Error('smoke test requires a packaged application')
+  const expectedArch = process.env['CCTVDL_EXPECTED_ARCH']
+  if (expectedArch && process.arch !== expectedArch) {
+    throw new Error(`expected architecture ${expectedArch}, got ${process.arch}`)
+  }
+
+  const ffmpeg = bundledFfmpegPath()
+  if (!ffmpeg || !fs.existsSync(ffmpeg)) throw new Error('bundled ffmpeg is missing')
+  for (const file of ['decrypt-wrapper.js', 'decrypt.js', 'cctv_wasm.js']) {
+    if (!fs.existsSync(getResourcePath('decrypt', file))) {
+      throw new Error(`packaged decrypt resource is missing: ${file}`)
+    }
+  }
+
+  const result = spawnSync(ffmpeg, ['-version'], { encoding: 'utf-8', windowsHide: true })
+  if (result.error) throw result.error
+  if (result.status !== 0) {
+    throw new Error(`bundled ffmpeg exited with ${result.status}: ${(result.stderr || '').slice(-300)}`)
+  }
+  const platformName = process.platform === 'win32' ? 'Windows'
+    : process.platform === 'darwin' ? 'macOS'
+      : process.platform === 'linux' ? 'Linux' : process.platform
+  console.log(`cctvdl smoke test passed (${platformName} ${process.arch})`)
 }
 
 let mainWindow: BrowserWindow
@@ -88,6 +117,16 @@ function createMainWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  if (isSmokeTest) {
+    try {
+      runPackagedSmokeTest()
+      app.exit(0)
+    } catch (error) {
+      console.error(`cctvdl smoke test failed: ${String(error)}`)
+      app.exit(1)
+    }
+    return
+  }
   const config = new ConfigStore()
   configRef = config
   const settings = config.getSettings()
@@ -272,6 +311,7 @@ app.on('window-all-closed', () => {
 
 // macOS: recreate the window when clicking the Dock icon with no windows open
 app.on('activate', () => {
+  if (isSmokeTest) return
   if (BrowserWindow.getAllWindows().length === 0) {
     mainWindow = createMainWindow()
   } else {

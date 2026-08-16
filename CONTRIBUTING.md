@@ -55,8 +55,9 @@ shared types    → src/shared/      # 跨进程共享的 TypeScript 类型
 关键模块：
 - `src/main/api/cctv.ts` — 视频信息接口、HLS 解析、清晰度选择，以及 CCTV-16 明文 HLS 与加密流的自动回退
 - `src/main/api/cctvnews.ts` — 央视新闻移动端视频页（`cctvnews.cctv.com/snow-book`）解析：Emas 网关 HMAC-SHA256 签名、base64 响应解码、多画质 m3u8 选择
-- `src/main/api/browse.ts` — 栏目/节目集/单视频页面解析、跨 `TOPC` 的 `VIDA` 长期归档识别、`v.cctv` 历史目录、album 分页缓存、按月过滤及可选看点/片段加载；`resolveSingleVideoBatch` 统一调度普通 CCTV 页与 cctvnews 页
+- `src/main/api/browse.ts` — 栏目/节目集/单视频页面解析、跨 `TOPC` 的 `VIDA` 长期归档识别、`v.cctv` 历史目录、完整分页读取、按月定位及可选看点/片段加载；`resolveSingleVideoBatch` 统一调度普通 CCTV 页与 cctvnews 页
 - `src/main/api/browse-data.ts` — CCTV 列表响应映射、标题/简介清洗、日期格式化和月份边界等纯数据逻辑
+- `src/main/api/pagination.ts` — 列表完整性检查及倒序分页的月份二分定位；排序或总数不可靠时通知调用方回退到完整扫描
 - `src/shared/programs.ts` — 节目展示语义与列表数据源的兼容路由；旧配置从 `kind` 推导数据源，新配置使用 `listSource`
 - `src/shared/video-metadata.ts` — 视频时长解析、时间正序排序及按 guid 合并请求的元数据缓存
 - `src/main/api/http.ts` — 弹性 HTTP 客户端（重试、超时、UA）
@@ -152,6 +153,8 @@ npm run dist:linux  # Linux（.AppImage）
 > Windows 解压需要符号链接权限。若报 `Cannot create symbolic link`，请开启「开发者模式」
 > （设置 → 隐私和安全性 → 开发者选项）或以管理员身份运行。CI 上无此问题。
 > 跨平台安装包统一由 GitHub Actions 的 release 工作流在打 `v*` tag 时构建。
+
+Release 工作流会在上传安装包前启动打包后的应用，核对目标架构、解密资源和内置 ffmpeg；macOS 还会验证应用签名。任一检查失败都会终止对应平台的发布任务。
 
 ## 关于解密脚本
 

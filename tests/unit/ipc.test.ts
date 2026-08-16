@@ -153,7 +153,7 @@ describe('IPC Handlers', () => {
 
     it('calls getAlbumVideoList for album programs', async () => {
       await handlers['list-videos']({}, { name: 'Album', columnId: 'album123', itemId: '', kind: 'album', serviceId: 'cctv4k' }, '202601')
-      expect(mockBrowse.getAlbumVideoList).toHaveBeenCalledWith('album123', 1, '202601', 'cctv4k', expect.any(Function))
+      expect(mockBrowse.getAlbumVideoList).toHaveBeenCalledWith('album123', '202601', 'cctv4k', expect.any(Function))
       expect(mockBrowse.getColumnVideoList).not.toHaveBeenCalled()
     })
 
@@ -162,12 +162,12 @@ describe('IPC Handlers', () => {
         name: '上海纪实《档案》', columnId: 'VIDA1', itemId: 'VIDA1', kind: 'column',
         listSource: { type: 'album', id: 'VIDA1', serviceId: 'tvcctv' }
       }, '201503')
-      expect(mockBrowse.getAlbumVideoList).toHaveBeenCalledWith('VIDA1', 1, '201503', 'tvcctv', expect.any(Function))
+      expect(mockBrowse.getAlbumVideoList).toHaveBeenCalledWith('VIDA1', '201503', 'tvcctv', expect.any(Function))
       expect(mockBrowse.getColumnVideoList).not.toHaveBeenCalled()
     })
 
     it('forwards album page progress to the renderer', async () => {
-      vi.mocked(mockBrowse.getAlbumVideoList).mockImplementationOnce(async (_id, _page, _month, _serviceId, onProgress) => {
+      vi.mocked(mockBrowse.getAlbumVideoList).mockImplementationOnce(async (_id, _month, _serviceId, onProgress) => {
         onProgress?.([{ guid: 'g1', title: 'Episode 1', brief: '', coverUrl: '', time: '' }])
         return []
       })
@@ -181,7 +181,7 @@ describe('IPC Handlers', () => {
     })
 
     it('tags album page progress with the originating request id', async () => {
-      vi.mocked(mockBrowse.getAlbumVideoList).mockImplementationOnce(async (_id, _page, _month, _serviceId, onProgress) => {
+      vi.mocked(mockBrowse.getAlbumVideoList).mockImplementationOnce(async (_id, _month, _serviceId, onProgress) => {
         onProgress?.([{ guid: 'g2', title: 'Episode 2', brief: '', coverUrl: '', time: '' }])
         return []
       })

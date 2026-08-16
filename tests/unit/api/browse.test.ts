@@ -39,6 +39,40 @@ describe('BrowseService', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1)
     })
 
+    it('reads a server-filtered month beyond 100 short pages without truncation', async () => {
+      const mockFetch = vi.fn(async (url: string) => {
+        const page = Number(new URL(url).searchParams.get('p'))
+        return {
+          ok: true,
+          json: async () => ({ data: {
+            total: 101,
+            list: page <= 101
+              ? [{ guid: `column-${page}`, title: `Video ${page}`, time: `2024-01-${String((page % 28) + 1).padStart(2, '0')}` }]
+              : []
+          } })
+        }
+      })
+
+      const videos = await new BrowseService(mockFetch).getColumnVideoList('TOPC-deep', 1, '202401')
+
+      expect(videos).toHaveLength(101)
+      expect(videos.some(video => video.guid === 'column-101')).toBe(true)
+      expect(mockFetch).toHaveBeenCalledTimes(101)
+    })
+
+    it('rejects a repeated page before the reported month total is reached', async () => {
+      const page = Array.from({ length: 100 }, (_, i) => ({
+        guid: `column-${i}`, title: `Video ${i}`, time: '2024-01-01'
+      }))
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { total: 150, list: page } })
+      })
+
+      await expect(new BrowseService(mockFetch).getColumnVideoList('TOPC-repeat', 1, '202401'))
+        .rejects.toThrow('pagination repeated page 2')
+    })
+
     it('prefers focus_date as the display time when present', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -222,26 +256,26 @@ describe('BrowseService', () => {
         })
       })
       const service = new BrowseService(mockFetch)
-      const videos = await service.getAlbumVideoList('album123', 1, '202401')
+      const videos = await service.getAlbumVideoList('album123', '202401')
       expect(videos).toHaveLength(1)
       expect(videos[0].guid).toBe('album-1')
       expect(mockFetch).toHaveBeenCalledTimes(2)
     })
 
     it('filters an album-backed monthly column by month and caches each month', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
+      const items = [
+        { guid: 'march', title: 'March', time: '2015-03-24 05:10:04' },
+        { guid: 'april', title: 'April', time: '2015-04-01 10:00:00' }
+      ]
+      const mockFetch = vi.fn(async (url: string) => ({
         ok: true,
-        json: () => Promise.resolve({ data: { list: [
-          { guid: 'march', title: 'March', time: '2015-03-24 05:10:04' },
-          { guid: 'april', title: 'April', time: '2015-04-01 10:00:00' },
-          { guid: 'unknown', title: 'Unknown', time: '' }
-        ] } })
-      })
+        json: async () => ({ data: { total: 2, list: url.includes('sort=desc') ? [...items].reverse() : items } })
+      }))
       const service = new BrowseService(mockFetch)
 
-      await expect(service.getAlbumVideoList('VIDA1', 1, '201503')).resolves.toMatchObject([{ guid: 'march' }])
-      await expect(service.getAlbumVideoList('VIDA1', 1, '201503')).resolves.toMatchObject([{ guid: 'march' }])
-      await expect(service.getAlbumVideoList('VIDA1', 1, '201504')).resolves.toMatchObject([{ guid: 'april' }])
+      await expect(service.getAlbumVideoList('VIDA1', '201503')).resolves.toMatchObject([{ guid: 'march' }])
+      await expect(service.getAlbumVideoList('VIDA1', '201503')).resolves.toMatchObject([{ guid: 'march' }])
+      await expect(service.getAlbumVideoList('VIDA1', '201504')).resolves.toMatchObject([{ guid: 'april' }])
       expect(mockFetch).toHaveBeenCalledTimes(4)
     })
 
@@ -254,7 +288,7 @@ describe('BrowseService', () => {
         } })
       }))
 
-      const videos = await new BrowseService(mockFetch).getAlbumVideoList('VIDA1', 1, '201906')
+      const videos = await new BrowseService(mockFetch).getAlbumVideoList('VIDA1', '201906')
 
       expect(videos).toMatchObject([{ guid: 'recent' }])
       expect(mockFetch).toHaveBeenCalledTimes(2)
@@ -271,7 +305,7 @@ describe('BrowseService', () => {
         json: async () => ({ data: { list: reverse } })
       })
 
-      const videos = await new BrowseService(mockFetch).getAlbumVideoList('VIDA1', 1, '201906')
+      const videos = await new BrowseService(mockFetch).getAlbumVideoList('VIDA1', '201906')
 
       expect(videos.map(video => video.guid)).toEqual(['old', 'new'])
     })
@@ -336,7 +370,7 @@ describe('BrowseService', () => {
           { guid: 'new-edge', title: 'New', time: '2013-01-01 10:00:00' }
         ] } }) })
         .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { list: [matching] } }) })
-      const videos = await new BrowseService(mockFetch).getAlbumVideoList('VIDA-legacy', 1, '201112')
+      const videos = await new BrowseService(mockFetch).getAlbumVideoList('VIDA-legacy', '201112')
       expect(videos).toMatchObject([{ guid: 'legacy' }])
       expect(mockFetch).toHaveBeenCalledTimes(3)
     })
@@ -352,11 +386,61 @@ describe('BrowseService', () => {
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: { list: secondPage } }) })
       const service = new BrowseService(mockFetch)
 
-      const videos = await service.getAlbumVideoList('album123', 1, '')
+      const videos = await service.getAlbumVideoList('album123', '')
 
       expect(videos).toHaveLength(101)
       expect(videos.at(-1)?.guid).toBe('album-100')
       expect(mockFetch.mock.calls[1][0]).toContain('p=2')
+    })
+
+    it('loads an unfiltered album catalogue beyond page 100', async () => {
+      const mockFetch = vi.fn(async (url: string) => {
+        const page = Number(new URL(url).searchParams.get('p'))
+        return {
+          ok: true,
+          json: async () => ({ data: {
+            total: 101,
+            list: page <= 101
+              ? [{ guid: `album-${page}`, title: `Episode ${page}`, time: '2024-01-01' }]
+              : []
+          } })
+        }
+      })
+
+      const videos = await new BrowseService(mockFetch).getAlbumVideoList('VIDA-deep', '')
+
+      expect(videos).toHaveLength(101)
+      expect(videos.some(video => video.guid === 'album-101')).toBe(true)
+      expect(mockFetch).toHaveBeenCalledTimes(101)
+    })
+
+    it('binary-locates an album month after page 100', async () => {
+      const monthAtPage = (page: number): string => {
+        const index = 2020 * 12 - (page - 1)
+        return `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, '0')}`
+      }
+      const targetMonth = monthAtPage(101).replace('-', '')
+      const mockFetch = vi.fn(async (url: string) => {
+        const parsed = new URL(url)
+        const page = Number(parsed.searchParams.get('p'))
+        const desc = parsed.searchParams.get('sort') === 'desc'
+        const sourcePage = desc ? page : 102 - page
+        return {
+          ok: true,
+          json: async () => ({ data: {
+            total: 101,
+            list: sourcePage >= 1 && sourcePage <= 101
+              ? [{ guid: `album-${sourcePage}`, title: `Episode ${sourcePage}`, focus_date: `${monthAtPage(sourcePage)}-15 12:00:00` }]
+              : []
+          } })
+        }
+      })
+
+      const videos = await new BrowseService(mockFetch).getAlbumVideoList('VIDA-deep-month', targetMonth)
+
+      expect(videos.map(video => video.guid)).toEqual(['album-101'])
+      expect(mockFetch.mock.calls.some(([url]) => new URL(String(url)).searchParams.get('p') === '101')).toBe(true)
+      expect(mockFetch.mock.calls.length).toBeLessThan(20)
     })
 
     it('reports the accumulated unique episode count after each page', async () => {
@@ -367,7 +451,7 @@ describe('BrowseService', () => {
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: { list: secondPage } }) })
       const onProgress = vi.fn()
 
-      await new BrowseService(mockFetch).getAlbumVideoList('album123', 1, '', 'tvcctv', onProgress)
+      await new BrowseService(mockFetch).getAlbumVideoList('album123', '', 'tvcctv', onProgress)
 
       expect(onProgress.mock.calls[0][0]).toHaveLength(100)
       expect(onProgress.mock.calls[1][0]).toHaveLength(1)
@@ -378,7 +462,7 @@ describe('BrowseService', () => {
       const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ data: { list: fullPage } }) })
       const service = new BrowseService(mockFetch)
 
-      const videos = await service.getAlbumVideoList('album123', 1, '')
+      const videos = await service.getAlbumVideoList('album123', '')
 
       expect(videos).toHaveLength(100)
       expect(mockFetch).toHaveBeenCalledTimes(2)
@@ -390,14 +474,14 @@ describe('BrowseService', () => {
         json: () => Promise.resolve({ data: {} })
       })
       const service = new BrowseService(mockFetch)
-      const videos = await service.getAlbumVideoList('album123', 1, '202401')
+      const videos = await service.getAlbumVideoList('album123', '202401')
       expect(videos).toEqual([])
     })
 
     it('throws on HTTP error', async () => {
       const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 500 })
       const service = new BrowseService(mockFetch)
-      await expect(service.getAlbumVideoList('album123', 1, '202401')).rejects.toThrow('HTTP 500')
+      await expect(service.getAlbumVideoList('album123', '202401')).rejects.toThrow('HTTP 500')
     })
   })
 
@@ -905,6 +989,79 @@ describe('BrowseService', () => {
       expect(videos.map(video => video.guid)).toEqual(['old', 'middle', 'new'])
       expect(videos[2]).toMatchObject({ channel: 'CCTV', durationSeconds: 120 })
       expect(mockFetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('binary-locates a v.cctv month after page 100', async () => {
+      const monthAtPage = (page: number): string => {
+        const index = 2020 * 12 - (page - 1)
+        return `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, '0')}`
+      }
+      const targetMonth = monthAtPage(101).replace('-', '')
+      const mockFetch = vi.fn(async (url: string) => {
+        const page = Number(new URL(url).searchParams.get('p'))
+        return {
+          ok: true,
+          json: async () => ({
+            count: 101,
+            data: page >= 1 && page <= 101
+              ? [{ guid: `vcctv-${page}`, title: `Video ${page}`, pubTime: `${monthAtPage(page)}-15 12:00:00` }]
+              : []
+          })
+        }
+      })
+
+      const videos = await new BrowseService(mockFetch).getVcctvVideoList('mid', 'chid', targetMonth)
+
+      expect(videos.map(video => video.guid)).toEqual(['vcctv-101'])
+      expect(mockFetch.mock.calls.length).toBeLessThan(15)
+    })
+
+    it('falls back to a complete v.cctv scan when a page is not newest-first', async () => {
+      const pages = [
+        [
+          { guid: 'older-on-first', title: 'Older', pubTime: '2024-01-01 10:00:00' },
+          { guid: 'newer-on-first', title: 'Newer', pubTime: '2024-02-01 10:00:00' }
+        ],
+        [{ guid: 'target', title: 'Target', pubTime: '2023-12-15 10:00:00' }]
+      ]
+      const mockFetch = vi.fn(async (url: string) => {
+        const page = Number(new URL(url).searchParams.get('p'))
+        return { ok: true, json: async () => ({ count: 3, data: pages[page - 1] ?? [] }) }
+      })
+
+      const videos = await new BrowseService(mockFetch).getVcctvVideoList('mid', 'chid', '202312')
+
+      expect(videos.map(video => video.guid)).toEqual(['target'])
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('binary-locates monthly highlights through the album mode=1 pages', async () => {
+      const monthAtPage = (page: number): string => {
+        const index = 2020 * 12 - (page - 1)
+        return `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, '0')}`
+      }
+      const targetMonth = monthAtPage(101).replace('-', '')
+      const mockFetch = vi.fn(async (url: string) => {
+        const page = Number(new URL(url).searchParams.get('p'))
+        return {
+          ok: true,
+          json: async () => ({ data: {
+            total: 101,
+            list: page >= 1 && page <= 101
+              ? [{ guid: `highlight-${page}`, title: `Highlight ${page}`, focus_date: `${monthAtPage(page)}-15 12:00:00` }]
+              : []
+          } })
+        }
+      })
+
+      const videos = await new BrowseService(mockFetch).getSupplementaryVideos({
+        name: 'Program', columnId: 'VIDA-deep', itemId: '', kind: 'album',
+        listSource: { type: 'album', id: 'VIDA-deep', serviceId: 'tvcctv' }
+      }, targetMonth)
+
+      expect(videos.map(video => video.guid)).toEqual(['highlight-101'])
+      expect(videos[0].contentType).toBe('highlight')
+      expect(mockFetch.mock.calls.length).toBeLessThan(15)
     })
 
     it('labels and deduplicates optional highlights and topic fragments', async () => {

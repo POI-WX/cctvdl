@@ -11,12 +11,16 @@
  *  2. If `ffmpeg-static` can't be resolved for some reason, fall back to a bare
  *     `ffmpeg` on PATH so a developer with a system ffmpeg still works.
  */
-export function ffmpegPath(): string {
+export function bundledFfmpegPath(): string | null {
   try {
     const p = require('ffmpeg-static') as string | null
     if (p) return p.replace('app.asar', 'app.asar.unpacked')
   } catch {
-    /* fall through to PATH lookup */
+    /* unavailable */
   }
-  return 'ffmpeg'
+  return null
+}
+
+export function ffmpegPath(): string {
+  return bundledFfmpegPath() ?? 'ffmpeg'
 }

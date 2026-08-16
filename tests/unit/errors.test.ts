@@ -26,6 +26,11 @@ describe('humanizeError（向后兼容）', () => {
     expect(humanizeError('无法解析视频信息')).not.toContain('服务器')
   })
 
+  it('maps incomplete pagination to a friendly message', () => {
+    expect(humanizeError('pagination repeated page 2 before all 200 items were received'))
+      .toBe('央视节目列表分页异常，请稍后重试')
+  })
+
   it('maps HTTP 4xx to access error', () => {
     expect(humanizeError('HTTP 404 fetching page')).toContain('不可访问')
   })

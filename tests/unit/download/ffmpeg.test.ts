@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ffmpegPath } from '../../../src/main/download/ffmpeg'
+import { bundledFfmpegPath, ffmpegPath } from '../../../src/main/download/ffmpeg'
 
 describe('ffmpegPath', () => {
   it('resolves a non-empty path string', () => {
@@ -13,6 +13,12 @@ describe('ffmpegPath', () => {
     // (not the bare "ffmpeg" PATH fallback).
     const p = ffmpegPath()
     expect(p.toLowerCase()).toContain('ffmpeg-static')
+  })
+
+  it('exposes the strict bundled path without a PATH fallback', () => {
+    const p = bundledFfmpegPath()
+    expect(p).not.toBeNull()
+    expect(p?.toLowerCase()).toContain('ffmpeg-static')
   })
 
   it('never returns an un-rewritten app.asar path', () => {

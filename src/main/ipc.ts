@@ -66,7 +66,6 @@ export function registerIpcHandlers(
       if (forceRefresh) browse.clearAlbumCache(source.id, source.serviceId)
       videos = await browse.getAlbumVideoList(
         source.id,
-        1,
         month,
         source.serviceId,
         videos => send('album-load-progress', {

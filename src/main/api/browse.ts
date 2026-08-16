@@ -9,10 +9,38 @@ import {
   mapVcctvVideoItem, mapVideoItem, monthBoundsFromEdges, monthFromVideoTime,
   monthNumber, readVideoChannel
 } from './browse-data'
+import {
+  collectAllPages, filterItemsByMonth, locateMonthInDescendingPages, sortableVideoTime,
+  type PageResult
+} from './pagination'
 
 export { isCctvNewsSnowBookPage }
 
 type CctvServiceId = 'tvcctv' | 'cctv4k'
+
+type RawItem = Record<string, unknown>
+
+function rawVideoKey(item: RawItem, mapper: (item: RawItem) => VideoInfo): string {
+  const video = mapper(item)
+  return video.guid || `${video.title}\u0000${video.time}`
+}
+
+function mapUniqueVideos(items: RawItem[], mapper: (item: RawItem) => VideoInfo): VideoInfo[] {
+  const seen = new Set<string>()
+  const videos: VideoInfo[] = []
+  for (const item of items) {
+    const video = mapper(item)
+    const key = video.guid || `${video.title}\u0000${video.time}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    videos.push(video)
+  }
+  return sortVideosChronologically(videos)
+}
+
+function albumItemTime(item: RawItem): unknown {
+  return formatVideoTime(item['focus_date']) || item['time']
+}
 
 export class BrowseService {
   private readonly albumCache = new Map<string, { expiresAt: number; videos: VideoInfo[] }>()
@@ -25,6 +53,7 @@ export class BrowseService {
   private readonly albumPrimaryModeInflight = new Map<string, Promise<{
     mode: 0 | 1 | null
     items: Array<Record<string, unknown>>
+    total: number
     page: number
     pageSize: number
     sort: 'asc' | 'desc'
@@ -47,39 +76,55 @@ export class BrowseService {
   }
 
   async getColumnVideoList(columnId: string, page: number, month: string): Promise<VideoInfo[]> {
+    if (!month) {
+      const { items } = await this.fetchColumnPage(columnId, page, month, 'asc')
+      return sortVideosChronologically(items.map(mapVideoItem))
+    }
+    const pageSize = 100
+    const items = await collectAllPages(
+      currentPage => this.fetchColumnPage(columnId, currentPage, month, 'asc', pageSize),
+      pageSize,
+      item => rawVideoKey(item, mapVideoItem)
+    )
+    return mapUniqueVideos(items, mapVideoItem)
+  }
+
+  private async fetchColumnPage(
+    columnId: string, page: number, month: string, sort: 'asc' | 'desc', pageSize = 100
+  ): Promise<PageResult<RawItem>> {
     const params = new URLSearchParams({
-      id: columnId, n: '100', p: String(page), d: month,
-      mode: '0', serviceId: 'tvcctv', sort: 'asc'
+      id: columnId, n: String(pageSize), p: String(page), d: month,
+      mode: '0', serviceId: 'tvcctv', sort
     })
     const url = `https://api.cntv.cn/NewVideo/getVideoListByColumn?${params}`
     const resp = await this.fetch(url, uaInit())
     if (!resp.ok) throw new Error(`HTTP ${resp.status} from getVideoListByColumn`)
     const data = await resp.json() as Record<string, unknown>
     const dataObj = data['data'] as Record<string, unknown> | undefined
-    const list = (dataObj?.['list'] as Array<Record<string, unknown>>) || []
-    return sortVideosChronologically(list.map(mapVideoItem))
+    const items = (dataObj?.['list'] as RawItem[]) || []
+    const rawTotal = Number(dataObj?.['total'])
+    return {
+      items,
+      total: Number.isFinite(rawTotal) && rawTotal >= items.length ? rawTotal : items.length
+    }
   }
 
   async getVcctvVideoList(mid: string, chid: string, month: string): Promise<VideoInfo[]> {
     const pageSize = 100
-    const videos: VideoInfo[] = []
-    const seen = new Set<string>()
-    let actualPageSize = pageSize
-    for (let page = 1; page <= 100; page++) {
-      const { items, total } = await this.fetchVcctvPage(mid, chid, page, pageSize)
-      if (!items.length) break
-      if (page === 1) actualPageSize = items.length
-      let oldestMonth = ''
-      for (const item of items) {
-        const video = mapVcctvVideoItem(item)
-        const itemMonth = monthFromVideoTime(video.time)
-        if (!oldestMonth || (itemMonth && itemMonth < oldestMonth)) oldestMonth = itemMonth
-        if (month && itemMonth !== month) continue
-        if (!seen.has(video.guid)) { seen.add(video.guid); videos.push(video) }
-      }
-      if (page * actualPageSize >= total || (month && oldestMonth && oldestMonth < month)) break
+    const fetchPage = (page: number) => this.fetchVcctvPage(mid, chid, page, pageSize)
+    let items: RawItem[]
+    if (month) {
+      const located = await locateMonthInDescendingPages(fetchPage, pageSize, month, item => item['pubTime'])
+      items = located.items
+        ?? filterItemsByMonth(
+          await collectAllPages(located.cachedFetch, pageSize, item => rawVideoKey(item, mapVcctvVideoItem)),
+          month,
+          item => item['pubTime']
+        )
+    } else {
+      items = await collectAllPages(fetchPage, pageSize, item => rawVideoKey(item, mapVcctvVideoItem))
     }
-    return sortVideosChronologically(videos)
+    return mapUniqueVideos(items, mapVcctvVideoItem)
   }
 
   async getLatestVcctvVideos(mid: string, chid: string): Promise<VideoInfo[]> {
@@ -104,7 +149,7 @@ export class BrowseService {
 
   private async fetchVcctvPage(
     mid: string, chid: string, page: number, pageSize: number
-  ): Promise<{ items: Array<Record<string, unknown>>; total: number }> {
+  ): Promise<PageResult<RawItem>> {
     const params = new URLSearchParams({ mid, chid, p: String(page), n: String(pageSize) })
     let resp: Awaited<ReturnType<Fetcher>>
     try {
@@ -117,9 +162,9 @@ export class BrowseService {
     }
     if (!resp.ok) throw new Error(`HTTP ${resp.status} from vplist.do`)
     const root = await resp.json() as Record<string, unknown>
-    const items = Array.isArray(root['data']) ? root['data'] as Array<Record<string, unknown>> : []
+    const items = Array.isArray(root['data']) ? root['data'] as RawItem[] : []
     const total = Number(root['count'])
-    return { items, total: Number.isFinite(total) && total > 0 ? total : items.length }
+    return { items, total: Number.isFinite(total) && total >= items.length ? total : items.length }
   }
 
   async getColumnMonthBounds(columnId: string): Promise<ProgramMonthBounds> {
@@ -129,16 +174,8 @@ export class BrowseService {
     let request = this.monthBoundsInflight.get(cacheKey)
     if (!request) {
       request = (async () => {
-        const fetchEdge = async (sort: 'asc' | 'desc'): Promise<Array<Record<string, unknown>>> => {
-          const params = new URLSearchParams({
-            id: columnId, n: '100', p: '1', d: '', mode: '0', serviceId: 'tvcctv', sort
-          })
-          const resp = await this.fetch(`https://api.cntv.cn/NewVideo/getVideoListByColumn?${params}`, uaInit())
-          if (!resp.ok) throw new Error(`HTTP ${resp.status} from getVideoListByColumn`)
-          const data = await resp.json() as Record<string, unknown>
-          const dataObj = data['data'] as Record<string, unknown> | undefined
-          return (dataObj?.['list'] as Array<Record<string, unknown>>) || []
-        }
+        const fetchEdge = async (sort: 'asc' | 'desc'): Promise<RawItem[]> =>
+          (await this.fetchColumnPage(columnId, 1, '', sort)).items
         const [earliestItems, latestItems] = await Promise.all([fetchEdge('asc'), fetchEdge('desc')])
         const bounds = monthBoundsFromEdges(earliestItems, latestItems)
         this.monthBoundsCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, bounds })
@@ -156,7 +193,6 @@ export class BrowseService {
   // for an unfiltered list, traverse all pages and dedupe by guid.
   async getAlbumVideoList(
     albumId: string,
-    page: number,
     month: string,
     serviceId: CctvServiceId = 'tvcctv',
     onProgress?: (newVideos: VideoInfo[]) => void
@@ -172,7 +208,7 @@ export class BrowseService {
     } else {
       let request = this.albumInflight.get(cacheKey)
       if (!request) {
-        request = this.fetchAllAlbumVideos(albumId, page, serviceId, onProgress)
+        request = this.fetchAllAlbumVideos(albumId, serviceId, onProgress)
         this.albumInflight.set(cacheKey, request)
       }
       try {
@@ -195,58 +231,43 @@ export class BrowseService {
     const cached = this.albumMonthCache.get(cacheKey)
     if (cached && cached.expiresAt > Date.now()) return cached.videos
 
+    if (monthNumber(month) == null) return []
     const pageSize = 100
     const [ascFirst, descFirst] = await Promise.all([
       this.fetchAlbumPage(albumId, 1, pageSize, serviceId, 'asc'),
       this.fetchAlbumPage(albumId, 1, pageSize, serviceId, 'desc')
     ])
-    const target = monthNumber(month)
-    if (target == null) return []
-    const distance = (items: Array<Record<string, unknown>>): number => {
-      const values = items.map(item => monthNumber(formatVideoTime(item['focus_date']) || String(item['time'] || '')))
-        .filter((value): value is number => value != null)
-      return values.length ? Math.min(...values.map(value => Math.abs(value - target))) : Number.POSITIVE_INFINITY
-    }
-    const sort: 'asc' | 'desc' = distance(ascFirst) <= distance(descFirst) ? 'asc' : 'desc'
-    const first = sort === 'asc' ? ascFirst : descFirst
-    const seen = new Set<string>()
-    const videos: VideoInfo[] = []
-
-    for (let page = 1; page <= 100; page++) {
-      const list = page === 1 ? first : await this.fetchAlbumPage(albumId, page, pageSize, serviceId, sort)
-      const matching: VideoInfo[] = []
-      for (const item of list) {
-        const video = mapVideoItem(item)
-        if (monthFromVideoTime(video.time) !== month) continue
-        const key = video.guid || `${video.title}\u0000${video.time}`
-        if (!seen.has(key)) { seen.add(key); videos.push(video); matching.push(video) }
+    const descCache = new Map<number, PageResult<RawItem>>([[1, descFirst]])
+    const fetchPage = async (page: number): Promise<PageResult<RawItem>> => {
+      let result = descCache.get(page)
+      if (!result) {
+        result = await this.fetchAlbumPage(albumId, page, pageSize, serviceId, 'desc')
+        descCache.set(page, result)
       }
-      if (matching.length) onProgress?.(sortVideosChronologically(matching))
-
-      const months = list.map(item => monthNumber(formatVideoTime(item['focus_date']) || String(item['time'] || '')))
-        .filter((value): value is number => value != null)
-      const passedTarget = months.length > 0 && (sort === 'asc'
-        ? Math.max(...months) > target
-        : Math.min(...months) < target)
-      if (list.length < pageSize || passedTarget) break
+      return result
     }
+    const located = await locateMonthInDescendingPages(fetchPage, pageSize, month, albumItemTime)
+    const edgeMonths = [...ascFirst.items, ...descFirst.items]
+      .map(item => sortableVideoTime(albumItemTime(item))?.slice(0, 6))
+      .filter((value): value is string => Boolean(value))
+    const targetWithinEdges = edgeMonths.length > 0
+      && month >= edgeMonths.reduce((a, b) => a < b ? a : b)
+      && month <= edgeMonths.reduce((a, b) => a > b ? a : b)
 
-    const sortedVideos = sortVideosChronologically(videos)
-    if (sortedVideos.length) {
-      this.albumMonthCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, videos: sortedVideos })
-      return sortedVideos
+    let videos: VideoInfo[]
+    let progressReported = false
+    if (located.items == null || (located.items.length === 0 && targetWithinEdges)) {
+      const allVideos = await this.fetchAllAlbumVideos(albumId, serviceId, pageVideos => {
+        const matching = pageVideos.filter(video => monthFromVideoTime(video.time) === month)
+        if (matching.length) { progressReported = true; onProgress?.(matching) }
+      })
+      videos = sortVideosChronologically(allVideos.filter(video => monthFromVideoTime(video.time) === month))
+    } else {
+      videos = mapUniqueVideos(located.items, mapVideoItem)
     }
-
-    // Some legacy VIDA archives do not honour the requested sort/page
-    // consistently. If edge-directed paging misses the requested month, fall
-    // back to the complete ascending catalogue before declaring it empty.
-    const allVideos = await this.fetchAllAlbumVideos(albumId, 1, serviceId)
-    const fallback = sortVideosChronologically(
-      allVideos.filter(video => monthFromVideoTime(video.time) === month)
-    )
-    if (fallback.length) onProgress?.(fallback)
-    this.albumMonthCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, videos: fallback })
-    return fallback
+    if (videos.length && !progressReported) onProgress?.(videos)
+    this.albumMonthCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, videos })
+    return videos
   }
 
   async getVideoMediaMetadata(guid: string): Promise<Pick<VideoInfo, 'channel' | 'durationSeconds'>> {
@@ -271,7 +292,7 @@ export class BrowseService {
     const serviceId = source.serviceId
     let albumId = source.type === 'album' ? source.id : ''
     if (!albumId && program.itemId) albumId = await this.resolveAlbumId(program.itemId, serviceId).catch(() => '')
-    if (albumId) result.push(...await this.fetchAlbumModeVideos(albumId, serviceId, 1, 'highlight').catch(() => []))
+    if (albumId) result.push(...await this.fetchAlbumModeVideos(albumId, serviceId, 1, 'highlight', month).catch(() => []))
     const topicId = program.topicId || (/^TOPC/.test(program.columnId) ? program.columnId : '')
     if (program.itemId && topicId) {
       result.push(...await this.fetchTopicFragments(topicId, program.itemId, serviceId).catch(() => []))
@@ -295,22 +316,25 @@ export class BrowseService {
   }
 
   private async fetchAlbumModeVideos(
-    albumId: string, serviceId: CctvServiceId, mode: 0 | 1, contentType: 'highlight'
+    albumId: string, serviceId: CctvServiceId, mode: 0 | 1, contentType: 'highlight', month: string
   ): Promise<VideoInfo[]> {
-    const result: VideoInfo[] = []
     const pageSize = 100
-    for (let page = 1; page <= 100; page++) {
-      let pageResult: { items: Array<Record<string, unknown>>; total: number }
-      try {
-        pageResult = await this.fetchAlbumModePage(albumId, page, pageSize, serviceId, 'asc', mode)
-      } catch {
-        break
-      }
-      const { items, total } = pageResult
-      result.push(...items.map(item => ({ ...mapVideoItem(item), contentType })))
-      if (items.length < pageSize || page * pageSize >= total) break
+    const fetchPage = (page: number) => this.fetchAlbumModePage(albumId, page, pageSize, serviceId, 'desc', mode)
+    let items: RawItem[]
+    if (month) {
+      const located = await locateMonthInDescendingPages(
+        fetchPage, pageSize, month, albumItemTime
+      )
+      items = located.items
+        ?? filterItemsByMonth(
+          await collectAllPages(located.cachedFetch, pageSize, item => rawVideoKey(item, mapVideoItem)),
+          month,
+          albumItemTime
+        )
+    } else {
+      items = await collectAllPages(fetchPage, pageSize, item => rawVideoKey(item, mapVideoItem))
     }
-    return result
+    return mapUniqueVideos(items, mapVideoItem).map(video => ({ ...video, contentType }))
   }
 
   private async fetchTopicFragments(
@@ -328,11 +352,11 @@ export class BrowseService {
 
   private async fetchAlbumPage(
     albumId: string, page: number, pageSize: number, serviceId: CctvServiceId, sort: 'asc' | 'desc'
-  ): Promise<Array<Record<string, unknown>>> {
+  ): Promise<PageResult<RawItem>> {
     const cacheKey = `${serviceId}:${albumId}`
     const selectedMode = this.albumPrimaryModes.get(cacheKey)
     if (selectedMode != null) {
-      return this.fetchAlbumPageByMode(albumId, page, pageSize, serviceId, sort, selectedMode)
+      return this.fetchAlbumModePage(albumId, page, pageSize, serviceId, sort, selectedMode)
     }
     let resolution = this.albumPrimaryModeInflight.get(cacheKey)
     if (!resolution) {
@@ -341,10 +365,12 @@ export class BrowseService {
     }
     try {
       const resolved = await resolution
-      if (resolved.mode == null) return []
+      if (resolved.mode == null) return { items: [], total: 0 }
       this.albumPrimaryModes.set(cacheKey, resolved.mode)
-      if (resolved.page === page && resolved.pageSize === pageSize && resolved.sort === sort) return resolved.items
-      return this.fetchAlbumPageByMode(albumId, page, pageSize, serviceId, sort, resolved.mode)
+      if (resolved.page === page && resolved.pageSize === pageSize && resolved.sort === sort) {
+        return { items: resolved.items, total: resolved.total }
+      }
+      return this.fetchAlbumModePage(albumId, page, pageSize, serviceId, sort, resolved.mode)
     } finally {
       if (this.albumPrimaryModeInflight.get(cacheKey) === resolution) this.albumPrimaryModeInflight.delete(cacheKey)
     }
@@ -355,34 +381,28 @@ export class BrowseService {
   ): Promise<{
     mode: 0 | 1 | null
     items: Array<Record<string, unknown>>
+    total: number
     page: number
     pageSize: number
     sort: 'asc' | 'desc'
   }> {
-    const primary = await this.fetchAlbumPageByMode(albumId, page, pageSize, serviceId, sort, 0)
-    if (primary.length) return { mode: 0, items: primary, page, pageSize, sort }
+    const primary = await this.fetchAlbumModePage(albumId, page, pageSize, serviceId, sort, 0)
+    if (primary.items.length) return { mode: 0, ...primary, page, pageSize, sort }
     // A small family of VIDA sets (notably upstream issue #98) stores full
     // episodes in mode=1 while mode=0 is empty. Accept mode=1 only when at
     // least 80% of its titles look like complete episodes; this keeps ordinary
     // highlight catalogues out of the default programme list.
-    const fallback = await this.fetchAlbumPageByMode(albumId, page, pageSize, serviceId, sort, 1)
-    return looksLikeFullEpisodeCatalogue(fallback)
-      ? { mode: 1, items: fallback, page, pageSize, sort }
-      : { mode: null, items: [], page, pageSize, sort }
-  }
-
-  private async fetchAlbumPageByMode(
-    albumId: string, page: number, pageSize: number, serviceId: CctvServiceId,
-    sort: 'asc' | 'desc', mode: 0 | 1
-  ): Promise<Array<Record<string, unknown>>> {
-    return (await this.fetchAlbumModePage(albumId, page, pageSize, serviceId, sort, mode)).items
+    const fallback = await this.fetchAlbumModePage(albumId, page, pageSize, serviceId, sort, 1)
+    return looksLikeFullEpisodeCatalogue(fallback.items)
+      ? { mode: 1, ...fallback, page, pageSize, sort }
+      : { mode: null, items: [], total: 0, page, pageSize, sort }
   }
 
   /** Single boundary for the album API's parameters and response normalization. */
   private async fetchAlbumModePage(
     albumId: string, page: number, pageSize: number, serviceId: CctvServiceId,
     sort: 'asc' | 'desc', mode: 0 | 1
-  ): Promise<{ items: Array<Record<string, unknown>>; total: number }> {
+  ): Promise<PageResult<RawItem>> {
     const params = new URLSearchParams({
       id: albumId, pub: serviceId === 'cctv4k' ? '2' : '1', sort,
       mode: String(mode), p: String(page), n: String(pageSize), serviceId
@@ -391,46 +411,34 @@ export class BrowseService {
     if (!resp.ok) throw new Error(`HTTP ${resp.status} from getVideoListByAlbumIdNew`)
     const data = await resp.json() as Record<string, unknown>
     const dataObj = data['data'] as Record<string, unknown> | undefined
-    const items = (dataObj?.['list'] as Array<Record<string, unknown>>) || []
+    const items = (dataObj?.['list'] as RawItem[]) || []
     const rawTotal = Number(dataObj?.['total'])
     return {
       items,
-      total: Number.isFinite(rawTotal) && rawTotal >= 0 ? rawTotal : items.length
+      total: Number.isFinite(rawTotal) && rawTotal >= items.length ? rawTotal : items.length
     }
   }
 
   private async fetchAllAlbumVideos(
     albumId: string,
-    page: number,
     serviceId: CctvServiceId,
     onProgress?: (newVideos: VideoInfo[]) => void
   ): Promise<VideoInfo[]> {
     const pageSize = 100
-    const maxPages = 100
-    const seen = new Set<string>()
-    const videos: VideoInfo[] = []
-    for (let currentPage = page; currentPage < page + maxPages; currentPage++) {
-      const list = await this.fetchAlbumPage(albumId, currentPage, pageSize, serviceId, 'asc')
-      let addedOnPage = 0
-      const newVideos: VideoInfo[] = []
-      for (const item of list) {
-        const video = mapVideoItem(item)
-        const key = video.guid || `${video.title}\u0000${video.time}`
-        if (!seen.has(key)) { seen.add(key); videos.push(video); newVideos.push(video); addedOnPage++ }
-      }
-      if (newVideos.length) onProgress?.(newVideos)
-      // Some upstream responses ignore `p` and repeat the same full page. Stop
-      // as soon as that happens instead of needlessly requesting all 100 pages.
-      if (list.length < pageSize || addedOnPage === 0) break
-    }
-    return videos
+    const items = await collectAllPages(
+      page => this.fetchAlbumPage(albumId, page, pageSize, serviceId, 'asc'),
+      pageSize,
+      item => rawVideoKey(item, mapVideoItem),
+      newItems => onProgress?.(newItems.map(mapVideoItem))
+    )
+    return mapUniqueVideos(items, mapVideoItem)
   }
 
   // Used by background notification checks. Unlike the preview loader this
   // deliberately asks for only the newest API page, avoiding a full traversal
   // of long-running programmes at every application startup.
   async getLatestAlbumVideos(albumId: string, serviceId: CctvServiceId = 'tvcctv'): Promise<VideoInfo[]> {
-    return (await this.fetchAlbumPage(albumId, 1, 100, serviceId, 'desc')).map(mapVideoItem)
+    return (await this.fetchAlbumPage(albumId, 1, 100, serviceId, 'desc')).items.map(mapVideoItem)
   }
 
   async getAlbumMonthBounds(
@@ -444,8 +452,8 @@ export class BrowseService {
       request = Promise.all([
         this.fetchAlbumPage(albumId, 1, 100, serviceId, 'asc'),
         this.fetchAlbumPage(albumId, 1, 100, serviceId, 'desc')
-      ]).then(([earliestItems, latestItems]) => {
-        const bounds = monthBoundsFromEdges(earliestItems, latestItems)
+      ]).then(([earliest, latest]) => {
+        const bounds = monthBoundsFromEdges(earliest.items, latest.items)
         this.monthBoundsCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, bounds })
         return bounds
       })

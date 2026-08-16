@@ -77,16 +77,17 @@ describe('CCTV API smoke', () => {
     expect(fourK.kind).toBe('album')
     expect(fourK.serviceId).toBe('cctv4k')
     expect(fourK.columnId).toBeTruthy()
-    const fourKList = await browse.getAlbumVideoList(fourK.columnId, 1, '', fourK.serviceId)
+    const fourKList = await browse.getAlbumVideoList(fourK.columnId, '', fourK.serviceId)
     expect(fourKList.length).toBeGreaterThan(1)
     expect(fourKList.some(v => v.title.includes('第5集'))).toBe(true)
 
     const drama = await browse.resolveColumnInfo('https://tv.cctv.com/2026/06/12/VIDElk5c6FRjXLZhcppxIHhL260612.shtml')
     expect(drama.kind).toBe('album')
     expect(drama.serviceId).toBe('tvcctv')
-    const dramaList = await browse.getAlbumVideoList(drama.columnId, 1, '', drama.serviceId)
+    const dramaList = await browse.getAlbumVideoList(drama.columnId, '', drama.serviceId)
     expect(dramaList.length).toBeGreaterThan(1)
-    expect(dramaList[0].title).toContain('第1集')
+    expect(dramaList.some(video => video.title.includes('星月征途'))).toBe(true)
+    expect(dramaList.every(video => video.guid && video.title && video.time)).toBe(true)
 
     const column = await browse.resolveColumnInfo('https://tv.cctv.com/2026/07/02/VIDEgkpWAAVCNkSdEnYSK5GO260702.shtml')
     expect(column.kind).toBe('column')
@@ -108,7 +109,7 @@ describe('CCTV API smoke', () => {
     expect(overview.kind).toBe('album')
     expect(overview.name).toContain('极限火力')
     expect(overview.columnId).toBe(episode.columnId)
-    const videos = await browse.getAlbumVideoList(overview.columnId, 1, '', overview.serviceId)
+    const videos = await browse.getAlbumVideoList(overview.columnId, '', overview.serviceId)
     expect(videos.length).toBeGreaterThan(1)
   }, 60_000)
 
@@ -121,10 +122,10 @@ describe('CCTV API smoke', () => {
       kind: 'column',
       listSource: { type: 'album', id: 'VIDA1425372752043217', serviceId: 'tvcctv' }
     })
-    const march = await browse.getAlbumVideoList('VIDA1425372752043217', 1, '201503')
+    const march = await browse.getAlbumVideoList('VIDA1425372752043217', '201503')
     expect(march.some(v => v.guid === '074fe7898bce4142ad74cdffc505946a')).toBe(true)
     expect(march.every(v => v.time.startsWith('2015-03'))).toBe(true)
-    const june2019 = await browse.getAlbumVideoList('VIDA1425372752043217', 1, '201906')
+    const june2019 = await browse.getAlbumVideoList('VIDA1425372752043217', '201906')
     expect(june2019.length).toBeGreaterThan(0)
     expect(june2019.every(v => v.time.startsWith('2019-06'))).toBe(true)
 
@@ -140,7 +141,7 @@ describe('CCTV API smoke', () => {
     )
     expect(info.columnId).toBeTruthy()
     const videos = info.listSource?.type === 'album'
-      ? await browse.getAlbumVideoList(info.listSource.id, 1, '201112', info.listSource.serviceId)
+      ? await browse.getAlbumVideoList(info.listSource.id, '201112', info.listSource.serviceId)
       : await browse.getColumnVideoList(info.listSource?.id || info.columnId, 1, '201112')
     expect(videos.some(video => video.time.startsWith('2011-12'))).toBe(true)
   }, 60_000)
@@ -162,7 +163,7 @@ describe('CCTV API smoke', () => {
     expect(overview.kind).toBe('album')
     expect(episode.columnId).toBe(overview.columnId)
     expect((await browse.getLatestAlbumVideos(overview.columnId, overview.serviceId)).length).toBeGreaterThan(1)
-    const videos = await browse.getAlbumVideoList(overview.columnId, 1, '', overview.serviceId)
+    const videos = await browse.getAlbumVideoList(overview.columnId, '', overview.serviceId)
     expect(videos.length).toBeGreaterThan(1)
     expect(videos[0].title).toMatch(/第\s*1\s*集/)
   }, 90_000)
@@ -192,7 +193,7 @@ describe('CCTV API smoke', () => {
       'https://tv.cctv.com/2026/08/02/VIDECtLnpaVTtX2Xx5aTKZ4A260802.shtml'
     )
     expect(info.kind).toBe('album')
-    const videos = await browse.getAlbumVideoList(info.columnId, 1, '', info.serviceId)
+    const videos = await browse.getAlbumVideoList(info.columnId, '', info.serviceId)
     expect(videos.map(video => video.title)).toEqual([
       '《南戏九百年》 第1集',
       '《南戏九百年》 第2集'
@@ -212,7 +213,7 @@ describe('CCTV API smoke', () => {
       name: '里约奥运-乒乓球', kind: 'album',
       listSource: { type: 'album', id: 'VIDAJWCgstBc3Q3ADY9VIGGE160801' }
     })
-    const videos = await browse.getAlbumVideoList('VIDAJWCgstBc3Q3ADY9VIGGE160801', 1, '201608')
+    const videos = await browse.getAlbumVideoList('VIDAJWCgstBc3Q3ADY9VIGGE160801', '201608')
     expect(videos.length).toBeGreaterThan(100)
     expect(videos.some(video => video.guid === '6860a7d7945043bba8aabea4d102c364')).toBe(true)
   }, 90_000)

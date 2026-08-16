@@ -63,17 +63,21 @@ jobs:
 
       - run: npm ci
 
-      - name: Verify build architecture and ffmpeg
-        env:
-          EXPECTED_ARCH: ${{ matrix.arch }}
-        run: node -e "const cp=require('node:child_process');const ffmpeg=require('ffmpeg-static');if(process.arch!==process.env.EXPECTED_ARCH)throw new Error('Expected '+process.env.EXPECTED_ARCH+', got '+process.arch);cp.execFileSync(ffmpeg,['-version'],{stdio:'inherit'})"
-
       # No auto-update: publish:null + nsis.differentialPackage:false (in
       # electron-builder.yml) stop latest*.yml / *.blockmap from being generated
       # at all. --publish never is just belt-and-suspenders. macOS builds use an
       # ad-hoc signature (identity: "-") — no Apple cert, but a self-consistent
       # bundle so Gatekeeper won't report "damaged".
       - run: npm run ${{ matrix.script }} -- --${{ matrix.arch }} --publish never
+
+      - name: Verify packaged application and bundled runtime
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "Linux" ]; then
+            xvfb-run --auto-servernum node scripts/verify-packaged-app.mjs "${{ matrix.platform }}" "${{ matrix.arch }}"
+          else
+            node scripts/verify-packaged-app.mjs "${{ matrix.platform }}" "${{ matrix.arch }}"
+          fi
 
       # electron-builder uses the Linux convention "x86_64" for AppImage;
       # public package names consistently use "x64" on all three platforms.
