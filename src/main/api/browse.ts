@@ -90,11 +90,11 @@ export class BrowseService {
   }
 
   private async fetchColumnPage(
-    columnId: string, page: number, month: string, sort: 'asc' | 'desc', pageSize = 100
+    columnId: string, page: number, month: string, sort: 'asc' | 'desc', pageSize = 100, mode: 0 | 1 = 0
   ): Promise<PageResult<RawItem>> {
     const params = new URLSearchParams({
       id: columnId, n: String(pageSize), p: String(page), d: month,
-      mode: '0', serviceId: 'tvcctv', sort
+      mode: String(mode), serviceId: 'tvcctv', sort
     })
     const url = `https://api.cntv.cn/NewVideo/getVideoListByColumn?${params}`
     const resp = await this.fetch(url, uaInit())
@@ -297,6 +297,9 @@ export class BrowseService {
     if (program.itemId && topicId) {
       result.push(...await this.fetchTopicFragments(topicId, program.itemId, serviceId).catch(() => []))
     }
+    if (source.type === 'column' && month) {
+      result.push(...await this.fetchColumnFragments(source.id, month).catch(() => []))
+    }
     const seen = new Set<string>()
     return sortVideosChronologically(result.filter(video => {
       if (!video.guid || seen.has(video.guid)) return false
@@ -304,6 +307,16 @@ export class BrowseService {
       seen.add(video.guid)
       return true
     }))
+  }
+
+  private async fetchColumnFragments(columnId: string, month: string): Promise<VideoInfo[]> {
+    const pageSize = 100
+    const items = await collectAllPages(
+      page => this.fetchColumnPage(columnId, page, month, 'asc', pageSize, 1),
+      pageSize,
+      item => rawVideoKey(item, mapVideoItem)
+    )
+    return mapUniqueVideos(items, mapVideoItem).map(video => ({ ...video, contentType: 'fragment' }))
   }
 
   private async resolveAlbumId(itemId: string, serviceId: CctvServiceId): Promise<string> {
@@ -556,14 +569,24 @@ export class BrowseService {
     }
     if (isClipVideoInfo(videoInfo)) throw new Error('无法解析节目信息')
 
+    const currentColumnId = extractColumnId(html)
     const aggregate = await this.monthlyColumnFromEpisode(
-      videoInfo, serviceId, title, itemId, extractColumnId(html)
+      videoInfo, serviceId, title, itemId, currentColumnId
     )
     if (aggregate) return aggregate
     // A programme TOPC is also attached to many short editorial segments; the
     // pasted link still represents that single segment (upstream issue #96).
     if (isStandaloneSegmentVideoInfo(videoInfo)) throw new Error('无法解析节目信息')
-    return this.albumProgramFromVideoInfo(videoInfo, serviceId, title, itemId)
+    const album = this.albumProgramFromVideoInfo(videoInfo, serviceId, title, itemId)
+    if (album) return album
+    const columnName = cleanProgramName(String(videoInfo['vset_title'] || ''))
+    if (currentColumnId && String(videoInfo['ctid'] || '') === currentColumnId && columnName) {
+      return {
+        name: columnName, columnId: currentColumnId, itemId, kind: 'column', serviceId,
+        listSource: { type: 'column', id: currentColumnId, serviceId }
+      }
+    }
+    return null
   }
 
   private async resolveOverviewProgram(pageUrl: string, html: string): Promise<ProgramInfo | null> {

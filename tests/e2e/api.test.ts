@@ -186,6 +186,21 @@ describe('CCTV API smoke', () => {
     expect(video.durationSeconds).toBe(377)
   }, 60_000)
 
+  it('loads an imported historical column clip through optional fragments', async () => {
+    const info = await browse.resolveColumnInfo(
+      'https://tv.cctv.cn/2011/08/16/VIDE1336929662017714.shtml'
+    )
+    expect(info).toMatchObject({
+      name: '经济信息联播', kind: 'column',
+      listSource: { type: 'column', id: 'TOPC1451533782742171' }
+    })
+    const episodes = await browse.getColumnVideoList(info.columnId, 1, '201108')
+    const fragments = await browse.getSupplementaryVideos(info, '201108')
+    const target = '002E74F78B6A49eaB6B1CD41FBDFC41B'
+    expect(episodes.some(video => video.guid === target)).toBe(false)
+    expect(fragments.find(video => video.guid === target)?.contentType).toBe('fragment')
+  }, 90_000)
+
   // The original #103 URL has expired; the stable #106 album exercises both
   // its full-episode classification and #103's optional-highlight separation.
   it('upstream #106 and #103 behaviour: separates full episodes from optional highlights', async () => {

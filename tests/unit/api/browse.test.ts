@@ -634,6 +634,48 @@ describe('BrowseService', () => {
       expect(info.columnId).toBe('TOPC1451557970755294')
     })
 
+    it('uses the verified programme name instead of a historical clip page title', async () => {
+      const pageUrl = 'https://tv.cctv.cn/2011/08/16/VIDE1336929662017714.shtml'
+      const html = `<script>
+        var guid = '002E74F78B6A49eaB6B1CD41FBDFC41B';
+        var itemid1 = 'VIDE1336929662017714';
+        var column_id = 'TOPC1451533782742171';
+        var commentTitle = '“贴吧”变“骂吧” 清华大学教授状告百度';
+      </script>`
+      const mockFetch = vi.fn(async (url: string) => {
+        if (url === pageUrl) return { ok: true, text: async () => html }
+        if (url.includes('videoinfoByGuid')) return { ok: true, json: async () => ({
+          title: '“贴吧”变“骂吧” 清华大学教授状告百度',
+          album_id: 'VIDA-history', ctid: 'TOPC1451533782742171',
+          vset_title: '经济信息联播', cvid: 'VIDE1336929662017714', tnum: '0'
+        }) }
+        return { ok: true, json: async () => ({ data: { total: 0, list: [] } }) }
+      })
+
+      const info = await new BrowseService(mockFetch).resolveColumnInfo(pageUrl)
+
+      expect(info).toMatchObject({
+        name: '经济信息联播', columnId: 'TOPC1451533782742171', kind: 'column',
+        listSource: { type: 'column', id: 'TOPC1451533782742171' }
+      })
+    })
+
+    it('does not take a programme name from metadata for a different column', async () => {
+      const html = `<script>
+        var guid = 'clip-guid'; var itemid1 = 'VIDEclip';
+        var column_id = 'TOPC-page'; var commentTitle = '页面标题';
+      </script>`
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, text: async () => html })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({
+          title: '页面标题', ctid: 'TOPC-other', vset_title: '其他栏目'
+        }) })
+
+      const info = await new BrowseService(mockFetch).resolveColumnInfo('https://tv.cctv.com/video.shtml')
+
+      expect(info).toMatchObject({ name: '页面标题', columnId: 'TOPC-page' })
+    })
+
     it('cleans title tag suffixes', async () => {
       const html = `<title>新闻联播_CCTV节目官网-CCTV-1_央视网(cctv.com)</title>
         <script>var topicID = 'TOPC1451557970755294';</script>`
@@ -976,6 +1018,87 @@ describe('BrowseService', () => {
   })
 
   describe('v.cctv and supplementary lists', () => {
+    it('loads every page of a column month as optional fragments', async () => {
+      const target = '002E74F78B6A49eaB6B1CD41FBDFC41B'
+      const mockFetch = vi.fn(async (url: string) => {
+        const query = new URL(url).searchParams
+        const mode = query.get('mode')
+        const page = Number(query.get('p'))
+        const list = mode === '0'
+          ? [{ guid: 'episode', title: '完整一期', time: '2011-08-16' }]
+          : page < 3
+            ? Array.from({ length: 100 }, (_, i) => ({
+                guid: `fragment-${page}-${i}`, title: `片段 ${i}`, time: '2011-08-16'
+              }))
+            : [{ guid: target, title: '历史新闻片段', time: '2011-08-16' }]
+        return { ok: true, json: async () => ({ data: { total: mode === '0' ? 1 : 201, list } }) }
+      })
+      const browse = new BrowseService(mockFetch)
+      const program = {
+        name: '测试栏目', columnId: 'TOPC1451533782742171', itemId: '', kind: 'column' as const,
+        listSource: { type: 'column' as const, id: 'TOPC1451533782742171', serviceId: 'tvcctv' as const }
+      }
+
+      const episodes = await browse.getColumnVideoList(program.columnId, 1, '201108')
+      const fragments = await browse.getSupplementaryVideos(program, '201108')
+
+      expect(episodes.map(video => video.guid)).toEqual(['episode'])
+      expect(fragments).toHaveLength(201)
+      expect(fragments.find(video => video.guid === target)?.contentType).toBe('fragment')
+      const requests = mockFetch.mock.calls.map(([url]) => new URL(url).searchParams)
+      expect(requests.map(query => [query.get('mode'), query.get('p')])).toEqual([
+        ['0', '1'], ['1', '1'], ['1', '2'], ['1', '3']
+      ])
+      expect(requests.every(query => query.get('d') === '201108')).toBe(true)
+    })
+
+    it('keeps existing highlight and topic labels ahead of column fragments', async () => {
+      const mockFetch = vi.fn(async (url: string) => {
+        if (url.includes('getVideoAlbumInfoByVideoId')) {
+          return { ok: true, json: async () => ({ data: { id: 'VIDA1' } }) }
+        }
+        if (url.includes('getVideoListByAlbumIdNew')) {
+          return { ok: true, json: async () => ({ data: { total: 1, list: [
+            { guid: 'shared-highlight', title: '看点', time: '2011-08-16' }
+          ] } }) }
+        }
+        if (url.includes('getVideoListByTopicIdInfo')) {
+          return { ok: true, json: async () => ({ data: [
+            { guid: 'shared-topic', video_title: '专题片段', video_shared_code: '2011-08-16' }
+          ] }) }
+        }
+        return { ok: true, json: async () => ({ data: { total: 4, list: [
+          { guid: 'shared-highlight', title: '栏目重复看点', time: '2011-08-16' },
+          { guid: 'shared-topic', title: '栏目重复片段', time: '2011-08-16' },
+          { guid: 'column-only', title: '栏目片段', time: '2011-08-16' },
+          { guid: 'other-month', title: '其他月份', time: '2011-09-01' }
+        ] } }) }
+      })
+      const videos = await new BrowseService(mockFetch).getSupplementaryVideos({
+        name: '测试栏目', columnId: 'TOPC1', itemId: 'VIDE1', kind: 'column',
+        listSource: { type: 'column', id: 'TOPC1', serviceId: 'tvcctv' }
+      }, '201108')
+
+      expect(videos.map(video => [video.guid, video.contentType])).toEqual([
+        ['shared-highlight', 'highlight'], ['shared-topic', 'fragment'], ['column-only', 'fragment']
+      ])
+    })
+
+    it('retains the primary list if the optional column fragment request fails', async () => {
+      const mockFetch = vi.fn(async (url: string) => {
+        if (new URL(url).searchParams.get('mode') === '1') throw new Error('temporary failure')
+        return { ok: true, json: async () => ({ data: { total: 1, list: [
+          { guid: 'episode', title: '完整一期', time: '2011-08-16' }
+        ] } }) }
+      })
+      const browse = new BrowseService(mockFetch)
+      const program = { name: '测试栏目', columnId: 'TOPC1', itemId: '', kind: 'column' as const }
+
+      expect((await browse.getColumnVideoList(program.columnId, 1, '201108')).map(video => video.guid))
+        .toEqual(['episode'])
+      await expect(browse.getSupplementaryVideos(program, '201108')).resolves.toEqual([])
+    })
+
     it('paginates v.cctv results even when the server returns fewer than the requested 100 items', async () => {
       const mockFetch = vi.fn()
         .mockResolvedValueOnce({ ok: true, json: async () => ({ count: 3, data: [
