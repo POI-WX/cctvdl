@@ -7,9 +7,13 @@ import fs from 'fs'
 import { appendFailures, logger, setLogLevel, setLogPath } from './logger'
 import { downloadCoverToDir } from './api/cover'
 import { checkSaveDir } from './preflight'
-import type { ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult } from '../shared/types'
+import type {
+  ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult,
+  DownloadEstimateInput, Quality
+} from '../shared/types'
 import { getProgramListSource } from '../shared/programs'
 import { sortVideosChronologically } from '../shared/video-metadata'
+import { DownloadEstimator } from './download/estimate'
 
 export function registerIpcHandlers(
   getWindow: () => BrowserWindow,
@@ -29,6 +33,7 @@ export function registerIpcHandlers(
   // appended while the batch was in flight. Reset to false when a fresh batch
   // starts (coordinator is idle at launch time).
   let currentBatchAutoOpen = false
+  const downloadEstimator = new DownloadEstimator()
   ipcMain.handle('browse-program', async (_, url: string) => {
     const info = await browse.resolveColumnInfo(url)
     const source = getProgramListSource(info)
@@ -202,6 +207,9 @@ export function registerIpcHandlers(
 
   ipcMain.handle('start-download', (_, jobs: DownloadJob[], autoOpen?: boolean, forceRedownload?: boolean) =>
     launchBatch(jobs, !!forceRedownload, !!autoOpen))
+
+  ipcMain.handle('estimate-download', (_, videos: DownloadEstimateInput[], quality: Quality, savePath: string) =>
+    downloadEstimator.estimate(videos, quality, savePath))
 
   // Retry bypasses the download-history filter and resumes from any cached segments.
   ipcMain.handle('retry-job', (_, job: DownloadJob) => launchBatch([job], true))

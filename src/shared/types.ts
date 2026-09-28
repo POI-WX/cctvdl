@@ -40,6 +40,8 @@ export interface VideoInfo {
   time: string
   channel?: string
   durationSeconds?: number
+  // Byte size advertised for the selected direct CCTV News quality, when present.
+  estimatedSizeBytes?: number
   // Full episodes are the default; only supplementary results need a label.
   contentType?: 'highlight' | 'fragment'
   // When set, the download pipeline uses this variant m3u8 URL directly instead
@@ -129,6 +131,15 @@ export interface DownloadStartResult {
   skipped: number
 }
 
+export type DownloadEstimateInput = Pick<VideoInfo, 'guid' | 'm3u8Url' | 'estimatedSizeBytes'>
+
+export interface DownloadEstimate {
+  estimatedBytes: number
+  estimatedCount: number
+  totalCount: number
+  diskFreeBytes: number | null
+}
+
 export interface Settings {
   savePath: string
   threadCount: number
@@ -191,6 +202,7 @@ export interface CctvdlApi {
   exportSingleVideos(): Promise<boolean>
   exportPrograms(): Promise<boolean>
   startDownload(jobs: DownloadJob[], autoOpen?: boolean, forceRedownload?: boolean): Promise<DownloadStartResult>
+  estimateDownload(videos: DownloadEstimateInput[], quality: Quality, savePath: string): Promise<DownloadEstimate>
   retryJob(job: DownloadJob): Promise<void>
   retryJobs(jobs: DownloadJob[]): Promise<void>
   cancelDownload(id: string): Promise<void>

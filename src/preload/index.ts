@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult, BatchStartInfo, CctvdlApi, Quality } from '../shared/types'
+import type {
+  ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult,
+  BatchStartInfo, CctvdlApi, Quality, DownloadEstimateInput
+} from '../shared/types'
 
 const api: CctvdlApi = {
   browseProgram: (url: string) => ipcRenderer.invoke('browse-program', url),
@@ -25,6 +28,8 @@ const api: CctvdlApi = {
   exportPrograms: () => ipcRenderer.invoke('export-programs'),
   startDownload: (jobs: DownloadJob[], autoOpen?: boolean, forceRedownload?: boolean) =>
     ipcRenderer.invoke('start-download', jobs, autoOpen, forceRedownload),
+  estimateDownload: (videos: DownloadEstimateInput[], quality: Quality, savePath: string) =>
+    ipcRenderer.invoke('estimate-download', videos, quality, savePath),
   retryJob: (job: DownloadJob) => ipcRenderer.invoke('retry-job', job),
   retryJobs: (jobs: DownloadJob[]) => ipcRenderer.invoke('retry-jobs', jobs),
   cancelDownload: (id: string) => ipcRenderer.invoke('cancel-download', id),

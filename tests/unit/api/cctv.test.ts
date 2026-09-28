@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
-  computeSignature, CCTVHLSBestParser, parseSegmentUrls, CctvApiService,
+  computeSignature, CCTVHLSBestParser, parseSegmentUrls, parsePlaylistDuration, CctvApiService,
   clearHlsCandidates, isCctv16Channel
 } from '../../../src/main/api/cctv'
 
@@ -15,6 +15,19 @@ describe('computeSignature', () => {
     const sig1 = computeSignature('1700000000')
     const sig2 = computeSignature('1700000001')
     expect(sig1).not.toBe(sig2)
+  })
+})
+
+describe('parsePlaylistDuration', () => {
+  it('sums every segment duration, including decimal durations', () => {
+    expect(parsePlaylistDuration('#EXTM3U\r\n#EXTINF:9.5,\r\na.ts\r\n#EXTINF:10,\r\nb.ts', 2))
+      .toBe(19.5)
+  })
+
+  it('rejects missing, invalid, or incomplete duration metadata', () => {
+    expect(parsePlaylistDuration('#EXTM3U\nsegment.ts', 1)).toBeUndefined()
+    expect(parsePlaylistDuration('#EXTINF:bad,\nsegment.ts', 1)).toBeUndefined()
+    expect(parsePlaylistDuration('#EXTINF:10,\nfirst.ts\nsecond.ts', 2)).toBeUndefined()
   })
 })
 
@@ -277,6 +290,18 @@ describe('CctvApiService', () => {
 
       expect(result.segmentUrls).toHaveLength(2)
       expect(result.encrypted).toBe(true)
+      expect(result).toMatchObject({ estimatedBandwidth: 1_000_000, durationSeconds: 20 })
+    })
+
+    it('uses the selected variant average bandwidth when available', async () => {
+      const mockFetch = makeChainedFetch(
+        '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1200000,AVERAGE-BANDWIDTH=800000,RESOLUTION=1280x720\n720p.m3u8',
+        '#EXTM3U\n#EXTINF:10,\nseg1.ts\n#EXT-X-ENDLIST'
+      )
+
+      const result = await new CctvApiService(mockFetch).resolveSegmentUrls('test-guid')
+
+      expect(result).toMatchObject({ estimatedBandwidth: 800_000, durationSeconds: 10 })
     })
 
     it('recognizes an extensionless URI as a master-playlist variant', async () => {
@@ -334,6 +359,17 @@ describe('CctvApiService', () => {
       // The variant URI requested must be the 270p one (460800 is within liuchang cap).
       const variantFetchUrl = (mockFetch.mock.calls[2][0] as string)
       expect(variantFetchUrl).toContain('270p.m3u8')
+    })
+
+    it('reports the actual fallback stream bandwidth, not the requested quality cap', async () => {
+      const mockFetch = makeChainedFetch(
+        '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=2048000,RESOLUTION=1280x720\n720p.m3u8',
+        '#EXTM3U\n#EXTINF:10,\nseg1.ts\n#EXT-X-ENDLIST'
+      )
+
+      const result = await new CctvApiService(mockFetch).resolveSegmentUrls('test-guid', 'liuchang')
+
+      expect(result).toMatchObject({ estimatedBandwidth: 2_048_000, durationSeconds: 10 })
     })
 
     it('handles CCTV-4K content via hls_h5e_url (same path as regular content)', async () => {

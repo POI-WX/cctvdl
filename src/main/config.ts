@@ -271,6 +271,8 @@ function normalizeVideo(value: unknown): VideoInfo | undefined {
     ...(typeof video.channel === 'string' && video.channel.trim() ? { channel: video.channel } : {}),
     ...(typeof video.durationSeconds === 'number' && Number.isFinite(video.durationSeconds) && video.durationSeconds >= 0
       ? { durationSeconds: Math.round(video.durationSeconds) } : {}),
+    ...(typeof video.estimatedSizeBytes === 'number' && Number.isFinite(video.estimatedSizeBytes) && video.estimatedSizeBytes > 0
+      ? { estimatedSizeBytes: Math.round(video.estimatedSizeBytes) } : {}),
     ...(video.contentType === 'highlight' || video.contentType === 'fragment'
       ? { contentType: video.contentType } : {})
   }

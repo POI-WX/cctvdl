@@ -222,6 +222,7 @@ export class CctvNewsService {
         coverUrl: v.coverUrl,
         time,
         m3u8Url: picked.url,
+        ...(picked.size > 0 ? { estimatedSizeBytes: picked.size } : {}),
         sourceUrl: pageUrl,
         sourceVideoIndex: idx
       }

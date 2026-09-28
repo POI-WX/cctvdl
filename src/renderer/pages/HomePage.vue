@@ -321,8 +321,9 @@
           <button
             v-if="viewMode === 'column' && !selectedIsAlbum && videos.length"
             class="footer-btn footer-btn-ghost"
+            :disabled="startingDownload"
             @click="downloadAll"
-          >下载本月</button>
+          >{{ estimating ? '估算中…' : '下载本月' }}</button>
           <button
             v-if="selectedCount"
             class="footer-btn footer-btn-clear"
@@ -356,7 +357,7 @@
             :disabled="!selectedCount || startingDownload"
             @click="downloadSelected"
           >
-            {{ allSelectedDownloaded ? '重新下载' : '下载选中' }}
+            {{ estimating ? '估算中…' : (allSelectedDownloaded ? '重新下载' : '下载选中') }}
             <span v-if="selectedCount" class="footer-btn-count">{{ selectedCount }}</span>
           </button>
         </div>
@@ -434,13 +435,14 @@
             <div class="preview-download-wrap">
               <button
                 class="preview-download-btn"
+                :disabled="startingDownload"
                 :class="{
                   downloaded: downloadedSet.has(selectedVideo.guid),
                   dimmed: currentListSelectedCount > 0 && !downloadedSet.has(selectedVideo.guid)
                 }"
                 @click="downloadVideos([selectedVideo], viewMode === 'single', false, downloadedSet.has(selectedVideo.guid))"
               >
-                {{ downloadedSet.has(selectedVideo.guid) ? '重新下载' : (viewMode === 'single' ? '下载此视频' : '下载此集') }}
+                {{ estimating ? '估算中…' : (downloadedSet.has(selectedVideo.guid) ? '重新下载' : (viewMode === 'single' ? '下载此视频' : '下载此集')) }}
                 <el-icon class="preview-download-icon"><Download /></el-icon>
               </button>
             </div>
@@ -494,7 +496,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, h, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { storeToRefs } from 'pinia'
 import { Download, Search } from '@element-plus/icons-vue'
@@ -502,7 +504,8 @@ import type { ProgramInfo, ProgramMonthBounds, VideoInfo, DownloadJob } from '..
 import { isProgramDeleteKey } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
 import { buildOutputPath, safeFilename } from '../../shared/filename'
-import { formatMediaDuration } from '../../shared/format'
+import { formatFileSize, formatMediaDuration } from '../../shared/format'
+import { displayPath } from '../../shared/path-display'
 import { QUALITY_LABELS } from '../../shared/settings'
 import { createLatestRequestGuard } from '../../shared/latest-request'
 import { VideoMetadataLoader } from '../../shared/video-metadata'
@@ -1065,6 +1068,7 @@ async function downloadAll() {
 }
 
 const startingDownload = ref(false)
+const estimating = ref(false)
 
 async function downloadVideos(
   videoList: VideoInfo[], autoOpen = false, consumeSelection = false, forceRedownload = false
@@ -1073,6 +1077,12 @@ async function downloadVideos(
   if (!videoList.length) return
   const validVideos = videoList.filter(v => v.guid)
   if (!validVideos.length) { ElMessage.warning('选中的视频链接无效'); return }
+  const redownloadIntent = forceRedownload || (consumeSelection && allSelectedDownloaded.value)
+  const estimateVideos = redownloadIntent
+    ? validVideos
+    : validVideos.filter(video => !downloadedSet.value.has(video.guid))
+  const skippedHistory = validVideos.length - estimateVideos.length
+  if (!estimateVideos.length) { ElMessage.info('所选视频已下载'); return }
   startingDownload.value = true
   try {
     const settings = await window.cctvdlApi.getSettings()
@@ -1088,20 +1098,48 @@ async function downloadVideos(
       if (v.sourceVideoIndex != null) job.sourceVideoIndex = v.sourceVideoIndex
       return job
     })
-    if (jobs.length > 1) {
-      try {
-        await ElMessageBox.confirm(
-          `将下载 ${jobs.length} 个视频\n清晰度：${QUALITY_LABELS[settings.quality]}\n保存到：${settings.savePath}`,
-          '确认下载',
-          { confirmButtonText: '加入队列', cancelButtonText: '返回检查', type: 'info' }
-        )
-      } catch {
-        return
-      }
+    estimating.value = true
+    const estimateInput = estimateVideos.map(video => ({
+      guid: video.guid, m3u8Url: video.m3u8Url, estimatedSizeBytes: video.estimatedSizeBytes
+    }))
+    const estimate = await window.cctvdlApi.estimateDownload(estimateInput, settings.quality, settings.savePath)
+      .catch(() => ({ estimatedBytes: 0, estimatedCount: 0, totalCount: estimateVideos.length, diskFreeBytes: null }))
+    estimating.value = false
+    const lowSpace = estimate.diskFreeBytes != null && estimate.estimatedBytes > estimate.diskFreeBytes
+    const remaining = estimate.totalCount - estimate.estimatedCount
+    const message = h('div', { class: 'download-confirm-details' }, [
+      ...[
+        ['清晰度', QUALITY_LABELS[settings.quality]],
+        ['预计大小', estimate.estimatedCount ? `约 ${formatFileSize(estimate.estimatedBytes)}` : '暂无法估算'],
+        ['估算范围', `${estimate.estimatedCount} / ${estimate.totalCount} 个`],
+        ['磁盘剩余', estimate.diskFreeBytes == null ? '无法检查' : (formatFileSize(estimate.diskFreeBytes) || '0 B')],
+        ['保存到', displayPath(settings.savePath)]
+      ].map(([label, value]) => h('div', { class: 'download-confirm-row' }, [
+        h('span', { class: 'download-confirm-label' }, label),
+        h('span', { class: 'download-confirm-value' }, value)
+      ])),
+      ...(skippedHistory > 0
+        ? [h('p', { class: 'download-confirm-note' }, `${skippedHistory} 个已下载视频将跳过。`)]
+        : []),
+      ...(remaining > 0
+        ? [h('p', { class: 'download-confirm-note' }, `${remaining} 个视频大小未知，实际占用可能更高。`)]
+        : []),
+      ...(lowSpace
+        ? [h('p', { class: 'download-confirm-warning' }, '剩余空间可能不足，请释放空间或更换保存位置。')]
+        : [])
+    ])
+    try {
+      const title = `${redownloadIntent ? '重新下载' : '下载'} ${estimateVideos.length} 个视频`
+      await ElMessageBox.confirm(message, title, {
+        customClass: 'download-confirm-dialog',
+        confirmButtonText: '加入队列', cancelButtonText: '返回检查'
+      })
+    } catch {
+      return
     }
     // Explicit redownload actions bypass history; the coordinator still deduplicates active jobs.
     const result = await window.cctvdlApi.startDownload(
-      jobs, autoOpen, forceRedownload || (consumeSelection && allSelectedDownloaded.value)
+      jobs, autoOpen, redownloadIntent
     )
     if (consumeSelection) contentStore.removeVideoSelections(validVideos.map(v => v.guid))
     if (result.added > 0) {
@@ -1110,11 +1148,64 @@ async function downloadVideos(
       ElMessage.info('所选视频已下载或已在下载队列中')
     }
   } catch (err) { ElMessage.error(`下载失败：${humanizeError(String(err))}`) }
-  finally { startingDownload.value = false }
+  finally { estimating.value = false; startingDownload.value = false }
 }
 </script>
 
 <style scoped>
+:global(.download-confirm-dialog) {
+  width: min(480px, calc(100vw - 32px));
+  padding: 0;
+  border-radius: 6px;
+  font-family: var(--el-font-family);
+}
+
+:global(.download-confirm-dialog .el-message-box__header) { padding: 20px 20px 0; }
+:global(.download-confirm-dialog .el-message-box__title) {
+  font-family: var(--el-font-family);
+  font-size: 16px;
+  font-weight: var(--app-font-weight-medium);
+}
+:global(.download-confirm-dialog .el-message-box__content) { padding: 16px 20px 4px; }
+:global(.download-confirm-dialog .el-message-box__message) { width: 100%; }
+:global(.download-confirm-dialog .el-message-box__btns) { padding: 14px 20px 20px; }
+:global(.download-confirm-dialog .el-message-box__btns .el-button) { min-width: 88px; height: 34px; font-size: 13px; }
+
+:global(.download-confirm-details) {
+  display: grid;
+  gap: 9px;
+  width: 100%;
+}
+
+:global(.download-confirm-row) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 62%);
+  gap: 12px;
+  align-items: start;
+  line-height: 1.45;
+}
+
+:global(.download-confirm-label) { color: var(--el-text-color-secondary); font-size: 14px; font-weight: 400; }
+:global(.download-confirm-value) {
+  min-width: 0;
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+  font-weight: 400;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+:global(.download-confirm-note) { margin: 0; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5; }
+:global(.download-confirm-warning) {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--el-color-warning);
+  border-radius: 4px;
+  background: var(--el-color-warning-light-9);
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /* ── 整体布局 ───────────────────────────────────── */
 .home-layout {
   display: flex;

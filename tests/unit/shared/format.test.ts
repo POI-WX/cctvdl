@@ -12,6 +12,7 @@ describe('shared/format', () => {
       expect(formatFileSize(1024)).toBe('1.0 KB')
       expect(formatFileSize(5 * 1024 * 1024)).toBe('5.0 MB')
       expect(formatFileSize(2 * 1024 * 1024 * 1024)).toBe('2.0 GB')
+      expect(formatFileSize(3 * 1024 * 1024 * 1024 * 1024)).toBe('3.0 TB')
     })
     it('uses 0 decimals for values ≥ 100 in their unit', () => {
       expect(formatFileSize(150 * 1024 * 1024)).toBe('150 MB')

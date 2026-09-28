@@ -88,7 +88,10 @@ test.describe('预览区重新下载', () => {
     fs.mkdirSync(savePath)
     fs.writeFileSync(path.join(userDataDir, 'config.json'), JSON.stringify({
       settings: { savePath },
-      singleVideos: [{ guid: 'test-redownload-guid', title: '已下载测试视频', time: '2026-06-12' }],
+      singleVideos: [{
+        guid: 'test-redownload-guid', title: '已下载测试视频', time: '2026-06-12',
+        estimatedSizeBytes: 10 * 1024 * 1024
+      }],
       downloadHistory: [{ guid: 'test-redownload-guid', title: '已下载测试视频', outputPath: '', fileSize: 0, completedAt: 1 }]
     }), 'utf-8')
     const app = await electron.launch({
@@ -108,6 +111,8 @@ test.describe('预览区重新下载', () => {
       await expect(page.locator('.el-popper[role="tooltip"]')).toBeHidden()
       await page.screenshot({ path: screenshotPath })
       await page.locator('.preview-download-btn').click()
+      await expect(page.locator('.el-message-box')).toContainText('约 10.0 MB')
+      await page.locator('.el-message-box').getByRole('button', { name: '加入队列' }).click()
 
       await expect(page.locator('.el-message--success')).toContainText('已添加 1 个下载任务')
     } finally {

@@ -26,6 +26,7 @@ export const QUALITY_MAP: Record<Quality, number> = {
 export interface HLSVariant {
   uri: string
   bandwidth: number
+  averageBandwidth?: number
   resolution: { width: number; height: number }
   score: [number, number]
 }
@@ -33,6 +34,8 @@ export interface HLSVariant {
 export interface ResolveResult {
   segmentUrls: string[]
   encrypted: boolean
+  estimatedBandwidth?: number
+  durationSeconds?: number
 }
 
 export interface CctvMediaInfo {
@@ -102,6 +105,7 @@ export class CCTVHLSBestParser {
       if (uriIdx >= lines.length) break
       const uri = new URL(lines[uriIdx], baseUrl).href
       const bandwidth = parseInt(attrs['BANDWIDTH'] || '0', 10) || 0
+      const averageBandwidth = parseInt(attrs['AVERAGE-BANDWIDTH'] || '0', 10) || 0
       const res = attrs['RESOLUTION'] || ''
       let width = 0, height = 0
       if (res.includes('x')) {
@@ -110,7 +114,11 @@ export class CCTVHLSBestParser {
         height = parseInt(parts[1], 10) || 0
       }
       // Collect ALL variants regardless of bandwidth cap; filtering happens below
-      variants.push({ uri, bandwidth, resolution: { width, height }, score: [width * height, bandwidth] })
+      variants.push({
+        uri, bandwidth,
+        ...(averageBandwidth > 0 ? { averageBandwidth } : {}),
+        resolution: { width, height }, score: [width * height, bandwidth]
+      })
       idx = uriIdx + 1
     }
     if (!variants.length) throw new Error('No HLS variants found')
@@ -137,6 +145,21 @@ export function parseSegmentUrls(variantText: string, baseUrl: string): string[]
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith('#'))
     .map((l) => new URL(l, baseUrl).href)
+}
+
+export function parsePlaylistDuration(playlistText: string, segmentCount: number): number | undefined {
+  let total = 0
+  let count = 0
+  for (const line of playlistText.split(/\r?\n/)) {
+    if (!line.startsWith('#EXTINF:')) continue
+    const match = /^#EXTINF:(\d+(?:\.\d+)?),/.exec(line)
+    if (!match) return undefined
+    const seconds = Number(match[1])
+    if (!Number.isFinite(seconds) || seconds <= 0) return undefined
+    total += seconds
+    count++
+  }
+  return count > 0 && count === segmentCount ? total : undefined
 }
 
 export class CctvApiService {
@@ -169,10 +192,10 @@ export class CctvApiService {
     if (info.hlsUrl && isCctv16Channel(info.channel)) {
       for (const candidate of clearHlsCandidates(info.hlsUrl, quality)) {
         try {
-          const segmentUrls = await this.resolvePlaylist(candidate, quality, signal)
-          if (segmentUrls.length) {
-            logger.debug(`CCTV-16 clear HLS: ${candidate}, ${segmentUrls.length} segments`)
-            return { segmentUrls, encrypted: false }
+          const playlist = await this.resolvePlaylist(candidate, quality, signal)
+          if (playlist.segmentUrls.length) {
+            logger.debug(`CCTV-16 clear HLS: ${candidate}, ${playlist.segmentUrls.length} segments`)
+            return { ...playlist, encrypted: false }
           }
         } catch (err) {
           if (signal?.aborted) throw err
@@ -182,12 +205,14 @@ export class CctvApiService {
     }
 
     if (info.hlsH5eUrl) {
-      return { segmentUrls: await this.resolvePlaylist(info.hlsH5eUrl, quality, signal), encrypted: true }
+      return { ...await this.resolvePlaylist(info.hlsH5eUrl, quality, signal), encrypted: true }
     }
-    return { segmentUrls: await this.resolvePlaylist(info.hlsUrl!, quality, signal), encrypted: false }
+    return { ...await this.resolvePlaylist(info.hlsUrl!, quality, signal), encrypted: false }
   }
 
-  private async resolvePlaylist(streamUrl: string, quality: Quality, signal?: AbortSignal): Promise<string[]> {
+  private async resolvePlaylist(
+    streamUrl: string, quality: Quality, signal?: AbortSignal
+  ): Promise<Pick<ResolveResult, 'segmentUrls' | 'estimatedBandwidth' | 'durationSeconds'>> {
     const playlistResp = await this.fetch(streamUrl, uaInit(signal))
     if (!playlistResp.ok) throw new Error(`HTTP ${playlistResp.status} fetching playlist`)
     const playlistText = await playlistResp.text()
@@ -197,7 +222,7 @@ export class CctvApiService {
     // if they were media segments.
     const isMediaPlaylist = /^\s*#EXTINF:/m.test(playlistText)
     const isMasterPlaylist = /^\s*#EXT-X-STREAM-INF:/m.test(playlistText)
-    if (isMediaPlaylist && !isMasterPlaylist) return parseSegmentUrls(playlistText, baseUrl)
+    if (isMediaPlaylist && !isMasterPlaylist) return { segmentUrls: parseSegmentUrls(playlistText, baseUrl) }
 
     const maxBw = QUALITY_MAP[quality] ?? Infinity
     const variant = CCTVHLSBestParser.best(playlistText, baseUrl, maxBw)
@@ -207,6 +232,13 @@ export class CctvApiService {
     const variantBase = variant.uri.substring(0, variant.uri.lastIndexOf('/') + 1)
     const segmentUrls = parseSegmentUrls(variantText, variantBase)
     logger.debug(`HLS variant: ${variant.bandwidth}bps ${variant.resolution.width}x${variant.resolution.height}, ${segmentUrls.length} segments`)
-    return segmentUrls
+    const durationSeconds = parsePlaylistDuration(variantText, segmentUrls.length)
+    const estimatedBandwidth = variant.averageBandwidth || variant.bandwidth
+    return {
+      segmentUrls,
+      ...(durationSeconds != null && estimatedBandwidth > 0
+        ? { durationSeconds, estimatedBandwidth }
+        : {})
+    }
   }
 }

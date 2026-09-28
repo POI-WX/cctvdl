@@ -26,6 +26,7 @@ vi.mock('../../src/main/preflight', () => ({
 }))
 
 import { registerIpcHandlers } from '../../src/main/ipc'
+import { DownloadEstimator } from '../../src/main/download/estimate'
 import { ipcMain, shell } from 'electron'
 import fs from 'fs'
 
@@ -507,6 +508,22 @@ describe('IPC Handlers', () => {
       finished(done)
 
       expect(shell.openPath).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('estimate-download', () => {
+    it('returns the estimate for the requested quality and save volume', async () => {
+      const estimate = { estimatedBytes: 10_485_760, estimatedCount: 1, totalCount: 2, diskFreeBytes: 20_000_000 }
+      const spy = vi.spyOn(DownloadEstimator.prototype, 'estimate').mockResolvedValueOnce(estimate)
+      const videos = [{ guid: 'a' }, { guid: 'b' }]
+      try {
+        const result = await handlers['estimate-download']({}, videos, 'gaoqing', '/save')
+
+        expect(spy).toHaveBeenCalledWith(videos, 'gaoqing', '/save')
+        expect(result).toEqual(estimate)
+      } finally {
+        spy.mockRestore()
+      }
     })
   })
 

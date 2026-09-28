@@ -266,6 +266,7 @@ describe('CctvNewsService.resolveFromUrl', () => {
     expect(videos[0].title).toBe('视频标题')
     expect(videos[0].coverUrl).toBe('https://x/c.jpg')
     expect(videos[0].m3u8Url).toBe('https://res/hd.m3u8')
+    expect(videos[0].estimatedSizeBytes).toBe(49e6)
     expect(videos[0].sourceUrl).toContain('item_id=15184105708774284671')
     expect(videos[0].sourceVideoIndex).toBe(0)
     expect(videos[0].time).toBe('2025-01-14 14:18:43')
@@ -290,6 +291,7 @@ describe('CctvNewsService.resolveFromUrl', () => {
     const videos = await new CctvNewsService(mockFetch)
       .resolveFromUrl('https://cctvnews.cctv.com/x?item_id=X', 'gaoqing')
     expect(videos[0].m3u8Url).toBe('https://res/sd.m3u8')
+    expect(videos[0].estimatedSizeBytes).toBe(16e6)
   })
 
   it('supports multiple videos per item_id', async () => {

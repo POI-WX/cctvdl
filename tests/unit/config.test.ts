@@ -233,12 +233,14 @@ describe('ConfigStore', () => {
       expect(store.getSingleVideos()).toHaveLength(2)
     })
 
-    it('persists optional channel, duration and content type metadata', () => {
+    it('persists optional channel, duration, size and content type metadata', () => {
       store.addSingleVideo({
-        ...mk('metadata'), channel: 'CCTV-16', durationSeconds: 123.6, contentType: 'highlight'
+        ...mk('metadata'), channel: 'CCTV-16', durationSeconds: 123.6,
+        estimatedSizeBytes: 12_345_678, contentType: 'highlight'
       })
       expect(store.getSingleVideos()[0]).toMatchObject({
-        channel: 'CCTV-16', durationSeconds: 124, contentType: 'highlight'
+        channel: 'CCTV-16', durationSeconds: 124,
+        estimatedSizeBytes: 12_345_678, contentType: 'highlight'
       })
     })
 
