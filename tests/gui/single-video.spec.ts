@@ -81,6 +81,44 @@ test.describe('单个视频集合', () => {
   })
 })
 
+test.describe('预览区重新下载', () => {
+  test('已下载视频点击重新下载后重新入队', async () => {
+    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cctvdl-e2e-redownload-'))
+    const savePath = path.join(userDataDir, 'downloads')
+    fs.mkdirSync(savePath)
+    fs.writeFileSync(path.join(userDataDir, 'config.json'), JSON.stringify({
+      settings: { savePath },
+      singleVideos: [{ guid: 'test-redownload-guid', title: '已下载测试视频', time: '2026-06-12' }],
+      downloadHistory: [{ guid: 'test-redownload-guid', title: '已下载测试视频', outputPath: '', fileSize: 0, completedAt: 1 }]
+    }), 'utf-8')
+    const app = await electron.launch({
+      args: [path.join(__dirname, '../../out/main/index.js'), `--user-data-dir=${userDataDir}`]
+    })
+    try {
+      const page = await app.firstWindow()
+      await page.waitForLoadState('domcontentloaded')
+      await page.locator('.sidebar-nav-item', { hasText: '首页' }).click()
+      await page.locator('.single-entry').click()
+      await page.locator('.video-item', { hasText: '已下载测试视频' }).click()
+      await expect(page.locator('.preview-download-btn')).toContainText('重新下载')
+
+      const screenshotPath = path.join(__dirname, '../../test-results/gui/preview-redownload.png')
+      fs.mkdirSync(path.dirname(screenshotPath), { recursive: true })
+      await page.mouse.move(1000, 750)
+      await expect(page.locator('.el-popper[role="tooltip"]')).toBeHidden()
+      await page.screenshot({ path: screenshotPath })
+      await page.locator('.preview-download-btn').click()
+
+      await expect(page.locator('.el-message--success')).toContainText('已添加 1 个下载任务')
+    } finally {
+      await app.close()
+      if (path.dirname(userDataDir) === os.tmpdir() && path.basename(userDataDir).startsWith('cctvdl-e2e-redownload-')) {
+        fs.rmSync(userDataDir, { recursive: true, force: true })
+      }
+    }
+  })
+})
+
 /**
  * 联网 GUI：粘贴真实电影链接（僵尸栏目页面）→ 应识别为单视频并导入集合，
  * 预览面板显示正确封面与简介。

@@ -439,6 +439,20 @@ describe('IPC Handlers', () => {
       expect(result).toEqual({ added: 1, skipped: 0 })
     })
 
+    it('force-redownload still skips a guid already active in the queue', async () => {
+      const job = { id: 'redo-active', guid: 'g', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }
+      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
+      vi.mocked(mockCoordinator.appendJobs).mockReturnValueOnce([])
+
+      const result = await handlers['start-download']({}, [job], false, true)
+
+      expect(mockConfig.isInDownloadHistory).not.toHaveBeenCalled()
+      expect(result).toEqual({ added: 0, skipped: 1 })
+      expect(mockWindow.webContents.send).toHaveBeenCalledWith('download-skipped', {
+        guid: 'g', title: 'T', reason: '已在下载队列中'
+      })
+    })
+
     it('two consecutive start-download calls both append (no queue replace)', async () => {
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
       const jobsA = [{ id: 'jA', guid: 'gA', title: 'A', savePath: '/tmp/a.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]

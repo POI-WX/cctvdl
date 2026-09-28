@@ -438,7 +438,7 @@
                   downloaded: downloadedSet.has(selectedVideo.guid),
                   dimmed: currentListSelectedCount > 0 && !downloadedSet.has(selectedVideo.guid)
                 }"
-                @click="downloadVideos([selectedVideo], viewMode === 'single')"
+                @click="downloadVideos([selectedVideo], viewMode === 'single', false, downloadedSet.has(selectedVideo.guid))"
               >
                 {{ downloadedSet.has(selectedVideo.guid) ? '重新下载' : (viewMode === 'single' ? '下载此视频' : '下载此集') }}
                 <el-icon class="preview-download-icon"><Download /></el-icon>
@@ -1066,7 +1066,9 @@ async function downloadAll() {
 
 const startingDownload = ref(false)
 
-async function downloadVideos(videoList: VideoInfo[], autoOpen = false, consumeSelection = false) {
+async function downloadVideos(
+  videoList: VideoInfo[], autoOpen = false, consumeSelection = false, forceRedownload = false
+) {
   if (startingDownload.value) return
   if (!videoList.length) return
   const validVideos = videoList.filter(v => v.guid)
@@ -1097,10 +1099,10 @@ async function downloadVideos(videoList: VideoInfo[], autoOpen = false, consumeS
         return
       }
     }
-    // The button explicitly says “重新下载” only when every selected item is
-    // already in history. In that case bypass history, while the coordinator's
-    // active-guid dedupe still protects any job currently in flight.
-    const result = await window.cctvdlApi.startDownload(jobs, autoOpen, consumeSelection && allSelectedDownloaded.value)
+    // Explicit redownload actions bypass history; the coordinator still deduplicates active jobs.
+    const result = await window.cctvdlApi.startDownload(
+      jobs, autoOpen, forceRedownload || (consumeSelection && allSelectedDownloaded.value)
+    )
     if (consumeSelection) contentStore.removeVideoSelections(validVideos.map(v => v.guid))
     if (result.added > 0) {
       ElMessage.success(`已添加 ${result.added} 个下载任务${result.skipped ? `，忽略 ${result.skipped} 个重复或已下载项` : ''}`)
@@ -1977,13 +1979,12 @@ html.dark .preview-downloaded-badge {
 }
 
 .preview-download-btn.downloaded {
-  background: var(--el-fill-color);
-  color: var(--el-text-color-secondary);
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
   box-shadow: none;
 }
 .preview-download-btn.downloaded:hover {
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-8);
   box-shadow: none;
   transform: none;
 }
