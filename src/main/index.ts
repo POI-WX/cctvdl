@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, Notification, nativeImage, screen, clipboard } from 'electron'
+import { app, BrowserWindow, Menu, Tray, nativeImage, screen, clipboard } from 'electron'
 import { spawnSync } from 'child_process'
 import path from 'path'
 import fs from 'fs'
@@ -16,6 +16,7 @@ import { taskbarFraction } from '../shared/progress'
 import { sanitizeBounds } from '../shared/window-bounds'
 import { checkForUpdate } from '../shared/update-check'
 import { getProgramListSource } from '../shared/programs'
+import { CompletionNotifier, revealDownloadWindow } from './notification'
 import type { BatchResult, DownloadProgress } from '../shared/types'
 
 const isMac   = process.platform === 'darwin'
@@ -127,6 +128,8 @@ app.whenReady().then(() => {
     }
     return
   }
+  // Match the NSIS appId so Windows associates toast clicks with this app.
+  if (process.platform === 'win32') app.setAppUserModelId('com.cctvdl.app')
   const config = new ConfigStore()
   configRef = config
   const settings = config.getSettings()
@@ -191,6 +194,12 @@ app.whenReady().then(() => {
   const finalizer = new Finalizer()
   const coordinator = new DownloadCoordinator(api, decryptor, finalizer, config)
   coordinatorRef = coordinator
+  const completionNotifier = new CompletionNotifier(() => {
+    revealDownloadWindow(
+      () => mainWindow,
+      () => { mainWindow = createMainWindow(); return mainWindow }
+    )
+  })
 
   // IPC handlers resolve the live window lazily so they survive recreation on macOS.
   registerIpcHandlers(
@@ -229,13 +238,8 @@ app.whenReady().then(() => {
         else tray.setToolTip('cctvdl')
       }
     }
-    if (!mainWindow || !mainWindow.isVisible() || mainWindow.isMinimized()) {
-      if (Notification.isSupported()) {
-        new Notification({
-          title: 'cctvdl',
-          body: `下载完成：${result.completed}个，失败：${result.failed}个`
-        }).show()
-      }
+    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible() || mainWindow.isMinimized()) {
+      completionNotifier.show(result)
     }
   })
 

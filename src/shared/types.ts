@@ -225,6 +225,7 @@ export interface CctvdlApi {
   onClipboardLink(cb: (url: string) => void): () => void
   onUpdateAvailable(cb: (payload: { version: string }) => void): () => void
   onNewContent(cb: (payload: { columnId: string; count: number }) => void): () => void
+  onNavigateDownload(cb: () => void): () => void
   getDownloadHistory(): Promise<HistoryEntry[]>
   clearDownloadHistory(): Promise<void>
   removeFromDownloadHistory(guid: string): Promise<void>

@@ -188,6 +188,10 @@ onMounted(() => {
     updateVersion.value = version
   }))
 
+  cleanups.push(window.cctvdlApi.onNavigateDownload(() => {
+    activeTab.value = 'download'
+  }))
+
   cleanups.push(window.cctvdlApi.onClipboardLink(queueClipboardLink))
   void window.cctvdlApi.checkClipboardNow()
 })

@@ -66,6 +66,17 @@ test.describe('cctvdl GUI 测试', () => {
     await expect(navTab(page, '设置')).toBeVisible()
   })
 
+  test('完成通知的导航事件切换到下载页', async () => {
+    await navTab(page, '首页').click()
+    await electronApp.evaluate(({ BrowserWindow }: any) => {
+      BrowserWindow.getAllWindows()[0].webContents.send('navigate-download')
+    })
+
+    await expect(navTab(page, '下载')).toHaveClass(/active/)
+    await expect(page.locator('.dl-overview-title', { hasText: '下载队列' })).toBeVisible()
+    await navTab(page, '首页').click()
+  })
+
   test('首页视频区有搜索框', async () => {
     await navTab(page, '首页').click()
     await page.waitForTimeout(300)

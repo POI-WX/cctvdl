@@ -91,6 +91,11 @@ const api: CctvdlApi = {
     ipcRenderer.on('new-content', handler)
     return () => ipcRenderer.removeListener('new-content', handler)
   },
+  onNavigateDownload: (cb: () => void) => {
+    const handler = () => cb()
+    ipcRenderer.on('navigate-download', handler)
+    return () => ipcRenderer.removeListener('navigate-download', handler)
+  },
   isMac: process.platform === 'darwin'
 }
 
