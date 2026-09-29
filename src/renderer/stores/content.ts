@@ -8,6 +8,7 @@ import { recordMonthResult } from '../../shared/month-tracker'
 interface SelectedVideoEntry {
   video: VideoInfo
   source: string
+  sourceProgramId: string | null
 }
 
 export const useContentStore = defineStore('content', () => {
@@ -30,6 +31,9 @@ export const useContentStore = defineStore('content', () => {
   // Cross-month and cross-program selection. Keyed by guid so selections stay
   // intact while users switch months or programs before batch downloading.
   const selectedVideoMap = ref<Map<string, SelectedVideoEntry>>(new Map())
+  const includeHighlightsEnabled = ref(false)
+  const listLoadedIncludeHighlights = ref<boolean | null>(null)
+  const listNeedsReload = ref(false)
   const programQuery = ref('')
   const searchQuery = ref('')
   const debouncedSearch = ref('')
@@ -70,15 +74,21 @@ export const useContentStore = defineStore('content', () => {
   // actually gets sent to the download pipeline.
   const allSelectedVideos = computed(() => Array.from(selectedVideoMap.value.values(), entry => entry.video))
   const selectedVideoGroups = computed(() => {
-    const groups = new Map<string, VideoInfo[]>()
-    for (const { video, source } of selectedVideoMap.value.values()) {
-      const list = groups.get(source) ?? []
-      list.push(video)
-      groups.set(source, list)
+    const groups = new Map<string, { id: string; name: string; videos: VideoInfo[] }>()
+    for (const { video, source, sourceProgramId } of selectedVideoMap.value.values()) {
+      const id = sourceProgramId ?? '__single__'
+      let group = groups.get(id)
+      if (!group) {
+        group = { id, name: source, videos: [] }
+        groups.set(id, group)
+      }
+      group.videos.push(video)
     }
-    return Array.from(groups, ([name, videos]) => ({ name, videos }))
+    return Array.from(groups.values())
   })
   const selectedCount = computed(() => selectedVideoMap.value.size)
+  const allSelectedAreSingleVideos = computed(() => selectedCount.value > 0
+    && Array.from(selectedVideoMap.value.values()).every(entry => entry.sourceProgramId === null))
   const allSelected = computed(() =>
     filteredVideos.value.length > 0
     && filteredVideos.value.every(v => selectedVideoMap.value.has(v.guid))
@@ -141,7 +151,9 @@ export const useContentStore = defineStore('content', () => {
     if (next.has(v.guid)) {
       next.delete(v.guid)
     } else {
-      next.set(v.guid, { video: v, source: source || '其他视频' })
+      next.set(v.guid, {
+        video: v, source: source || '其他视频', sourceProgramId: selectedProgram.value?.columnId ?? null
+      })
     }
     selectedVideoMap.value = next
   }
@@ -160,6 +172,22 @@ export const useContentStore = defineStore('content', () => {
     if (changed) selectedVideoMap.value = next
   }
 
+  function removeProgramSelections(columnId: string) {
+    const next = new Map(selectedVideoMap.value)
+    for (const [guid, entry] of next) {
+      if (entry.sourceProgramId === columnId) next.delete(guid)
+    }
+    selectedVideoMap.value = next
+  }
+
+  function clearProgramSelections() {
+    const next = new Map(selectedVideoMap.value)
+    for (const [guid, entry] of next) {
+      if (entry.sourceProgramId !== null) next.delete(guid)
+    }
+    selectedVideoMap.value = next
+  }
+
   // Select / deselect every video in the current filtered list. Used by the
   // header checkbox. Operates on filteredVideos so search results can be
   // bulk-selected without touching hidden rows.
@@ -167,7 +195,11 @@ export const useContentStore = defineStore('content', () => {
     const next = new Map(selectedVideoMap.value)
     for (const v of filteredVideos.value) {
       if (select) {
-        next.set(v.guid, { video: v, source: selectedProgram.value?.name || '其他视频' })
+        next.set(v.guid, {
+          video: v,
+          source: selectedProgram.value?.name || (viewMode.value === 'single' ? '单个视频' : '其他视频'),
+          sourceProgramId: selectedProgram.value?.columnId ?? null
+        })
       } else {
         next.delete(v.guid)
       }
@@ -182,6 +214,10 @@ export const useContentStore = defineStore('content', () => {
     selectedVideoMap.value = new Map()
   }
 
+  function setIncludeHighlightsEnabled(enabled: boolean) {
+    includeHighlightsEnabled.value = enabled
+  }
+
   function markDownloaded(guid: string) {
     if (!guid || downloadedSet.value.has(guid)) return
     const next = new Set(downloadedSet.value)
@@ -192,12 +228,16 @@ export const useContentStore = defineStore('content', () => {
   return {
     programs, singleVideos, videos, viewMode, selectedProgram, selectedVideo,
     selectedMonth, downloadedSet, newContentMap, emptyMonths, selectedVideoMap,
+    includeHighlightsEnabled, listLoadedIncludeHighlights, listNeedsReload,
     programQuery, searchQuery, debouncedSearch,
     isFav, filteredPrograms, displayRows,
     filteredVideos, isVideoSelected, allSelectedVideos, selectedVideoGroups, selectedCount,
+    allSelectedAreSingleVideos,
     allSelected, downloadedCount, allSelectedDownloaded,
     emptyHint, groupedVideos,
     refreshDownloadedSet, recordVideosLoaded, clearEmptyMonths, applyNewContent, clearNewContent,
-    toggleVideoSelection, removeVideoSelection, removeVideoSelections, toggleSelectAllFiltered, clearAllSelection, markDownloaded
+    toggleVideoSelection, removeVideoSelection, removeVideoSelections,
+    removeProgramSelections, clearProgramSelections, toggleSelectAllFiltered,
+    clearAllSelection, setIncludeHighlightsEnabled, markDownloaded
   }
 })

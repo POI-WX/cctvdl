@@ -339,7 +339,9 @@ import { buildOutputPath } from '../../shared/filename'
 import { applyDarkMode } from '../utils/dark-mode'
 import { displayPath } from '../../shared/path-display'
 import { relativeTime, formatFileSize } from '../../shared/format'
+import { useContentStore } from '../stores/content'
 
+const contentStore = useContentStore()
 const form = ref<Settings>({
   savePath: '', threadCount: 8, quality: 'auto',
   reencode: false, logLevel: 'info', darkMode: false, logPath: '', autoOpenFolder: false, clipboardWatch: false,
@@ -399,6 +401,7 @@ function setAccent(color: string) {
 onMounted(async () => {
   const loaded = await window.cctvdlApi.getSettings()
   form.value = { ...form.value, ...loaded }
+  contentStore.setIncludeHighlightsEnabled(form.value.includeHighlights === true)
   savedSettingsFingerprint.value = settingsFingerprint(form.value)
   settingsLoaded.value = true
   applyDarkMode(form.value.darkMode ?? false)
@@ -485,6 +488,7 @@ async function save() {
   if (!isDirty.value) return
   if (!form.value.savePath) { ElMessage.warning('请先在设置中配置视频保存目录'); return }
   await window.cctvdlApi.saveSettings(toRaw(form.value))
+  contentStore.setIncludeHighlightsEnabled(form.value.includeHighlights === true)
   savedSettingsFingerprint.value = settingsFingerprint(form.value)
   const now = new Date()
   lastSaved.value = `已保存 ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`

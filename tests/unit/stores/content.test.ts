@@ -240,14 +240,45 @@ describe('useContentStore', () => {
 
     it('groups selected videos by their source program', () => {
       const store = useContentStore()
+      store.selectedProgram = { name: '栏目 A', columnId: 'TOPC-A', itemId: '' }
       store.toggleVideoSelection(mkVideo('A1'), '栏目 A')
+      store.selectedProgram = { name: '栏目 B', columnId: 'TOPC-B', itemId: '' }
       store.toggleVideoSelection(mkVideo('B1'), '栏目 B')
+      store.selectedProgram = { name: '栏目 A', columnId: 'TOPC-A', itemId: '' }
       store.toggleVideoSelection(mkVideo('A2'), '栏目 A')
 
       expect(store.selectedVideoGroups).toEqual([
-        { name: '栏目 A', videos: [expect.objectContaining({ guid: 'A1' }), expect.objectContaining({ guid: 'A2' })] },
-        { name: '栏目 B', videos: [expect.objectContaining({ guid: 'B1' })] }
+        { id: 'TOPC-A', name: '栏目 A', videos: [expect.objectContaining({ guid: 'A1' }), expect.objectContaining({ guid: 'A2' })] },
+        { id: 'TOPC-B', name: '栏目 B', videos: [expect.objectContaining({ guid: 'B1' })] }
       ])
+    })
+
+    it('keeps similarly named programs separate and only removes the deleted source', () => {
+      const store = useContentStore()
+      store.selectedProgram = { name: '同名栏目', columnId: 'TOPC-A', itemId: '' }
+      store.toggleVideoSelection(mkVideo('A'), '同名栏目')
+      store.selectedProgram = { name: '同名栏目', columnId: 'TOPC-B', itemId: '' }
+      store.toggleVideoSelection(mkVideo('B'), '同名栏目')
+      store.selectedProgram = null
+      store.viewMode = 'single'
+      store.toggleVideoSelection(mkVideo('S'), '单个视频')
+
+      expect(store.selectedVideoGroups.map(group => group.id)).toEqual(['TOPC-A', 'TOPC-B', '__single__'])
+      expect(store.allSelectedAreSingleVideos).toBe(false)
+      store.removeProgramSelections('TOPC-A')
+      expect(store.allSelectedVideos.map(video => video.guid)).toEqual(['B', 'S'])
+      store.clearProgramSelections()
+      expect(store.allSelectedVideos.map(video => video.guid)).toEqual(['S'])
+      expect(store.allSelectedAreSingleVideos).toBe(true)
+    })
+
+    it('retains selected clips when their optional list is turned off', () => {
+      const store = useContentStore()
+      store.toggleVideoSelection({ ...mkVideo('clip'), contentType: 'fragment' }, '栏目')
+      store.setIncludeHighlightsEnabled(true)
+      store.setIncludeHighlightsEnabled(false)
+      expect(store.selectedCount).toBe(1)
+      expect(store.allSelectedVideos[0].guid).toBe('clip')
     })
 
     it('toggleSelectAllFiltered(true) adds every filtered video; (false) removes them', () => {

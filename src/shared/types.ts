@@ -129,6 +129,7 @@ export interface BatchStartInfo {
 export interface DownloadStartResult {
   added: number
   skipped: number
+  addedGuids: string[]
 }
 
 export type DownloadEstimateInput = Pick<VideoInfo, 'guid' | 'm3u8Url' | 'estimatedSizeBytes'>

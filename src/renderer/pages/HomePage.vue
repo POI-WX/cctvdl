@@ -342,7 +342,7 @@
                 <span class="selected-videos-title">已选内容</span>
                 <span class="selected-videos-count">{{ selectedCount }} 个视频</span>
               </div>
-              <div v-for="group in selectedVideoGroups" :key="group.name" class="selected-video-group">
+              <div v-for="group in selectedVideoGroups" :key="group.id" class="selected-video-group">
                 <div class="selected-video-group-name">
                   <span :title="group.name">{{ group.name }}</span>
                   <span>{{ group.videos.length }}</span>
@@ -355,7 +355,7 @@
             </div>
           </el-popover>
           <button
-            v-if="viewMode === 'column'"
+            v-if="viewMode === 'column' || selectedCount"
             class="footer-btn"
             :class="selectedCount ? 'footer-btn-primary' : 'footer-btn-idle'"
             :disabled="!selectedCount || startingDownload"
@@ -522,13 +522,23 @@ const {
   programQuery, searchQuery, debouncedSearch,
   filteredPrograms, displayRows,
   filteredVideos, allSelected, downloadedCount, allSelectedDownloaded,
-  emptyHint, groupedVideos, allSelectedVideos, selectedVideoGroups, selectedCount
+  emptyHint, groupedVideos, allSelectedVideos, selectedVideoGroups, selectedCount,
+  allSelectedAreSingleVideos,
+  includeHighlightsEnabled, listLoadedIncludeHighlights, listNeedsReload
 } = storeToRefs(contentStore)
 
 const isFav = contentStore.isFav
 const isVideoSelected = contentStore.isVideoSelected
 const toggleVideoSelection = contentStore.toggleVideoSelection
 const selectedIsAlbum = computed(() => (selectedProgram.value?.kind ?? 'column') === 'album')
+let homeReady = false
+let homeMounted = false
+watch(includeHighlightsEnabled, () => {
+  if (homeReady && !loadingVideos.value && viewMode.value === 'column' && selectedProgram.value
+    && listLoadedIncludeHighlights.value !== includeHighlightsEnabled.value) {
+    void loadVideos(true)
+  }
+})
 const programMonthBounds = ref<ProgramMonthBounds | null>(null)
 const monthBoundsLoading = ref(false)
 let monthBoundsRequestId = 0
@@ -691,8 +701,14 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 onMounted(async () => {
+  homeMounted = true
+  const settings = await window.cctvdlApi.getSettings()
+  if (!homeMounted) return
+  const includeHighlights = settings.includeHighlights === true
+  contentStore.setIncludeHighlightsEnabled(includeHighlights)
   programs.value = await window.cctvdlApi.getPrograms()
   singleVideos.value = await window.cctvdlApi.getSingleVideos()
+  if (!homeMounted) return
   contentStore.refreshDownloadedSet()
   // Only seed the month on the very first mount. Subsequent mounts (from
   // v-if tab switching) must preserve whatever month the user last picked
@@ -733,9 +749,18 @@ onMounted(async () => {
 
   // 设置页清除历史后刷新已下载标记
   window.addEventListener('cctvdl:history-cleared', onHistoryCleared)
+  homeReady = true
+  if (viewMode.value === 'column' && selectedProgram.value
+    && (listNeedsReload.value || listLoadedIncludeHighlights.value !== includeHighlightsEnabled.value)) {
+    void loadVideos(true)
+  }
 })
 
 onUnmounted(() => {
+  homeMounted = false
+  homeReady = false
+  videoLoadGuard.begin()
+  loadingVideos.value = false
   cleanupSkipped?.()
   cleanupNewContent?.()
   cleanupJobFinished?.()
@@ -799,27 +824,24 @@ async function doImport(url: string) {
       // articles may return multiple videos; regular pages return one.
       try {
         const settings = await window.cctvdlApi.getSettings()
-        const videos = await window.cctvdlApi.resolveVideoBatch(url, settings.quality)
-        if (videos.length === 0) throw columnErr
-        if (videos.length === 1) {
-          await addAndShowSingleVideo(videos[0])
+        const resolvedVideos = await window.cctvdlApi.resolveVideoBatch(url, settings.quality)
+        if (resolvedVideos.length === 0) throw columnErr
+        if (resolvedVideos.length === 1) {
+          await addAndShowSingleVideo(resolvedVideos[0])
         } else {
           let added = 0
-          for (const v of videos) {
+          for (const v of resolvedVideos) {
             if (await window.cctvdlApi.addSingleVideo(v)) added++
           }
           singleVideos.value = await window.cctvdlApi.getSingleVideos()
-          videos.value = singleVideos.value
-          viewMode.value = 'single'
-          selectedProgram.value = null
-          contentStore.clearAllSelection()
-          selectedVideo.value = videos[0]
+          selectSingleMode()
+          selectedVideo.value = resolvedVideos[0]
           coverError.value = false
           coverLoading.value = true
           importUrl.value = ''
           importSuccess.value = true
           setTimeout(() => { importSuccess.value = false }, 800)
-          ElMessage.success(added > 0 ? `已导入 ${added} 个视频` : `已在单个视频列表：${videos.length} 个视频`)
+          ElMessage.success(added > 0 ? `已导入 ${added} 个视频` : `已在单个视频列表：${resolvedVideos.length} 个视频`)
         }
         return
       } catch {
@@ -863,12 +885,12 @@ function selectSingleMode() {
   videoLoadGuard.begin()
   loadingVideos.value = false
   videoLoadFailed.value = false
+  listNeedsReload.value = false
   viewMode.value = 'single'
   selectedProgram.value = null
   selectedVideo.value = null
   searchQuery.value = ''
   debouncedSearch.value = ''
-  contentStore.clearAllSelection()
   contentStore.refreshDownloadedSet()
   videos.value = singleVideos.value
   resetVideoListScroll()
@@ -893,6 +915,7 @@ async function removeSingleVideo(v: VideoInfo) {
   await window.cctvdlApi.deleteSingleVideo(v.guid)
   singleVideos.value = await window.cctvdlApi.getSingleVideos()
   videos.value = videos.value.filter(x => x.guid !== v.guid)
+  contentStore.removeVideoSelection(v.guid)
   if (selectedVideo.value?.guid === v.guid) selectedVideo.value = null
 }
 
@@ -903,8 +926,12 @@ async function deleteProgram(row: ProgramInfo) {
     })
     await window.cctvdlApi.deleteProgram(row.columnId)
     programs.value = await window.cctvdlApi.getPrograms()
-    contentStore.clearAllSelection()
-    if (selectedProgram.value?.columnId === row.columnId) { selectedProgram.value = null; videos.value = [] }
+    contentStore.removeProgramSelections(row.columnId)
+    if (selectedProgram.value?.columnId === row.columnId) {
+      selectedProgram.value = null
+      videos.value = []
+      listNeedsReload.value = false
+    }
     ElMessage.success('已删除')
   } catch { /* cancelled */ }
 }
@@ -934,8 +961,9 @@ async function clearAllPrograms() {
     await window.cctvdlApi.clearPrograms()
     programs.value = []
     selectedProgram.value = null
-    videos.value = []
-    contentStore.clearAllSelection()
+    listNeedsReload.value = false
+    if (viewMode.value === 'column') videos.value = []
+    contentStore.clearProgramSelections()
     ElMessage.success('已清空')
   } catch { /* cancelled */ }
 }
@@ -950,9 +978,11 @@ async function loadVideos(forceRefresh = false) {
   }
   const isAlbum = (program.kind ?? 'column') === 'album'
   const month = isAlbum ? '' : selectedMonth.value
+  const includeHighlightsForRequest = includeHighlightsEnabled.value
   const requestId = videoLoadGuard.begin()
   loadingVideos.value = true
   videoLoadFailed.value = false
+  listNeedsReload.value = true
   albumLoadedCount.value = 0
   videos.value = []
   contentStore.refreshDownloadedSet()
@@ -963,6 +993,8 @@ async function loadVideos(forceRefresh = false) {
     const list = await window.cctvdlApi.listVideos(program, month, requestId, forceRefresh)
     if (!isRelevant()) return
     videos.value = isAlbum ? sortAlbumList(list) : list
+    listLoadedIncludeHighlights.value = includeHighlightsForRequest
+    listNeedsReload.value = false
     // Only drop the preview if its video is no longer in the freshly loaded
     // list (e.g. deleted from the server). Otherwise preserve so users can
     // browse months without losing their preview context.
@@ -976,7 +1008,12 @@ async function loadVideos(forceRefresh = false) {
       ElMessage.error(`加载失败：${humanizeError(String(err))}`)
     }
   } finally {
-    if (videoLoadGuard.isCurrent(requestId)) loadingVideos.value = false
+    if (videoLoadGuard.isCurrent(requestId)) {
+      loadingVideos.value = false
+      if (isRelevant() && includeHighlightsEnabled.value !== includeHighlightsForRequest) {
+        void loadVideos(true)
+      }
+    }
   }
 }
 
@@ -1079,8 +1116,8 @@ async function downloadCoverImage() {
   }
 }
 
-// Selected items: auto-open only for single videos (column partial selections don't).
-async function downloadSelected() { await downloadVideos(allSelectedVideos.value, viewMode.value === 'single', true) }
+// Only a batch consisting entirely of independent videos may auto-open its folder.
+async function downloadSelected() { await downloadVideos(allSelectedVideos.value, allSelectedAreSingleVideos.value, true) }
 
 // 下载本月（仅栏目）：始终下载当前月份的完整列表，不受搜索过滤或其他
 // 栏目、月份的已选项影响；这是「全量下载」意图，会触发自动打开文件夹。
@@ -1163,7 +1200,7 @@ async function downloadVideos(
     const result = await window.cctvdlApi.startDownload(
       jobs, autoOpen, redownloadIntent
     )
-    if (consumeSelection) contentStore.removeVideoSelections(validVideos.map(v => v.guid))
+    if (consumeSelection) contentStore.removeVideoSelections(result.addedGuids)
     if (result.added > 0) {
       ElMessage.success(`已添加 ${result.added} 个下载任务${result.skipped ? `，忽略 ${result.skipped} 个重复或已下载项` : ''}`)
     } else {

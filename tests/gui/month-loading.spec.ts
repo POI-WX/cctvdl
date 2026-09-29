@@ -135,3 +135,63 @@ test('切换月份或栏目时不暴露旧列表操作，失败后可重试', as
     }
   }
 })
+
+test('列表加载期间离开首页，返回后自动恢复当前栏目', async () => {
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cctvdl-e2e-return-loading-'))
+  fs.writeFileSync(path.join(userDataDir, 'config.json'), JSON.stringify({
+    settings: { savePath: path.join(userDataDir, 'videos') },
+    programs: [{ name: '测试栏目', columnId: 'TOPC-return', itemId: '', kind: 'column' }]
+  }), 'utf-8')
+  const app = await electron.launch({
+    args: [path.join(__dirname, '../../out/main/index.js'), `--user-data-dir=${userDataDir}`]
+  })
+  try {
+    const page = await app.firstWindow()
+    await page.waitForLoadState('domcontentloaded')
+    await app.evaluate(({ ipcMain }) => {
+      const state = globalThis as typeof globalThis & {
+        returnLoadingTest?: { calls: number; resolvePending?: (videos: unknown[]) => void }
+      }
+      const testState = state.returnLoadingTest = { calls: 0 }
+      const list = [{ guid: 'episode', title: '应有的视频', brief: '', coverUrl: '', time: '2026-09-01' }]
+      ipcMain.removeHandler('list-videos')
+      ipcMain.handle('list-videos', () => {
+        testState.calls++
+        if (testState.calls === 2) {
+          return new Promise(resolve => { testState.resolvePending = resolve })
+        }
+        return list
+      })
+      ipcMain.removeHandler('get-program-month-bounds')
+      ipcMain.handle('get-program-month-bounds', () => ({ earliest: '202609', latest: '202609' }))
+    })
+
+    await page.locator('.sidebar-nav-item', { hasText: '首页' }).click()
+    await page.locator('.program-item', { hasText: '测试栏目' }).click()
+    await expect(page.locator('.video-item', { hasText: '应有的视频' })).toBeVisible()
+    await page.keyboard.press('F5')
+    await expect(page.locator('.video-skeleton')).toBeVisible()
+    await expect.poll(() => app.evaluate(() => Boolean((globalThis as typeof globalThis & {
+      returnLoadingTest?: { resolvePending?: unknown }
+    }).returnLoadingTest?.resolvePending))).toBe(true)
+
+    await page.locator('.sidebar-nav-item', { hasText: '设置' }).click()
+    await page.locator('.sidebar-nav-item', { hasText: '首页' }).click()
+    await expect.poll(() => app.evaluate(() => (globalThis as typeof globalThis & {
+      returnLoadingTest?: { calls: number }
+    }).returnLoadingTest?.calls)).toBe(3)
+    await expect(page.locator('.video-item', { hasText: '应有的视频' })).toBeVisible()
+    await expect(page.locator('.video-hint', { hasText: '该月份暂无视频' })).toHaveCount(0)
+
+    await app.evaluate(() => (globalThis as typeof globalThis & {
+      returnLoadingTest?: { resolvePending?: (videos: unknown[]) => void }
+    }).returnLoadingTest?.resolvePending?.([{ guid: 'stale', title: '迟到的旧列表', brief: '', coverUrl: '', time: '2026-09-01' }]))
+    await page.waitForTimeout(100)
+    await expect(page.locator('.video-item', { hasText: '迟到的旧列表' })).toHaveCount(0)
+  } finally {
+    await app.close()
+    if (path.dirname(userDataDir) === os.tmpdir() && path.basename(userDataDir).startsWith('cctvdl-e2e-return-loading-')) {
+      fs.rmSync(userDataDir, { recursive: true, force: true })
+    }
+  }
+})

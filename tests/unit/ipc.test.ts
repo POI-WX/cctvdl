@@ -381,6 +381,19 @@ describe('IPC Handlers', () => {
       expect(mockCoordinator.appendJobs).toHaveBeenCalledWith(jobs)
     })
 
+    it('returns the guids actually accepted by the queue', async () => {
+      const jobs = ['g1', 'g2'].map((guid, index) => ({
+        id: `j${index + 1}`, guid, title: guid, savePath: `/tmp/${guid}.mp4`,
+        state: 'Created' as const, stage: 'None' as const, progressPercent: 0,
+        quality: 'auto' as const, threadCount: 8, sourceUrl: ''
+      }))
+      vi.mocked(mockCoordinator.appendJobs).mockReturnValueOnce([jobs[1]] as any)
+
+      const result = await handlers['start-download']({}, jobs)
+
+      expect(result).toEqual({ added: 1, skipped: 1, addedGuids: ['g2'] })
+    })
+
     it('reports jobs rejected by the coordinator as already queued', async () => {
       const jobs = [{ id: 'j1', guid: 'g1', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
       vi.mocked(mockCoordinator.appendJobs).mockReturnValueOnce([])
@@ -405,7 +418,7 @@ describe('IPC Handlers', () => {
       const jobs = [{ id: 'j1', guid: 'g1', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
       const result = await handlers['start-download']({}, jobs)
-      expect(result).toEqual({ added: 0, skipped: 1 })
+      expect(result).toEqual({ added: 0, skipped: 1, addedGuids: [] })
       expect(mockWindow.webContents.send).not.toHaveBeenCalledWith('batch-finished', expect.anything())
     })
 
@@ -437,7 +450,7 @@ describe('IPC Handlers', () => {
 
       expect(mockConfig.isInDownloadHistory).not.toHaveBeenCalled()
       expect(mockCoordinator.appendJobs).toHaveBeenCalledWith([job])
-      expect(result).toEqual({ added: 1, skipped: 0 })
+      expect(result).toEqual({ added: 1, skipped: 0, addedGuids: ['g'] })
     })
 
     it('force-redownload still skips a guid already active in the queue', async () => {
@@ -448,7 +461,7 @@ describe('IPC Handlers', () => {
       const result = await handlers['start-download']({}, [job], false, true)
 
       expect(mockConfig.isInDownloadHistory).not.toHaveBeenCalled()
-      expect(result).toEqual({ added: 0, skipped: 1 })
+      expect(result).toEqual({ added: 0, skipped: 1, addedGuids: [] })
       expect(mockWindow.webContents.send).toHaveBeenCalledWith('download-skipped', {
         guid: 'g', title: 'T', reason: '已在下载队列中'
       })

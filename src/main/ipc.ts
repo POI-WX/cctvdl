@@ -9,7 +9,7 @@ import { downloadCoverToDir } from './api/cover'
 import { checkSaveDir } from './preflight'
 import type {
   ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult,
-  DownloadEstimateInput, Quality
+  DownloadEstimateInput, DownloadStartResult, Quality
 } from '../shared/types'
 import { getProgramListSource } from '../shared/programs'
 import { sortVideosChronologically } from '../shared/video-metadata'
@@ -168,7 +168,7 @@ export function registerIpcHandlers(
     return true
   })
 
-  const launchBatch = (jobs: DownloadJob[], skipHistory: boolean, autoOpen = false): { added: number; skipped: number } => {
+  const launchBatch = (jobs: DownloadJob[], skipHistory: boolean, autoOpen = false): DownloadStartResult => {
     // Pre-flight: make sure the target directory exists and is writable before
     // spawning any work. Throws so the renderer's catch surfaces the reason.
     const saveDir = jobs.length ? path.dirname(jobs[0].savePath) : ''
@@ -201,8 +201,12 @@ export function registerIpcHandlers(
           jobs: addedJobs.map(j => ({ id: j.id, title: j.title, guid: j.guid }))
         })
       }
-      return { added: addedJobs.length, skipped: jobs.length - addedJobs.length }
-    } else return { added: 0, skipped: jobs.length }
+      return {
+        added: addedJobs.length,
+        skipped: jobs.length - addedJobs.length,
+        addedGuids: addedJobs.map(job => job.guid)
+      }
+    } else return { added: 0, skipped: jobs.length, addedGuids: [] }
   }
 
   ipcMain.handle('start-download', (_, jobs: DownloadJob[], autoOpen?: boolean, forceRedownload?: boolean) =>
