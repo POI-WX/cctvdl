@@ -154,7 +154,7 @@
             <button
               class="icon-btn"
               title="全选 / 取消全选"
-              :disabled="!filteredVideos.length"
+              :disabled="loadingVideos || videoLoadFailed || !filteredVideos.length"
               @click="contentStore.toggleSelectAllFiltered(!allSelected)"
             >{{ allSelected ? '☑' : '☐' }}</button>
             <button
@@ -181,6 +181,10 @@
         <div class="video-list" ref="videoListEl" @scroll="onVideoListScroll">
           <div v-if="viewMode === 'column' && !selectedProgram" class="video-hint">← 先选择一个栏目</div>
           <el-skeleton v-else-if="loadingVideos" :rows="6" animated class="video-skeleton" />
+          <div v-else-if="videoLoadFailed" class="video-hint video-load-error">
+            <span>视频列表加载失败</span>
+            <el-button size="small" plain type="primary" :icon="RefreshRight" @click="loadVideos(true)">重试</el-button>
+          </div>
           <div v-else-if="!filteredVideos.length" class="video-hint">{{ emptyHint }}</div>
           <template v-else>
             <!-- 单视频集合：扁平列表 + 行内移除（> 100 条用虚拟滚动） -->
@@ -321,7 +325,7 @@
           <button
             v-if="viewMode === 'column' && !selectedIsAlbum && videos.length"
             class="footer-btn footer-btn-ghost"
-            :disabled="startingDownload"
+            :disabled="startingDownload || loadingVideos || videoLoadFailed"
             @click="downloadAll"
           >{{ estimating ? '估算中…' : '下载本月' }}</button>
           <button
@@ -499,7 +503,7 @@
 import { ref, h, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { storeToRefs } from 'pinia'
-import { Download, Search } from '@element-plus/icons-vue'
+import { Download, RefreshRight, Search } from '@element-plus/icons-vue'
 import type { ProgramInfo, ProgramMonthBounds, VideoInfo, DownloadJob } from '../../shared/types'
 import { isProgramDeleteKey } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
@@ -587,6 +591,7 @@ const importPlaceholder = ref(IMPORT_PLACEHOLDERS[0])
 let placeholderTimer: ReturnType<typeof setInterval> | null = null
 let placeholderIdx = 0
 const loadingVideos = ref(false)
+const videoLoadFailed = ref(false)
 const videoLoadGuard = createLatestRequestGuard()
 const albumSort = ref<'asc' | 'desc'>('asc')
 const albumLoadedCount = ref(0)
@@ -675,7 +680,13 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && lightboxOpen.value) { e.preventDefault(); closeLightbox(); return }
   if (isEditingTarget()) return
   if (e.key === 'F5') { e.preventDefault(); if (selectedProgram.value) loadVideos(true); return }
-  if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); if (filteredVideos.value.length > 0) contentStore.toggleSelectAllFiltered(!allSelected.value); return }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+    e.preventDefault()
+    if (!loadingVideos.value && !videoLoadFailed.value && filteredVideos.value.length > 0) {
+      contentStore.toggleSelectAllFiltered(!allSelected.value)
+    }
+    return
+  }
   if (isProgramDeleteKey(e.key, isMac) && selectedProgram.value) { e.preventDefault(); deleteProgram(selectedProgram.value) }
 }
 
@@ -849,6 +860,9 @@ function onProgramClick(row: ProgramInfo) {
 
 // ─── Single-video collection ────────────────────────────────────────────────
 function selectSingleMode() {
+  videoLoadGuard.begin()
+  loadingVideos.value = false
+  videoLoadFailed.value = false
   viewMode.value = 'single'
   selectedProgram.value = null
   selectedVideo.value = null
@@ -928,32 +942,39 @@ async function clearAllPrograms() {
 
 async function loadVideos(forceRefresh = false) {
   if (!selectedProgram.value) return
+  const program: ProgramInfo = {
+    ...selectedProgram.value,
+    ...(selectedProgram.value.listSource
+      ? { listSource: { ...selectedProgram.value.listSource } }
+      : {})
+  }
+  const isAlbum = (program.kind ?? 'column') === 'album'
+  const month = isAlbum ? '' : selectedMonth.value
   const requestId = videoLoadGuard.begin()
   loadingVideos.value = true
+  videoLoadFailed.value = false
   albumLoadedCount.value = 0
-  if (selectedIsAlbum.value) videos.value = []
+  videos.value = []
   contentStore.refreshDownloadedSet()
+  const isRelevant = () => videoLoadGuard.isCurrent(requestId)
+    && viewMode.value === 'column'
+    && selectedProgram.value?.columnId === program.columnId
   try {
-    const program: ProgramInfo = {
-      ...selectedProgram.value,
-      ...(selectedProgram.value.listSource
-        ? { listSource: { ...selectedProgram.value.listSource } }
-        : {})
-    }
-    const list = await window.cctvdlApi.listVideos(
-      program, selectedIsAlbum.value ? '' : selectedMonth.value, requestId, forceRefresh
-    )
-    if (!videoLoadGuard.isCurrent(requestId)) return
-    videos.value = selectedIsAlbum.value ? sortAlbumList(list) : list
+    const list = await window.cctvdlApi.listVideos(program, month, requestId, forceRefresh)
+    if (!isRelevant()) return
+    videos.value = isAlbum ? sortAlbumList(list) : list
     // Only drop the preview if its video is no longer in the freshly loaded
     // list (e.g. deleted from the server). Otherwise preserve so users can
     // browse months without losing their preview context.
     if (selectedVideo.value && !list.some(v => v.guid === selectedVideo.value?.guid)) {
       selectedVideo.value = null
     }
-    if (!selectedIsAlbum.value) contentStore.recordVideosLoaded(selectedMonth.value, list)
+    if (!isAlbum) contentStore.recordVideosLoaded(month, list)
   } catch (err) {
-    if (videoLoadGuard.isCurrent(requestId)) ElMessage.error(`加载失败：${humanizeError(String(err))}`)
+    if (isRelevant()) {
+      videoLoadFailed.value = true
+      ElMessage.error(`加载失败：${humanizeError(String(err))}`)
+    }
   } finally {
     if (videoLoadGuard.isCurrent(requestId)) loadingVideos.value = false
   }
@@ -1064,6 +1085,7 @@ async function downloadSelected() { await downloadVideos(allSelectedVideos.value
 // 下载本月（仅栏目）：始终下载当前月份的完整列表，不受搜索过滤或其他
 // 栏目、月份的已选项影响；这是「全量下载」意图，会触发自动打开文件夹。
 async function downloadAll() {
+  if (loadingVideos.value || videoLoadFailed.value) return
   await downloadVideos(videos.value, true)
 }
 
@@ -1480,6 +1502,7 @@ html.dark .single-entry.active {
 .video-list {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   margin: var(--app-spacing-sm) calc(-1 * var(--app-spacing-md));
   padding: 0 var(--app-spacing-md);
 }
@@ -1489,6 +1512,16 @@ html.dark .single-entry.active {
   font-size: 12px;
   color: var(--el-text-color-placeholder);
   text-align: center;
+}
+
+.video-load-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-top: 36px;
+  color: var(--el-text-color-regular);
+  font-size: 13px;
 }
 
 .video-skeleton {

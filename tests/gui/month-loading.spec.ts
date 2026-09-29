@@ -1,0 +1,137 @@
+import { test, expect, _electron as electron } from '@playwright/test'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+
+test('切换月份或栏目时不暴露旧列表操作，失败后可重试', async () => {
+  test.setTimeout(90_000)
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cctvdl-e2e-month-loading-'))
+  fs.writeFileSync(path.join(userDataDir, 'config.json'), JSON.stringify({
+    settings: { savePath: path.join(userDataDir, 'videos') },
+    programs: [
+      { name: '测试栏目甲', columnId: 'TOPC-test-a', itemId: '', kind: 'column' },
+      { name: '测试栏目乙', columnId: 'TOPC-test-b', itemId: '', kind: 'column' }
+    ],
+    singleVideos: [
+      { guid: 'single', title: '独立视频', brief: '', coverUrl: '', time: '2026-08-01' }
+    ]
+  }), 'utf-8')
+  const app = await electron.launch({
+    args: [path.join(__dirname, '../../out/main/index.js'), `--user-data-dir=${userDataDir}`]
+  })
+  try {
+    const page = await app.firstWindow()
+    await page.waitForLoadState('domcontentloaded')
+    await app.evaluate(({ ipcMain }) => {
+      const state = globalThis as typeof globalThis & {
+        monthLoadTest?: {
+          augustRequests: number
+          otherRequests: number
+          pending: Record<string, { resolve: (videos: unknown[]) => void; reject: (error: Error) => void }>
+        }
+      }
+      const testState = state.monthLoadTest = { augustRequests: 0, otherRequests: 0, pending: {} }
+      const video = (guid: string, title: string) => ({
+        guid, title, brief: '', coverUrl: '', time: '2026-08-01'
+      })
+      ipcMain.removeHandler('list-videos')
+      ipcMain.handle('list-videos', (_event, program: { columnId: string }, month: string) => {
+        if (program.columnId === 'TOPC-test-a' && month === '202609') {
+          return [video('september', '九月旧视频')]
+        }
+        if (program.columnId === 'TOPC-test-a' && month === '202608') {
+          testState.augustRequests++
+          if (testState.augustRequests !== 2) {
+            const key = `a-${testState.augustRequests}`
+            return new Promise((resolve, reject) => { testState.pending[key] = { resolve, reject } })
+          }
+          return [video('august', '八月新视频')]
+        }
+        if (program.columnId === 'TOPC-test-b') {
+          testState.otherRequests++
+          if (testState.otherRequests === 2) {
+            return new Promise((resolve, reject) => { testState.pending['b-2'] = { resolve, reject } })
+          }
+          return [video('other', '乙栏目视频')]
+        }
+        return []
+      })
+      ipcMain.removeHandler('get-program-month-bounds')
+      ipcMain.handle('get-program-month-bounds', () => ({ earliest: '202608', latest: '202609' }))
+    })
+
+    await page.locator('.sidebar-nav-item', { hasText: '首页' }).click()
+    const month = page.locator('.month-row input')
+    await month.fill('2026-09')
+    await month.press('Enter')
+    await page.locator('.program-item', { hasText: '测试栏目甲' }).click()
+    await expect(page.locator('.video-item', { hasText: '九月旧视频' })).toBeVisible()
+    await page.locator('.video-item').first().locator('.el-checkbox__inner').click()
+
+    await month.fill('2026-08')
+    await month.press('Enter')
+    await expect(page.locator('.video-skeleton')).toBeVisible()
+    await expect(page.locator('.video-item')).toHaveCount(0)
+    await expect(page.locator('button[title="全选 / 取消全选"]')).toBeDisabled()
+    await expect(page.locator('button', { hasText: '下载本月' })).toHaveCount(0)
+    await expect(page.locator('button', { hasText: '下载选中' })).toContainText('1')
+    await page.locator('.video-skeleton').click()
+    await page.keyboard.press('ControlOrMeta+A')
+    await expect(page.locator('button', { hasText: '下载选中' })).toContainText('1')
+    await expect.poll(() => app.evaluate(() => Boolean((globalThis as typeof globalThis & {
+      monthLoadTest?: { pending: Record<string, unknown> }
+    }).monthLoadTest?.pending['a-1']))).toBe(true)
+    await app.evaluate(() => {
+      const state = (globalThis as typeof globalThis & {
+        monthLoadTest?: { pending: Record<string, { reject: (error: Error) => void }> }
+      }).monthLoadTest
+      state?.pending['a-1'].reject(new Error('network unavailable'))
+      if (state) delete state.pending['a-1']
+    })
+    await expect(page.locator('.video-load-error')).toContainText('视频列表加载失败')
+    await expect(page.locator('.video-hint')).not.toContainText('该月份暂无视频')
+    await page.locator('.video-load-error button', { hasText: '重试' }).click()
+    await expect(page.locator('.video-item', { hasText: '八月新视频' })).toBeVisible()
+    await expect(page.locator('.video-item', { hasText: '九月旧视频' })).toHaveCount(0)
+
+    await page.locator('.program-item', { hasText: '测试栏目甲' }).click()
+    await expect(page.locator('.video-skeleton')).toBeVisible()
+    await expect.poll(() => app.evaluate(() => Boolean((globalThis as typeof globalThis & {
+      monthLoadTest?: { pending: Record<string, unknown> }
+    }).monthLoadTest?.pending['a-3']))).toBe(true)
+    await page.locator('.program-item', { hasText: '测试栏目乙' }).click()
+    await expect(page.locator('.video-item', { hasText: '乙栏目视频' })).toBeVisible()
+    await app.evaluate(() => {
+      const state = (globalThis as typeof globalThis & {
+        monthLoadTest?: { pending: Record<string, { resolve: (videos: unknown[]) => void }> }
+      }).monthLoadTest
+      state?.pending['a-3'].resolve([{ guid: 'late', title: '迟到的甲栏目视频', brief: '', coverUrl: '', time: '2026-08-01' }])
+      if (state) delete state.pending['a-3']
+    })
+    await page.waitForTimeout(100)
+    await expect(page.locator('.video-item', { hasText: '迟到的甲栏目视频' })).toHaveCount(0)
+
+    await page.locator('.program-item', { hasText: '测试栏目乙' }).click()
+    await expect(page.locator('.video-skeleton')).toBeVisible()
+    await expect.poll(() => app.evaluate(() => Boolean((globalThis as typeof globalThis & {
+      monthLoadTest?: { pending: Record<string, unknown> }
+    }).monthLoadTest?.pending['b-2']))).toBe(true)
+    await page.locator('.single-entry').click()
+    await expect(page.locator('.video-item', { hasText: '独立视频' })).toBeVisible()
+    await app.evaluate(() => {
+      const state = (globalThis as typeof globalThis & {
+        monthLoadTest?: { pending: Record<string, { resolve: (videos: unknown[]) => void }> }
+      }).monthLoadTest
+      state?.pending['b-2'].resolve([{ guid: 'late-other', title: '迟到的乙栏目视频', brief: '', coverUrl: '', time: '2026-08-01' }])
+      if (state) delete state.pending['b-2']
+    })
+    await page.waitForTimeout(100)
+    await expect(page.locator('.video-item', { hasText: '迟到的乙栏目视频' })).toHaveCount(0)
+    await expect(page.locator('.video-item', { hasText: '独立视频' })).toBeVisible()
+  } finally {
+    await app.close()
+    if (path.dirname(userDataDir) === os.tmpdir() && path.basename(userDataDir).startsWith('cctvdl-e2e-month-loading-')) {
+      fs.rmSync(userDataDir, { recursive: true, force: true })
+    }
+  }
+})
