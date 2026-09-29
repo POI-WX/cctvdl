@@ -152,6 +152,29 @@ describe('IPC Handlers', () => {
       expect(result.map((video: any) => video.guid)).toEqual(['highlight', 'fragment', 'main'])
     })
 
+    it('uses the scan snapshot instead of later settings changes', async () => {
+      const program = { name: 'Test', columnId: 'TOPC1', itemId: '' }
+      vi.mocked(mockConfig.getSettings).mockReturnValue({ includeHighlights: false } as any)
+      await handlers['list-videos']({}, program, '202601', undefined, false, {
+        includeHighlights: true, strictSupplementary: true
+      })
+      expect(mockBrowse.getSupplementaryVideos).toHaveBeenCalledWith(program, '202601', true)
+
+      vi.mocked(mockConfig.getSettings).mockReturnValue({ includeHighlights: true } as any)
+      vi.mocked(mockBrowse.getSupplementaryVideos).mockClear()
+      await handlers['list-videos']({}, program, '202602', undefined, false, {
+        includeHighlights: false, strictSupplementary: true
+      })
+      expect(mockBrowse.getSupplementaryVideos).not.toHaveBeenCalled()
+    })
+
+    it('propagates supplementary failures during a strict scan', async () => {
+      vi.mocked(mockBrowse.getSupplementaryVideos).mockRejectedValueOnce(new Error('HTTP 503'))
+      await expect(handlers['list-videos']({}, { name: 'Test', columnId: 'TOPC1', itemId: '' },
+        '202601', undefined, false, { includeHighlights: true, strictSupplementary: true }))
+        .rejects.toThrow('HTTP 503')
+    })
+
     it('calls getAlbumVideoList for album programs', async () => {
       await handlers['list-videos']({}, { name: 'Album', columnId: 'album123', itemId: '', kind: 'album', serviceId: 'cctv4k' }, '202601')
       expect(mockBrowse.getAlbumVideoList).toHaveBeenCalledWith('album123', '202601', 'cctv4k', expect.any(Function))

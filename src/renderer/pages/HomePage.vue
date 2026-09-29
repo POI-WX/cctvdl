@@ -367,10 +367,15 @@
               @click="downloadAll"
             >{{ estimating ? '估算中…' : '下载本月' }}</button>
             <button v-else class="footer-btn footer-btn-idle" disabled>选择视频后下载</button>
-            <el-dropdown v-if="selectedCount && canDownloadMonth" trigger="click" placement="top-end" @command="onDownloadAction">
-              <button class="footer-more-btn" title="更多下载方式" aria-label="更多下载方式" :disabled="startingDownload || loadingVideos || videoLoadFailed"><el-icon><MoreFilled /></el-icon></button>
+            <button v-if="!selectedCount && isMonthlyColumn" class="footer-range-btn" :disabled="startingDownload"
+              @click="rangeDialogOpen = true">时间范围</button>
+            <el-dropdown v-if="selectedCount && isMonthlyColumn" trigger="click" placement="top-end" @command="onDownloadAction">
+              <button class="footer-more-btn" title="更多下载方式" aria-label="更多下载方式" :disabled="startingDownload"><el-icon><MoreFilled /></el-icon></button>
               <template #dropdown>
-                <el-dropdown-menu><el-dropdown-item command="month">下载本月全部 {{ videos.length }} 个视频</el-dropdown-item></el-dropdown-menu>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-if="canDownloadMonth" command="month">下载本月全部 {{ videos.length }} 个视频</el-dropdown-item>
+                  <el-dropdown-item command="range">按时间范围下载…</el-dropdown-item>
+                </el-dropdown-menu>
               </template>
             </el-dropdown>
           </div>
@@ -506,6 +511,9 @@
         />
       </div>
     </Transition>
+    <MonthRangeDialog v-model="rangeDialogOpen" :program="selectedProgram"
+      :selected-month="selectedMonth"
+      :include-highlights="includeHighlightsEnabled" />
   </div>
 </template>
 
@@ -517,16 +525,19 @@ import {
   ArrowRight, Close, CopyDocument, Delete, Document, Download, MoreFilled,
   Picture, RefreshRight, Search, Star, StarFilled, Upload
 } from '@element-plus/icons-vue'
-import type { ProgramInfo, ProgramMonthBounds, VideoInfo, DownloadJob } from '../../shared/types'
+import type { ProgramInfo, ProgramMonthBounds, VideoInfo } from '../../shared/types'
 import { isProgramDeleteKey } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
-import { buildOutputPath, safeFilename } from '../../shared/filename'
+import { safeFilename } from '../../shared/filename'
 import { formatFileSize, formatMediaDuration } from '../../shared/format'
+import { describeDownloadEstimate } from '../../shared/estimate-presentation'
 import { displayPath } from '../../shared/path-display'
 import { QUALITY_LABELS } from '../../shared/settings'
 import { createLatestRequestGuard } from '../../shared/latest-request'
 import { VideoMetadataLoader } from '../../shared/video-metadata'
 import { useContentStore } from '../stores/content'
+import { prepareDownloadBatch, startDownloadBatch } from '../utils/download-jobs'
+import MonthRangeDialog from '../components/MonthRangeDialog.vue'
 
 const contentStore = useContentStore()
 const {
@@ -544,6 +555,8 @@ const isFav = contentStore.isFav
 const isVideoSelected = contentStore.isVideoSelected
 const toggleVideoSelection = contentStore.toggleVideoSelection
 const selectedIsAlbum = computed(() => (selectedProgram.value?.kind ?? 'column') === 'album')
+const isMonthlyColumn = computed(() => viewMode.value === 'column' && !!selectedProgram.value && !selectedIsAlbum.value)
+const rangeDialogOpen = ref(false)
 let homeReady = false
 let homeMounted = false
 watch(includeHighlightsEnabled, () => {
@@ -588,7 +601,7 @@ watch(selectedProgram, async program => {
   } finally {
     if (requestId === monthBoundsRequestId) monthBoundsLoading.value = false
   }
-})
+}, { immediate: true })
 // How many videos in the current program/month (or album) are selected. Shown
 // next to the cross-program `selectedCount` so users can see both scopes.
 const currentListSelectedCount = computed(() =>
@@ -724,6 +737,7 @@ function isEditingTarget(): boolean {
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && lightboxOpen.value) { e.preventDefault(); closeLightbox(); return }
+  if (rangeDialogOpen.value) return
   if (isEditingTarget()) return
   if (e.key === 'F5') { e.preventDefault(); if (selectedProgram.value) loadVideos(true); return }
   if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
@@ -1169,6 +1183,7 @@ async function downloadAll() {
 
 function onDownloadAction(command: string) {
   if (command === 'month') void downloadAll()
+  if (command === 'range') rangeDialogOpen.value = true
 }
 
 const startingDownload = ref(false)
@@ -1185,32 +1200,16 @@ async function downloadVideos(
   const estimateVideos = redownloadIntent
     ? validVideos
     : validVideos.filter(video => !downloadedSet.value.has(video.guid))
-  const skippedHistory = validVideos.length - estimateVideos.length
   if (!estimateVideos.length) { ElMessage.info('所选视频已下载'); return }
   startingDownload.value = true
   try {
-    const settings = await window.cctvdlApi.getSettings()
-    const jobs: DownloadJob[] = validVideos.map(v => {
-      const job: DownloadJob = {
-        id: crypto.randomUUID(), guid: v.guid, sourceUrl: v.sourceUrl ?? v.guid, title: v.title,
-        savePath: buildOutputPath(settings.savePath, v.title),
-        quality: settings.quality, threadCount: settings.threadCount,
-        reencode: settings.reencode ?? false,
-        state: 'Created' as const, stage: 'None' as const, progressPercent: 0
-      }
-      if (v.m3u8Url) job.m3u8Url = v.m3u8Url
-      if (v.sourceVideoIndex != null) job.sourceVideoIndex = v.sourceVideoIndex
-      return job
-    })
     estimating.value = true
-    const estimateInput = estimateVideos.map(video => ({
-      guid: video.guid, m3u8Url: video.m3u8Url, estimatedSizeBytes: video.estimatedSizeBytes
-    }))
-    const estimate = await window.cctvdlApi.estimateDownload(estimateInput, settings.quality, settings.savePath)
-      .catch(() => ({ estimatedBytes: 0, estimatedCount: 0, totalCount: estimateVideos.length, diskFreeBytes: null }))
+    const { settings, skippedHistory, estimate } = await prepareDownloadBatch(
+      validVideos, downloadedSet.value, redownloadIntent
+    )
     estimating.value = false
     const lowSpace = estimate.diskFreeBytes != null && estimate.estimatedBytes > estimate.diskFreeBytes
-    const remaining = estimate.totalCount - estimate.estimatedCount
+    const estimateDetails = describeDownloadEstimate(estimate)
     const months = Array.from(new Set(estimateVideos.map(video => videoMonthKey(video.time)).filter(Boolean))).sort()
     const monthLabel = (key: string) => `${key.slice(0, 4)}年${Number(key.slice(4))}月`
     const monthRange = months.length
@@ -1242,8 +1241,7 @@ async function downloadVideos(
       ]),
       ...[
         ['清晰度', QUALITY_LABELS[settings.quality]],
-        ['预计大小', estimate.estimatedCount ? `约 ${formatFileSize(estimate.estimatedBytes)}` : '暂无法估算'],
-        ['估算范围', `${estimate.estimatedCount} / ${estimate.totalCount} 个`],
+        [estimateDetails.sizeLabel, estimateDetails.sizeText],
         ['磁盘剩余', estimate.diskFreeBytes == null ? '无法检查' : (formatFileSize(estimate.diskFreeBytes) || '0 B')],
         ['保存到', displayPath(settings.savePath)]
       ].map(([label, value]) => h('div', { class: 'download-confirm-row' }, [
@@ -1253,9 +1251,8 @@ async function downloadVideos(
       ...(skippedHistory > 0
         ? [h('p', { class: 'download-confirm-note' }, `${skippedHistory} 个已下载视频将跳过。`)]
         : []),
-      ...(remaining > 0
-        ? [h('p', { class: 'download-confirm-note' }, `${remaining} 个视频大小未知，实际占用可能更高。`)]
-        : []),
+      ...(estimateDetails.note
+        ? [h('p', { class: 'download-confirm-note' }, estimateDetails.note)] : []),
       ...(lowSpace
         ? [h('p', { class: 'download-confirm-warning' }, '剩余空间可能不足，请释放空间或更换保存位置。')]
         : []),
@@ -1281,9 +1278,7 @@ async function downloadVideos(
       return
     }
     // Explicit redownload actions bypass history; the coordinator still deduplicates active jobs.
-    const result = await window.cctvdlApi.startDownload(
-      jobs, autoOpen, redownloadIntent
-    )
+    const result = await startDownloadBatch(validVideos, settings, autoOpen, redownloadIntent)
     if (consumeSelection) contentStore.removeVideoSelections(result.addedGuids)
     if (result.added > 0) {
       ElMessage.success(`已添加 ${result.added} 个下载任务${result.skipped ? `，忽略 ${result.skipped} 个重复或已下载项` : ''}`)
@@ -1934,6 +1929,20 @@ html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
 }
 .footer-more-btn:hover { border-color: var(--el-color-primary); color: var(--el-color-primary); }
 .footer-more-btn:disabled { opacity: .5; cursor: not-allowed; }
+.footer-range-btn {
+  height: var(--app-control-height);
+  flex-shrink: 0;
+  padding: 0 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-fill-color-blank);
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  font-weight: var(--app-font-weight-medium);
+  cursor: pointer;
+}
+.footer-range-btn:hover { color: var(--el-color-primary); border-color: var(--el-color-primary); }
+.footer-range-btn:disabled { opacity: .5; cursor: not-allowed; }
 
 .selected-videos-panel { min-width: 0; }
 .selected-videos-summary {

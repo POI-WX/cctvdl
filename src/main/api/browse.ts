@@ -285,20 +285,26 @@ export class BrowseService {
     }
   }
 
-  async getSupplementaryVideos(program: ProgramInfo, month = ''): Promise<VideoInfo[]> {
+  async getSupplementaryVideos(program: ProgramInfo, month = '', strict = false): Promise<VideoInfo[]> {
     const result: VideoInfo[] = []
     const source = getProgramListSource(program)
     if (source.type === 'vcctv') return []
+    const optional = async <T>(request: Promise<T>, fallback: T): Promise<T> => {
+      try { return await request } catch (error) {
+        if (strict) throw error
+        return fallback
+      }
+    }
     const serviceId = source.serviceId
     let albumId = source.type === 'album' ? source.id : ''
-    if (!albumId && program.itemId) albumId = await this.resolveAlbumId(program.itemId, serviceId).catch(() => '')
-    if (albumId) result.push(...await this.fetchAlbumModeVideos(albumId, serviceId, 1, 'highlight', month).catch(() => []))
+    if (!albumId && program.itemId) albumId = await optional(this.resolveAlbumId(program.itemId, serviceId), '')
+    if (albumId) result.push(...await optional(this.fetchAlbumModeVideos(albumId, serviceId, 1, 'highlight', month), []))
     const topicId = program.topicId || (/^TOPC/.test(program.columnId) ? program.columnId : '')
     if (program.itemId && topicId) {
-      result.push(...await this.fetchTopicFragments(topicId, program.itemId, serviceId).catch(() => []))
+      result.push(...await optional(this.fetchTopicFragments(topicId, program.itemId, serviceId, strict), []))
     }
     if (source.type === 'column' && month) {
-      result.push(...await this.fetchColumnFragments(source.id, month).catch(() => []))
+      result.push(...await optional(this.fetchColumnFragments(source.id, month), []))
     }
     const seen = new Set<string>()
     return sortVideosChronologically(result.filter(video => {
@@ -351,13 +357,16 @@ export class BrowseService {
   }
 
   private async fetchTopicFragments(
-    columnId: string, itemId: string, serviceId: CctvServiceId
+    columnId: string, itemId: string, serviceId: CctvServiceId, strict = false
   ): Promise<VideoInfo[]> {
     const params = new URLSearchParams({
       videoid: itemId, topicid: columnId, serviceId, type: '1'
     })
     const resp = await this.fetch(`https://api.cntv.cn/video/getVideoListByTopicIdInfo?${params}`, uaInit())
-    if (!resp.ok) return []
+    if (!resp.ok) {
+      if (strict) throw new Error(`HTTP ${resp.status} from getVideoListByTopicIdInfo`)
+      return []
+    }
     const root = await resp.json() as Record<string, unknown>
     const items = Array.isArray(root['data']) ? root['data'] as Array<Record<string, unknown>> : []
     return items.map(mapTopicFragment)

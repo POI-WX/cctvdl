@@ -1097,6 +1097,7 @@ describe('BrowseService', () => {
       expect((await browse.getColumnVideoList(program.columnId, 1, '201108')).map(video => video.guid))
         .toEqual(['episode'])
       await expect(browse.getSupplementaryVideos(program, '201108')).resolves.toEqual([])
+      await expect(browse.getSupplementaryVideos(program, '201108', true)).rejects.toThrow('temporary failure')
     })
 
     it('paginates v.cctv results even when the server returns fewer than the requested 100 items', async () => {

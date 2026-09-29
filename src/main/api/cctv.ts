@@ -42,6 +42,7 @@ export interface CctvMediaInfo {
   hlsH5eUrl: string | null
   hlsUrl: string | null
   channel: string
+  durationSeconds?: number
 }
 
 export function isCctv16Channel(channel: string): boolean {
@@ -179,7 +180,29 @@ export class CctvApiService {
     const hlsH5eUrl = (data['hls_h5e_url'] as string) || (manifest['hls_h5e_url'] as string) || null
     const hlsUrl = (data['hls_url'] as string) || (manifest['hls_url'] as string) || null
     const channel = String(data['channel'] || data['play_channel'] || '')
-    return { hlsH5eUrl, hlsUrl, channel }
+    const video = data['video'] as Record<string, unknown> | undefined
+    const duration = Number(video?.['totalLength'] ?? data['totalLength'])
+    return {
+      hlsH5eUrl, hlsUrl, channel,
+      ...(Number.isFinite(duration) && duration > 0 && duration <= 24 * 3600
+        ? { durationSeconds: duration } : {})
+    }
+  }
+
+  async estimateSizeFromMaster(guid: string, quality: Quality = 'auto', signal?: AbortSignal): Promise<number | undefined> {
+    const info = await this.fetchVideoInfo(guid, signal)
+    if (!info.durationSeconds || isCctv16Channel(info.channel)) return undefined
+    const streamUrl = info.hlsH5eUrl || info.hlsUrl
+    if (!streamUrl) return undefined
+    const resp = await this.fetch(streamUrl, uaInit(signal))
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching playlist`)
+    const master = await resp.text()
+    if (!/^\s*#EXT-X-STREAM-INF:/m.test(master)) return undefined
+    const baseUrl = streamUrl.substring(0, streamUrl.lastIndexOf('/') + 1)
+    const variant = CCTVHLSBestParser.best(master, baseUrl, QUALITY_MAP[quality] ?? Infinity)
+    const bandwidth = variant.averageBandwidth || variant.bandwidth
+    const bytes = Math.round(bandwidth * info.durationSeconds / 8)
+    return Number.isSafeInteger(bytes) && bytes > 0 ? bytes : undefined
   }
 
   async resolveSegmentUrls(guid: string, quality: Quality = 'auto', signal?: AbortSignal): Promise<ResolveResult> {

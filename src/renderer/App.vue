@@ -163,6 +163,7 @@ let cleanups: Array<() => void> = []
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && aboutOpen.value) { aboutOpen.value = false; return }
+  if (document.querySelector('.month-range-dialog')?.getClientRects().length) return
   if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return
   // Ctrl+\ (or Cmd+\ on Mac) toggles sidebar
   if (e.key === '\\' && (e.ctrlKey || e.metaKey)) { appStore.toggleSidebar(); return }

@@ -1,13 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult,
-  BatchStartInfo, CctvdlApi, Quality, DownloadEstimateInput
+  BatchStartInfo, CctvdlApi, Quality, DownloadEstimateInput, ListVideosOptions
 } from '../shared/types'
 
 const api: CctvdlApi = {
   browseProgram: (url: string) => ipcRenderer.invoke('browse-program', url),
-  listVideos: (program: ProgramInfo, month: string, requestId?: number, forceRefresh?: boolean) =>
-    ipcRenderer.invoke('list-videos', program, month, requestId, forceRefresh),
+  listVideos: (program: ProgramInfo, month: string, requestId?: number, forceRefresh?: boolean, options?: ListVideosOptions) =>
+    ipcRenderer.invoke('list-videos', program, month, requestId, forceRefresh, options),
   getProgramMonthBounds: (program: ProgramInfo) => ipcRenderer.invoke('get-program-month-bounds', program),
   importProgram: (p: ProgramInfo) => ipcRenderer.invoke('import-program', p),
   importPrograms: () => ipcRenderer.invoke('import-programs'),

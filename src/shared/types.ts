@@ -133,12 +133,16 @@ export interface DownloadStartResult {
 }
 
 export type DownloadEstimateInput = Pick<VideoInfo, 'guid' | 'm3u8Url' | 'estimatedSizeBytes'>
+  & Partial<Pick<VideoInfo, 'contentType' | 'time'>>
 
 export interface DownloadEstimate {
   estimatedBytes: number
   estimatedCount: number
+  // Items inferred from nearby, same-type samples rather than individually resolved.
+  projectedCount?: number
   totalCount: number
   diskFreeBytes: number | null
+  stoppedEarly?: boolean
 }
 
 export interface Settings {
@@ -180,9 +184,14 @@ export interface ProgramMonthBounds {
   latest: string | null
 }
 
+export interface ListVideosOptions {
+  includeHighlights?: boolean
+  strictSupplementary?: boolean
+}
+
 export interface CctvdlApi {
   browseProgram(url: string): Promise<ProgramInfo>
-  listVideos(program: ProgramInfo, month: string, requestId?: number, forceRefresh?: boolean): Promise<VideoInfo[]>
+  listVideos(program: ProgramInfo, month: string, requestId?: number, forceRefresh?: boolean, options?: ListVideosOptions): Promise<VideoInfo[]>
   getProgramMonthBounds(program: ProgramInfo): Promise<ProgramMonthBounds>
   importProgram(p: ProgramInfo): Promise<boolean>
   importPrograms(): Promise<number>

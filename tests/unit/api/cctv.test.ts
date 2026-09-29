@@ -235,6 +235,20 @@ describe('CctvApiService', () => {
   })
 
   describe('fetchVideoInfo', () => {
+    it('estimates a selected HLS tier from media duration and master bandwidth without fetching segments', async () => {
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({
+          hls_h5e_url: 'https://example.com/master.m3u8', video: { totalLength: '20.50' }
+        }) })
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(
+          '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=2000000,AVERAGE-BANDWIDTH=1600000,RESOLUTION=1280x720\n720p.m3u8'
+        ) })
+      const api = new CctvApiService(mockFetch)
+
+      expect(await api.estimateSizeFromMaster('test-guid')).toBe(4_100_000)
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+    })
+
     it('parses the HLS stream URL', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,

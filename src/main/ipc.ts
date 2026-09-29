@@ -9,7 +9,7 @@ import { downloadCoverToDir } from './api/cover'
 import { checkSaveDir } from './preflight'
 import type {
   ProgramInfo, VideoInfo, Settings, DownloadJob, DownloadProgress, BatchResult,
-  DownloadEstimateInput, DownloadStartResult, Quality
+  DownloadEstimateInput, DownloadStartResult, ListVideosOptions, Quality
 } from '../shared/types'
 import { getProgramListSource } from '../shared/programs'
 import { sortVideosChronologically } from '../shared/video-metadata'
@@ -62,7 +62,7 @@ export function registerIpcHandlers(
     return info
   })
 
-  ipcMain.handle('list-videos', async (_, program: ProgramInfo, month: string, requestId?: number, forceRefresh = false) => {
+  ipcMain.handle('list-videos', async (_, program: ProgramInfo, month: string, requestId?: number, forceRefresh = false, options?: ListVideosOptions) => {
     const source = getProgramListSource(program)
     let videos: VideoInfo[]
     if (source.type === 'vcctv') {
@@ -82,8 +82,10 @@ export function registerIpcHandlers(
     } else {
       videos = await browse.getColumnVideoList(source.id, 1, month)
     }
-    if (config.getSettings().includeHighlights) {
-      const supplementary = await browse.getSupplementaryVideos(program, month)
+    if (options?.includeHighlights ?? config.getSettings().includeHighlights) {
+      const supplementary = options?.strictSupplementary
+        ? await browse.getSupplementaryVideos(program, month, true)
+        : await browse.getSupplementaryVideos(program, month)
       const seen = new Set(videos.map(video => video.guid))
       videos = sortVideosChronologically([
         ...videos,
