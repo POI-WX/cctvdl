@@ -20,7 +20,8 @@ test('单个与批量下载确认显示自适应大小和磁盘提醒', async ()
   try {
     const page = await app.firstWindow()
     await page.waitForLoadState('domcontentloaded')
-    expect(await app.evaluate(({ app }) => app.getPath('userData'))).toBe(userDataDir)
+    const actualUserData = await app.evaluate(({ app }) => app.getPath('userData'))
+    expect(fs.realpathSync(actualUserData)).toBe(fs.realpathSync(userDataDir))
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('estimate-download')
       ipcMain.handle('estimate-download', (_event, videos: Array<{ guid: string }>) => {
