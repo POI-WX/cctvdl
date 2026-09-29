@@ -9,7 +9,7 @@
     <aside class="app-sidebar" :class="{ expanded: sidebarExpanded }">
       <button class="sidebar-brand" title="关于 cctvdl" @click="aboutOpen = true">
         <div class="sidebar-logo-wrap">
-          <span class="sidebar-logo">📺</span>
+          <span class="sidebar-logo" aria-hidden="true">📺</span>
           <span v-if="updateVersion" class="sidebar-update-dot" title="有新版本可用" />
         </div>
         <span class="sidebar-app-name">cctvdl</span>
@@ -23,8 +23,9 @@
       >
         <button
           class="sidebar-toggle sidebar-toggle-top"
+          :aria-label="sidebarExpanded ? '收起侧边栏' : '展开侧边栏'"
           @click="appStore.toggleSidebar()"
-        >{{ sidebarExpanded ? '‹' : '›' }}</button>
+        ><el-icon><ArrowLeft v-if="sidebarExpanded" /><ArrowRight v-else /></el-icon></button>
       </el-tooltip>
 
       <nav class="sidebar-nav" role="navigation" aria-label="主导航">
@@ -84,7 +85,7 @@
     <!-- drag overlay -->
     <div v-if="isDragging" class="drag-overlay">
       <div class="drag-overlay-inner">
-        <span class="drag-overlay-icon">🔗</span>
+        <span class="drag-overlay-icon" aria-hidden="true">🔗</span>
         <span class="drag-overlay-text">松手导入央视链接</span>
       </div>
     </div>
@@ -103,8 +104,8 @@
     <Transition name="about-fade">
       <div v-if="aboutOpen" class="about-overlay" @click.self="aboutOpen = false">
         <div class="about-card">
-          <button class="about-close" @click="aboutOpen = false" title="关闭">✕</button>
-          <div class="about-logo">📺</div>
+          <button class="about-close" @click="aboutOpen = false" title="关闭"><el-icon><Close /></el-icon></button>
+          <div class="about-logo" aria-hidden="true">📺</div>
           <div class="about-name">cctvdl</div>
           <div class="about-version">v{{ appVersion }}</div>
           <div class="about-desc">将央视节目轻松下载到本地</div>
@@ -127,6 +128,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, ArrowRight, Close } from '@element-plus/icons-vue'
 import { storeToRefs } from 'pinia'
 import { isCctvLink } from '../shared/cctv-link'
 import HomePage from './pages/HomePage.vue'
@@ -359,20 +361,20 @@ async function processClipboardQueue() {
 .sidebar-logo-wrap {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--el-color-primary-light-9);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.sidebar-logo { font-size: 18px; line-height: 1; }
+.sidebar-logo { font-size: 19px; line-height: 1; }
 
 .sidebar-app-name {
-  font-size: 10px;
-  font-weight: var(--app-font-weight-bold);
+  font-size: 11px;
+  font-weight: var(--app-font-weight-semibold);
   color: var(--el-text-color-secondary);
-  letter-spacing: 1px;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -429,8 +431,8 @@ async function processClipboardQueue() {
   background: var(--el-color-primary);
 }
 
-.sidebar-nav-icon { font-size: 20px; line-height: 1; }
-.sidebar-nav-label { font-size: 10px; line-height: 1; }
+.sidebar-nav-icon { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1; }
+.sidebar-nav-label { font-size: 11px; line-height: 1; }
 
 /* 下载徽章 */
 .sidebar-nav-badge {
@@ -597,7 +599,7 @@ async function processClipboardQueue() {
   gap: var(--app-spacing-md);
 }
 
-.drag-overlay-icon { font-size: 48px; }
+.drag-overlay-icon { font-size: 44px; }
 
 .drag-overlay-text {
   font-size: 18px;

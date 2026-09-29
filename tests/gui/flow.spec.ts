@@ -144,7 +144,13 @@ test.describe('真实用户流程', () => {
     await monthInput.fill('2015-03')
     await monthInput.press('Enter')
     await expect(page.locator('.video-item', { hasText: /四平之战/ }).first()).toBeVisible({ timeout: 30000 })
-    await expect(page.locator('button', { hasText: '下载本月' })).toBeVisible()
+    if (await page.locator('.footer-selection-count').count()) {
+      await page.getByRole('button', { name: '更多下载方式' }).click()
+      await expect(page.getByText(/下载本月全部/)).toBeVisible()
+      await page.getByRole('button', { name: '更多下载方式' }).click()
+    } else {
+      await expect(page.locator('button', { hasText: '下载本月' })).toBeVisible()
+    }
     await expect(page.locator('.single-mode-label', { hasText: '选集' })).toHaveCount(0)
 
     // The album is too large to reach 2019 by walking only from its oldest

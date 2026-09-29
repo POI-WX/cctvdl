@@ -10,7 +10,7 @@
       <!-- section: download -->
       <div class="settings-card">
         <div class="settings-card-header">
-          <span class="settings-card-icon">⬇️</span>
+          <span class="settings-card-icon" aria-hidden="true">⬇️</span>
           <span class="settings-card-title">下载</span>
         </div>
 
@@ -141,7 +141,7 @@
       <!-- section: appearance -->
       <div class="settings-card">
         <div class="settings-card-header">
-          <span class="settings-card-icon">🎨</span>
+          <span class="settings-card-icon" aria-hidden="true">🎨</span>
           <span class="settings-card-title">外观</span>
         </div>
 
@@ -181,7 +181,7 @@
       <!-- section: advanced -->
       <div class="settings-card">
         <div class="settings-card-header">
-          <span class="settings-card-icon">⚙️</span>
+          <span class="settings-card-icon" aria-hidden="true">⚙️</span>
           <span class="settings-card-title">高级</span>
         </div>
 
@@ -230,7 +230,7 @@
       <!-- section: download history -->
       <div class="settings-card">
         <div class="settings-card-header">
-          <span class="settings-card-icon">🕐</span>
+          <span class="settings-card-icon" aria-hidden="true">🕐</span>
           <span class="settings-card-title">下载历史</span>
           <span class="settings-card-count" v-if="history.length">{{ history.length }} 条</span>
         </div>
@@ -273,18 +273,18 @@
                 class="history-action-btn"
                 title="重新下载"
                 @click="redownload(entry)"
-              >↺</button>
+              ><el-icon><RefreshRight /></el-icon></button>
               <button
                 v-if="entry.outputPath"
                 class="history-action-btn"
                 title="在文件管理器中定位"
                 @click="revealHistoryFile(entry.outputPath)"
-              >📂</button>
+              ><el-icon><FolderOpened /></el-icon></button>
               <button
                 class="history-action-btn danger"
                 title="删除此条记录"
                 @click="removeHistoryEntry(entry.guid)"
-              >🗑</button>
+              ><el-icon><Delete /></el-icon></button>
             </div>
           </div>
         </div>
@@ -302,12 +302,12 @@
       <!-- section: about -->
       <div class="settings-card">
         <div class="settings-card-header">
-          <span class="settings-card-icon">ℹ️</span>
+          <span class="settings-card-icon" aria-hidden="true">ℹ️</span>
           <span class="settings-card-title">关于</span>
         </div>
 
         <div class="settings-about">
-          <div class="about-logo">📺</div>
+          <div class="about-logo" aria-hidden="true">📺</div>
           <div class="about-info">
             <div class="about-name">cctvdl</div>
             <div class="about-version">v{{ appVersion }}</div>
@@ -332,6 +332,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, toRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Delete, FolderOpened, RefreshRight } from '@element-plus/icons-vue'
 import type { Settings } from '../../shared/types'
 import { MIN_THREADS, MAX_THREADS, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS, QUALITIES, QUALITY_LABELS } from '../../shared/settings'
 import { applyAccentColor } from '../utils/accent'
@@ -613,14 +614,14 @@ async function save() {
   background: var(--el-fill-color-blank);
 }
 
-.settings-card-icon { font-size: 16px; line-height: 1; }
+.settings-card-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; font-size: 16px; line-height: 1; }
 
 .settings-card-title {
   font-size: 13px;
   font-weight: var(--app-font-weight-semibold);
   color: var(--el-text-color-primary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
 }
 
 /* ── 设置项 ─────────────────────────────────────────── */
@@ -758,6 +759,7 @@ async function save() {
 
 .about-logo {
   font-size: 40px;
+  line-height: 1;
   flex-shrink: 0;
 }
 

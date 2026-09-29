@@ -8,9 +8,9 @@
         <div class="section-header">
           <span class="section-title">我的内容</span>
           <div class="section-actions">
-            <button class="icon-btn" title="从 JSON 导入栏目" @click="importPrograms">↓</button>
-            <button class="icon-btn" title="导出栏目" :disabled="!programs.length" @click="exportPrograms">↑</button>
-            <button class="icon-btn" title="清空全部栏目" :disabled="!programs.length" @click="clearAllPrograms">🧹</button>
+            <button class="icon-btn" title="从 JSON 导入栏目" @click="importPrograms"><el-icon><Upload /></el-icon></button>
+            <button class="icon-btn" title="导出栏目" :disabled="!programs.length" @click="exportPrograms"><el-icon><Download /></el-icon></button>
+            <button class="icon-btn" title="清空全部栏目" :disabled="!programs.length" @click="clearAllPrograms"><el-icon><Delete /></el-icon></button>
           </div>
         </div>
         <!-- import input -->
@@ -42,7 +42,7 @@
             :class="{ active: viewMode === 'single' }"
             @click="selectSingleMode()"
           >
-            <span class="single-entry-icon">📌</span>
+            <span class="single-entry-icon" aria-hidden="true">📌</span>
             <span class="single-entry-label">单个视频</span>
             <span class="single-entry-count">{{ singleVideos.length }}</span>
           </div>
@@ -82,12 +82,12 @@
                     :class="{ faved: isFav(row.program) }"
                     :title="isFav(row.program) ? '取消收藏' : '收藏'"
                     @click.stop="toggleFavorite(row.program)"
-                  >⭐</button>
+                  ><el-icon><StarFilled v-if="isFav(row.program)" /><Star v-else /></el-icon></button>
                   <button
                     class="prog-action-btn del"
                     title="删除栏目"
                     @click.stop="deleteProgram(row.program)"
-                  >🗑</button>
+                  ><el-icon><Delete /></el-icon></button>
                 </span>
               </div>
             </div>
@@ -131,10 +131,10 @@
             >⏭</button>
           </div>
           <div v-else-if="viewMode === 'single'" class="single-mode-label">
-            <span>📌 单个视频 · {{ singleVideos.length }}</span>
+            <span class="single-mode-caption"><span aria-hidden="true">📌</span>单个视频 · {{ singleVideos.length }}</span>
             <span class="single-mode-actions">
-              <button class="icon-btn" title="从 JSON 导入单视频" @click="importSingleVideos">↓</button>
-              <button class="icon-btn" title="导出单视频备份" :disabled="!singleVideos.length" @click="exportSingleVideos">↑</button>
+              <button class="icon-btn" title="从 JSON 导入单视频" @click="importSingleVideos"><el-icon><Upload /></el-icon></button>
+              <button class="icon-btn" title="导出单视频备份" :disabled="!singleVideos.length" @click="exportSingleVideos"><el-icon><Download /></el-icon></button>
             </span>
           </div>
           <div v-else class="single-mode-label">
@@ -151,12 +151,15 @@
             </el-select>
           </div>
           <div class="section-actions">
-            <button
-              class="icon-btn"
-              title="全选 / 取消全选"
+            <el-checkbox
+              class="select-current-list"
+              :model-value="allSelected"
+              :indeterminate="someFilteredSelected && !allSelected"
+              :title="debouncedSearch ? '全选或取消全选当前搜索结果' : '全选或取消全选当前列表'"
+              :aria-label="debouncedSearch ? '全选或取消全选当前搜索结果' : '全选或取消全选当前列表'"
               :disabled="loadingVideos || videoLoadFailed || !filteredVideos.length"
-              @click="contentStore.toggleSelectAllFiltered(!allSelected)"
-            >{{ allSelected ? '☑' : '☐' }}</button>
+              @change="contentStore.toggleSelectAllFiltered(!allSelected)"
+            />
             <button
               v-if="viewMode === 'column'"
               class="icon-btn"
@@ -164,7 +167,7 @@
               :disabled="!selectedProgram"
               :class="{ spinning: loadingVideos }"
               @click="loadVideos(true)"
-            >↻</button>
+            ><el-icon><RefreshRight /></el-icon></button>
           </div>
         </div>
         <!-- search -->
@@ -206,7 +209,7 @@
                     <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
                   </div>
                   <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
-                  <button class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)">🗑</button>
+                  <button class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)"><el-icon><Delete /></el-icon></button>
                 </div>
                 <div :style="{ height: vPadBot + 'px' }" />
               </template>
@@ -226,7 +229,7 @@
                     <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
                   </div>
                   <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
-                  <button class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)">🗑</button>
+                  <button class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)"><el-icon><Delete /></el-icon></button>
                 </div>
               </template>
             </template>
@@ -317,53 +320,60 @@
         </div>
         <!-- footer toolbar -->
         <div class="video-footer">
-          <span class="video-count" v-if="videos.length">
-            {{ filteredVideos.length }} 个{{ debouncedSearch ? '（过滤）' : '' }}
-            <span v-if="downloadedCount" class="video-downloaded-count"> · ✓{{ downloadedCount }}</span>
-            <span v-if="selectedCount" class="video-selected-count"> · 已选 {{ selectedCount }}<template v-if="currentListSelectedCount && currentListSelectedCount !== selectedCount">（当前列表 {{ currentListSelectedCount }}）</template></span>
-          </span>
-          <button
-            v-if="viewMode === 'column' && !selectedIsAlbum && videos.length"
-            class="footer-btn footer-btn-ghost"
-            :disabled="startingDownload || loadingVideos || videoLoadFailed"
-            @click="downloadAll"
-          >{{ estimating ? '估算中…' : '下载本月' }}</button>
-          <button
-            v-if="selectedCount"
-            class="footer-btn footer-btn-clear"
-            @click="contentStore.clearAllSelection()"
-          >清空已选</button>
-          <el-popover v-if="selectedCount" placement="top" :width="340" trigger="click">
-            <template #reference>
-              <button class="footer-btn footer-btn-ghost">查看已选</button>
-            </template>
-            <div class="selected-videos-panel">
+          <div class="footer-summary">
+            <span v-if="selectedCount" class="footer-selection-count">已选 {{ selectedCount }}<span class="footer-current-count"> · 当前列表 {{ filteredSelectedCount }}/{{ filteredVideos.length }}</span></span>
+            <span v-else class="footer-list-count">{{ debouncedSearch ? '搜索结果' : '当前列表' }} {{ filteredVideos.length }}<span v-if="downloadedCount"> · 已下载 {{ downloadedCount }}</span></span>
+            <el-popover v-if="selectedCount" placement="top-end" :width="336" trigger="click" popper-class="selected-videos-popper">
+              <template #reference>
+                <button class="footer-review-btn">查看已选 <el-icon><ArrowRight /></el-icon></button>
+              </template>
+              <div class="selected-videos-panel">
               <div class="selected-videos-summary">
                 <span class="selected-videos-title">已选内容</span>
-                <span class="selected-videos-count">{{ selectedCount }} 个视频</span>
+                <button class="selected-videos-clear" @click="contentStore.clearAllSelection()">清空已选</button>
               </div>
-              <div v-for="group in selectedVideoGroups" :key="group.id" class="selected-video-group">
-                <div class="selected-video-group-name">
-                  <span :title="group.name">{{ group.name }}</span>
-                  <span>{{ group.videos.length }}</span>
-                </div>
-                <div v-for="video in group.videos" :key="video.guid" class="selected-video-row">
-                  <span :title="video.title">{{ video.title }}</span>
-                  <button title="从已选内容移除" aria-label="从已选内容移除" @click="contentStore.removeVideoSelection(video.guid)">×</button>
+              <div class="selected-videos-scroll">
+                <div v-for="group in selectedGroupsByMonth" :key="group.id" class="selected-video-group">
+                  <div class="selected-video-group-name">
+                    <span :title="group.name">{{ group.name }}</span>
+                    <span>{{ group.count }}</span>
+                  </div>
+                  <div v-for="month in group.months" :key="month.key" class="selected-video-month">
+                    <div class="selected-video-month-name">{{ month.label }}</div>
+                    <div v-for="video in month.videos" :key="video.guid" class="selected-video-row">
+                      <div class="selected-video-info">
+                        <span class="selected-video-title" :title="video.title">{{ video.title }}</span>
+                        <span class="selected-video-meta">{{ video.time || '日期未知' }}<span v-if="video.contentType" class="video-type-badge" :class="`video-type-badge--${video.contentType}`">{{ contentTypeLabel(video.contentType) }}</span></span>
+                      </div>
+                      <button title="从已选内容移除" :aria-label="`移除 ${video.title}`" @click="contentStore.removeVideoSelection(video.guid)"><el-icon><Close /></el-icon></button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </el-popover>
-          <button
-            v-if="viewMode === 'column' || selectedCount"
-            class="footer-btn"
-            :class="selectedCount ? 'footer-btn-primary' : 'footer-btn-idle'"
-            :disabled="!selectedCount || startingDownload"
-            @click="downloadSelected"
-          >
-            {{ estimating ? '估算中…' : (allSelectedDownloaded ? '重新下载' : '下载选中') }}
-            <span v-if="selectedCount" class="footer-btn-count">{{ selectedCount }}</span>
-          </button>
+            </el-popover>
+          </div>
+          <div class="footer-actions">
+            <button
+              v-if="selectedCount"
+              class="footer-btn footer-btn-primary"
+              :disabled="startingDownload"
+              @click="downloadSelected"
+            >{{ estimating ? '估算中…' : (allSelectedDownloaded ? '重新下载' : '下载选中') }} <span class="footer-btn-count">{{ selectedCount }}</span></button>
+            <button
+              v-else-if="canDownloadMonth"
+              class="footer-btn footer-btn-primary"
+              :disabled="startingDownload || loadingVideos || videoLoadFailed"
+              @click="downloadAll"
+            >{{ estimating ? '估算中…' : '下载本月' }}</button>
+            <button v-else class="footer-btn footer-btn-idle" disabled>选择视频后下载</button>
+            <el-dropdown v-if="selectedCount && canDownloadMonth" trigger="click" placement="top-end" @command="onDownloadAction">
+              <button class="footer-more-btn" title="更多下载方式" aria-label="更多下载方式" :disabled="startingDownload || loadingVideos || videoLoadFailed"><el-icon><MoreFilled /></el-icon></button>
+              <template #dropdown>
+                <el-dropdown-menu><el-dropdown-item command="month">下载本月全部 {{ videos.length }} 个视频</el-dropdown-item></el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </div>
       </div>
     </div>
@@ -372,7 +382,7 @@
     <div class="home-preview">
         <div v-if="selectedVideo" :key="selectedVideo.guid" class="preview-inner">
           <!-- cover image -->
-          <div class="preview-cover-wrap">
+          <div class="preview-cover-wrap" :class="{ 'cover-missing': !selectedVideo.coverUrl || coverError }">
             <!-- blurred background layer -->
             <div
               v-if="selectedVideo.coverUrl && !coverError"
@@ -393,7 +403,7 @@
               title="点击查看大图"
             />
             <div v-else class="preview-cover preview-cover--empty">
-              <span>📺</span>
+              <span class="preview-placeholder-art" aria-hidden="true">📺</span>
               <span>暂无封面</span>
             </div>
             <!-- bottom gradient overlay -->
@@ -403,10 +413,10 @@
           <div class="preview-content">
             <div class="preview-action-bar">
               <button class="preview-action-btn" title="复制标题" @click="copyTitle">
-                📋 复制标题
+                <el-icon><CopyDocument /></el-icon>复制标题
               </button>
               <button class="preview-action-btn" title="复制节目简介" @click="copyBrief">
-                📄 复制简介
+                <el-icon><Document /></el-icon>复制简介
               </button>
               <button
                 v-if="selectedVideo.coverUrl && !coverError"
@@ -414,7 +424,7 @@
                 :disabled="coverDownloading"
                 title="保存封面图片"
                 @click="downloadCoverImage"
-              >{{ coverDownloading ? '…' : '🖼 保存封面' }}</button>
+              ><el-icon><Picture /></el-icon>{{ coverDownloading ? '保存中…' : '保存封面' }}</button>
             </div>
             <h2 class="preview-title">{{ selectedVideo.title }}</h2>
             <div class="preview-meta">
@@ -454,7 +464,7 @@
         </div>
         <div v-else class="preview-empty" key="empty">
           <div class="preview-guide">
-            <div class="preview-guide-icon">📺</div>
+            <div class="preview-guide-icon" aria-hidden="true">📺</div>
             <h3 class="preview-guide-title">开始下载央视视频</h3>
             <p class="preview-guide-desc">按以下步骤快速开始：</p>
             <div class="preview-guide-steps">
@@ -487,7 +497,7 @@
     <!-- lightbox -->
     <Transition name="lightbox-fade">
       <div v-if="lightboxOpen" class="lightbox" @click="closeLightbox">
-        <button class="lightbox-close" @click="closeLightbox">✕</button>
+        <button class="lightbox-close" title="关闭大图" @click="closeLightbox"><el-icon><Close /></el-icon></button>
         <img
           :src="selectedVideo?.coverUrl"
           class="lightbox-img"
@@ -503,7 +513,10 @@
 import { ref, h, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { storeToRefs } from 'pinia'
-import { Download, RefreshRight, Search } from '@element-plus/icons-vue'
+import {
+  ArrowRight, Close, CopyDocument, Delete, Document, Download, MoreFilled,
+  Picture, RefreshRight, Search, Star, StarFilled, Upload
+} from '@element-plus/icons-vue'
 import type { ProgramInfo, ProgramMonthBounds, VideoInfo, DownloadJob } from '../../shared/types'
 import { isProgramDeleteKey } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
@@ -581,6 +594,29 @@ watch(selectedProgram, async program => {
 const currentListSelectedCount = computed(() =>
   videos.value.filter(v => contentStore.isVideoSelected(v)).length
 )
+const filteredSelectedCount = computed(() =>
+  filteredVideos.value.filter(v => contentStore.isVideoSelected(v)).length
+)
+const someFilteredSelected = computed(() => filteredSelectedCount.value > 0)
+const canDownloadMonth = computed(() =>
+  viewMode.value === 'column' && !selectedIsAlbum.value && videos.value.length > 0
+)
+const selectedGroupsByMonth = computed(() => selectedVideoGroups.value.map(group => {
+  const months = new Map<string, VideoInfo[]>()
+  for (const video of group.videos) {
+    const key = videoMonthKey(video.time) || 'unknown'
+    const items = months.get(key) || []
+    items.push(video)
+    months.set(key, items)
+  }
+  return {
+    id: group.id, name: group.name, count: group.videos.length,
+    months: Array.from(months, ([key, monthVideos]) => ({
+      key, label: key === 'unknown' ? '日期未知' : `${key.slice(0, 4)}年${Number(key.slice(4))}月`,
+      videos: monthVideos
+    })).sort((a, b) => b.key.localeCompare(a.key))
+  }
+}))
 const selectionSource = computed(() => selectedProgram.value?.name || (viewMode.value === 'single' ? '单个视频' : '其他视频'))
 
 const isMac = window.cctvdlApi.isMac
@@ -1081,6 +1117,11 @@ function contentTypeLabel(type: NonNullable<VideoInfo['contentType']>): string {
   return type === 'highlight' ? '看点' : '片段'
 }
 
+function videoMonthKey(time: string): string {
+  const match = time.match(/^(\d{4})[-/]?(\d{2})/)
+  return match ? `${match[1]}${match[2]}` : ''
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
@@ -1126,6 +1167,10 @@ async function downloadAll() {
   await downloadVideos(videos.value, true)
 }
 
+function onDownloadAction(command: string) {
+  if (command === 'month') void downloadAll()
+}
+
 const startingDownload = ref(false)
 const estimating = ref(false)
 
@@ -1166,7 +1211,35 @@ async function downloadVideos(
     estimating.value = false
     const lowSpace = estimate.diskFreeBytes != null && estimate.estimatedBytes > estimate.diskFreeBytes
     const remaining = estimate.totalCount - estimate.estimatedCount
+    const months = Array.from(new Set(estimateVideos.map(video => videoMonthKey(video.time)).filter(Boolean))).sort()
+    const monthLabel = (key: string) => `${key.slice(0, 4)}年${Number(key.slice(4))}月`
+    const monthRange = months.length
+      ? months.length === 1 ? monthLabel(months[0]) : `${monthLabel(months[0])}—${monthLabel(months[months.length - 1])}`
+      : '日期未知'
+    const includedGuids = new Set(estimateVideos.map(video => video.guid))
+    const includedGroups = consumeSelection
+      ? selectedVideoGroups.value.filter(group => group.id !== '__single__'
+        && group.videos.some(video => includedGuids.has(video.guid)))
+      : selectedProgram.value && viewMode.value === 'column'
+        ? [{ id: selectedProgram.value.columnId }]
+        : []
+    const albumCount = includedGroups.filter(group =>
+      programs.value.find(program => program.columnId === group.id)?.kind === 'album').length
+    const columnCount = includedGroups.length - albumCount
+    const singleCount = consumeSelection
+      ? selectedVideoGroups.value.find(group => group.id === '__single__')?.videos.filter(video => includedGuids.has(video.guid)).length || 0
+      : includedGroups.length ? 0 : estimateVideos.length
+    const scope = [columnCount ? `${columnCount} 个栏目` : '', albumCount ? `${albumCount} 个专辑` : '', singleCount ? `${singleCount} 个单视频` : '']
+      .filter(Boolean).join(' · ')
+    const highlightCount = estimateVideos.filter(video => video.contentType === 'highlight').length
+    const fragmentCount = estimateVideos.filter(video => video.contentType === 'fragment').length
     const message = h('div', { class: 'download-confirm-details' }, [
+      h('div', { class: 'download-confirm-overview' }, [
+        h('span', { class: 'download-confirm-scope' }, scope),
+        h('span', { class: 'download-confirm-period' }, monthRange),
+        ...(highlightCount ? [h('span', { class: 'download-confirm-kind' }, `${highlightCount} 个看点`)] : []),
+        ...(fragmentCount ? [h('span', { class: 'download-confirm-kind' }, `${fragmentCount} 个片段`)] : [])
+      ]),
       ...[
         ['清晰度', QUALITY_LABELS[settings.quality]],
         ['预计大小', estimate.estimatedCount ? `约 ${formatFileSize(estimate.estimatedBytes)}` : '暂无法估算'],
@@ -1185,7 +1258,18 @@ async function downloadVideos(
         : []),
       ...(lowSpace
         ? [h('p', { class: 'download-confirm-warning' }, '剩余空间可能不足，请释放空间或更换保存位置。')]
-        : [])
+        : []),
+      h('details', { class: 'download-confirm-list' }, [
+        h('summary', `查看待加入的视频（${estimateVideos.length}）`),
+        h('div', { class: 'download-confirm-list-scroll' }, estimateVideos.map(video =>
+          h('div', { class: 'download-confirm-video', key: video.guid }, [
+            h('span', { class: 'download-confirm-video-title', title: video.title }, video.title),
+            h('span', { class: 'download-confirm-video-meta' },
+              [video.time?.slice(0, 10), video.contentType ? contentTypeLabel(video.contentType) : '']
+                .filter(Boolean).join(' · '))
+          ])
+        ))
+      ])
     ])
     try {
       const title = `${redownloadIntent ? '重新下载' : '下载'} ${estimateVideos.length} 个视频`
@@ -1232,9 +1316,23 @@ async function downloadVideos(
 
 :global(.download-confirm-details) {
   display: grid;
-  gap: 9px;
+  gap: 8px;
   width: 100%;
 }
+:global(.download-confirm-overview) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 5px;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  line-height: 1.5;
+}
+:global(.download-confirm-scope) { color: var(--el-text-color-primary); font-weight: var(--app-font-weight-semibold); }
 
 :global(.download-confirm-row) {
   display: grid;
@@ -1264,6 +1362,13 @@ async function downloadVideos(
   font-size: 13px;
   line-height: 1.5;
 }
+:global(.download-confirm-list) { padding-top: 4px; border-top: 1px solid var(--el-border-color-light); }
+:global(.download-confirm-list summary) { padding: 5px 0; color: var(--el-color-primary); font-size: 12px; cursor: pointer; }
+:global(.download-confirm-list summary:focus-visible) { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
+:global(.download-confirm-list-scroll) { max-height: min(220px, 30vh); overflow-y: auto; padding: 3px 0; }
+:global(.download-confirm-video) { display: flex; align-items: baseline; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--el-border-color-extra-light); font-size: 12px; }
+:global(.download-confirm-video-title) { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--el-text-color-primary); }
+:global(.download-confirm-video-meta) { flex-shrink: 0; color: var(--el-text-color-secondary); }
 
 /* ── 整体布局 ───────────────────────────────────── */
 .home-layout {
@@ -1318,10 +1423,10 @@ async function downloadVideos(
 }
 
 .section-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: var(--app-font-weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0;
   color: var(--el-text-color-secondary);
 }
 
@@ -1344,7 +1449,18 @@ async function downloadVideos(
 .icon-btn:hover { background: var(--el-fill-color); color: var(--el-text-color-primary); }
 .icon-btn:disabled { opacity: .4; cursor: not-allowed; }
 .icon-btn.spinning { animation: spin .6s linear infinite; }
+.icon-btn .el-icon { font-size: 15px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.select-current-list { margin: 0 5px 0 0; min-width: 28px; min-height: 28px; justify-content: center; }
+.select-current-list :deep(.el-checkbox__label) { display: none; }
+.select-current-list :deep(.el-checkbox__inner) { width: 15px; height: 15px; }
+.home-sidebar button:focus-visible,
+.select-current-list :deep(.el-checkbox__input:focus-visible .el-checkbox__inner),
+.selected-video-row button:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
 
 /* 导入行 */
 .import-row {
@@ -1434,7 +1550,7 @@ html.dark .single-entry.active {
   padding: 6px 8px 3px;
   font-size: 11px;
   font-weight: var(--app-font-weight-semibold);
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
   color: var(--el-text-color-secondary);
   user-select: none;
 }
@@ -1465,9 +1581,11 @@ html.dark .single-entry.active {
 }
 
 .program-item:hover .prog-action-btn { opacity: 1; }
-/* 未收藏：悬停时暗显（点亮即收藏）；已收藏：⭐ 常驻显示 */
+/* 未收藏：悬停时暗显；已收藏：星标常驻显示 */
 .program-item:hover .prog-action-btn.star:not(.faved) { opacity: 0.4; }
 .prog-action-btn.star.faved { opacity: 1; }
+.prog-action-btn:focus-visible { opacity: 1; }
+.prog-action-btn.star.faved { color: var(--el-color-warning); }
 .prog-action-btn:hover { background: var(--el-fill-color); }
 .prog-action-btn.del:hover { color: var(--el-color-danger); }
 
@@ -1486,7 +1604,8 @@ html.dark .single-entry.active {
 }
 .single-entry:hover { background: var(--el-fill-color-light); }
 .single-entry.active { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
-.single-entry-icon { font-size: 13px; flex-shrink: 0; }
+.single-entry-icon { font-size: 14px; flex-shrink: 0; }
+.single-mode-caption { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
 .single-entry-label { flex: 1; min-width: 0; font-size: 13px; font-weight: var(--app-font-weight-medium); }
 .single-entry-count {
   flex-shrink: 0;
@@ -1567,10 +1686,10 @@ html.dark .single-entry.active {
 
 .video-date-header {
   padding: 6px 8px 3px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: var(--app-font-weight-semibold);
   color: var(--el-text-color-secondary);
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
   border-bottom: 1px solid var(--app-border-subtle);
   margin-bottom: 2px;
   user-select: none;
@@ -1632,7 +1751,7 @@ html.dark .video-item :deep(.el-checkbox:not(.is-checked) .el-checkbox__inner) {
 .video-item-title {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1687,7 +1806,7 @@ html.dark .video-type-badge--fragment {
 }
 
 .video-item-date {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--el-text-color-secondary);
 }
 
@@ -1706,6 +1825,7 @@ html.dark .video-type-badge--fragment {
   transition: opacity .12s, color .12s;
 }
 .video-item:hover .video-del-btn { opacity: 1; }
+.video-del-btn:focus-visible { opacity: 1; }
 .video-del-btn:hover { color: var(--el-color-danger); }
 
 .video-item.downloaded {
@@ -1743,30 +1863,51 @@ html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
 /* 视频底部工具栏 */
 .video-footer {
   display: flex;
-  align-items: center;
-  gap: var(--app-spacing-sm);
-  padding: var(--app-spacing-sm) 0 var(--app-spacing-md);
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px 0 var(--app-spacing-md);
   border-top: 1px solid var(--app-border-subtle);
-  margin-top: var(--app-spacing-sm);
+  margin-top: 0;
 }
-
-.video-count {
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-  flex: 1;
+.footer-summary, .footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+.footer-summary { min-height: 22px; justify-content: space-between; }
+.footer-list-count, .footer-selection-count {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
-
-.video-downloaded-count { color: var(--el-color-success); font-weight: var(--app-font-weight-medium); }
-.video-selected-count   { color: var(--el-color-primary);  font-weight: var(--app-font-weight-medium); }
+.footer-selection-count { color: var(--el-text-color-primary); font-weight: var(--app-font-weight-medium); }
+.footer-current-count { color: var(--el-text-color-secondary); font-weight: var(--app-font-weight-normal); }
+.footer-review-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--el-color-primary);
+  font-size: 12px;
+  font-weight: var(--app-font-weight-medium);
+  cursor: pointer;
+}
+.footer-review-btn:hover { color: var(--el-color-primary-dark-2); }
 
 /* 底部操作按钮基础样式 */
 .footer-btn {
-  flex-shrink: 0;
+  flex: 1;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
   height: var(--app-control-height);
   padding: 0 12px;
@@ -1778,54 +1919,54 @@ html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
   transition: background .12s, color .12s, border-color .12s;
   white-space: nowrap;
 }
-
-/* 幽灵/次要：下载本月 */
-.footer-btn-ghost {
+.footer-more-btn {
+  width: var(--app-control-height);
+  height: var(--app-control-height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   border: 1px solid var(--el-border-color);
-  background: transparent;
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-fill-color-blank);
   color: var(--el-text-color-regular);
+  cursor: pointer;
 }
-.footer-btn-ghost:hover {
-  border-color: var(--el-color-primary-light-5);
-  color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-}
+.footer-more-btn:hover { border-color: var(--el-color-primary); color: var(--el-color-primary); }
+.footer-more-btn:disabled { opacity: .5; cursor: not-allowed; }
 
-.footer-btn-clear {
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--el-color-danger);
-  padding: 0 6px;
-}
-.footer-btn-clear:hover { background: var(--el-color-danger-light-9); }
-
-.selected-videos-panel { max-height: 300px; overflow: auto; padding: 2px; }
+.selected-videos-panel { min-width: 0; }
 .selected-videos-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-bottom: 10px;
+  padding: 2px 2px 10px;
   border-bottom: 1px solid var(--app-border-subtle);
 }
 .selected-videos-title { font-size: 14px; font-weight: var(--app-font-weight-semibold); color: var(--el-text-color-primary); }
-.selected-videos-count { font-size: 12px; color: var(--el-text-color-secondary); }
+.selected-videos-clear { border: 0; padding: 3px 0; background: transparent; color: var(--el-color-danger); font-size: 12px; cursor: pointer; }
+.selected-videos-clear:hover { text-decoration: underline; }
+.selected-videos-scroll { max-height: min(360px, 52vh); overflow-y: auto; }
 .selected-video-group + .selected-video-group { margin-top: 12px; }
 .selected-video-group-name {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 4px 4px;
-  color: var(--el-text-color-secondary);
-  font-size: 11px;
-  font-weight: var(--app-font-weight-medium);
+  padding: 9px 2px 5px;
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+  font-weight: var(--app-font-weight-semibold);
 }
 .selected-video-group-name span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.selected-video-row { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 2px 4px 2px 8px; border-radius: 6px; }
+.selected-video-month-name { padding: 5px 3px 3px; color: var(--el-text-color-secondary); font-size: 12px; }
+.selected-video-row { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 3px 3px 3px 8px; border-radius: 5px; }
 .selected-video-row:hover { background: var(--el-fill-color-light); }
-.selected-video-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.selected-video-row button { width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--el-text-color-secondary); cursor: pointer; font-size: 17px; line-height: 1; }
+.selected-video-info { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.selected-video-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--el-text-color-primary); }
+.selected-video-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--el-text-color-secondary); }
+.selected-video-row button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 28px; height: 28px; border: 0; border-radius: 5px; background: transparent; color: var(--el-text-color-secondary); cursor: pointer; }
 .selected-video-row button:hover { color: var(--el-color-danger); background: var(--el-color-danger-light-9); }
 
 /* 主操作：有选中时 */
@@ -1835,6 +1976,7 @@ html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
   color: #fff;
 }
 .footer-btn-primary:hover { background: var(--el-color-primary-dark-2); border-color: var(--el-color-primary-dark-2); }
+.footer-btn-primary:disabled { opacity: .6; cursor: not-allowed; }
 
 /* 空闲态：无选中时（视觉弱化但仍占位） */
 .footer-btn-idle {
@@ -1858,7 +2000,6 @@ html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
   font-weight: var(--app-font-weight-bold);
   line-height: 1;
 }
-.footer-btn-idle .footer-btn-count { background: var(--el-fill-color); color: var(--el-text-color-placeholder); }
 
 /* ── 右侧预览区 ─────────────────────────────────── */
 .home-preview {
@@ -1887,6 +2028,7 @@ html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
   background: var(--el-fill-color-light);
   position: relative;
 }
+.preview-cover-wrap.cover-missing { height: min(24vh, 180px); }
 
 /* 模糊背景层 */
 .preview-cover-blur {
@@ -1953,9 +2095,9 @@ html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
   gap: 8px;
   color: var(--el-text-color-placeholder);
   font-size: 13px;
+  opacity: 1;
 }
-
-.preview-cover--empty span:first-child { font-size: 32px; }
+.preview-placeholder-art { font-size: 34px; line-height: 1; }
 
 /* 内容区 */
 .preview-content {
@@ -1985,6 +2127,9 @@ html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
 }
 
 .preview-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 13px;
   color: var(--el-text-color-secondary);
 }
@@ -2003,7 +2148,7 @@ html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
   font-size: 11px;
   font-weight: var(--app-font-weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0;
   color: var(--el-text-color-secondary);
 }
 
@@ -2044,11 +2189,13 @@ html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
   color: var(--el-text-color-primary);
   border-color: var(--el-border-color-darker);
 }
+.preview-action-btn .el-icon { flex-shrink: 0; font-size: 14px; }
 
 /* 单个视频徽章 */
 .preview-single-badge {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   padding: 2px 8px;
   border-radius: 20px;
   font-size: 12px;
@@ -2107,7 +2254,7 @@ html.dark .preview-downloaded-badge {
   box-shadow: none;
   transition: background .15s, color .15s, border-color .15s;
   white-space: nowrap;
-  letter-spacing: 0.2px;
+  letter-spacing: 0;
 }
 
 .preview-download-icon {
@@ -2128,8 +2275,10 @@ html.dark .preview-downloaded-badge {
 
 /* 弱化态：有批量选中时单集按钮降优先级 */
 .preview-download-btn.dimmed {
-  background: var(--el-fill-color);
-  color: var(--el-text-color-regular);
+  box-sizing: border-box;
+  border: 1px solid var(--el-color-primary-light-5);
+  background: var(--el-bg-color);
+  color: var(--el-color-primary);
   box-shadow: none;
 }
 .preview-download-btn.dimmed:hover {
@@ -2166,8 +2315,8 @@ html.dark .preview-downloaded-badge {
 
 .preview-guide-icon {
   font-size: 40px;
-  margin-bottom: var(--app-spacing-md);
   line-height: 1;
+  margin-bottom: var(--app-spacing-md);
 }
 
 .preview-guide-title {

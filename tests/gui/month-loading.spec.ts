@@ -72,7 +72,7 @@ test('切换月份或栏目时不暴露旧列表操作，失败后可重试', as
     await month.press('Enter')
     await expect(page.locator('.video-skeleton')).toBeVisible()
     await expect(page.locator('.video-item')).toHaveCount(0)
-    await expect(page.locator('button[title="全选 / 取消全选"]')).toBeDisabled()
+    await expect(page.locator('.select-current-list .el-checkbox__input')).toHaveClass(/is-disabled/)
     await expect(page.locator('button', { hasText: '下载本月' })).toHaveCount(0)
     await expect(page.locator('button', { hasText: '下载选中' })).toContainText('1')
     await page.locator('.video-skeleton').click()

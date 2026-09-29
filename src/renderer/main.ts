@@ -43,10 +43,10 @@ designTokens.textContent = `
     --app-shadow-lg: 0 10px 15px -3px rgba(0,0,0,.08), 0 4px 6px -4px rgba(0,0,0,.06);
 
     /* 字体栈：优先系统字体，覆盖 Windows / macOS / Linux CJK */
-    --el-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-      'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    --el-font-family: 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont,
+      'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei',
       'Noto Sans CJK SC', 'Source Han Sans SC', 'WenQuanYi Micro Hei',
-      Arial, Helvetica, sans-serif;
+      sans-serif;
 
     /* 字重系统 */
     --app-font-weight-normal: 400;
@@ -92,10 +92,10 @@ designTokens.textContent = `
     --app-shadow-md: 0 4px 6px -1px rgba(0,0,0,.3), 0 2px 4px -2px rgba(0,0,0,.2);
     --app-shadow-lg: 0 10px 15px -3px rgba(0,0,0,.3), 0 4px 6px -4px rgba(0,0,0,.2);
 
-    --app-bg-page: #0f172a;
-    --app-bg-card: #1e293b;
-    --app-bg-sidebar: #1e293b;
-    --app-border-subtle: rgba(255,255,255,.06);
+    --app-bg-page: #181a1d;
+    --app-bg-card: #24272b;
+    --app-bg-sidebar: #202328;
+    --app-border-subtle: rgba(255,255,255,.08);
     --app-focus-ring: 0 0 0 3px rgba(59, 130, 246, .32);
   }
 
@@ -109,6 +109,8 @@ designTokens.textContent = `
   body {
     background: var(--el-bg-color);
     color: var(--el-text-color-primary);
+    font-size: 13px;
+    letter-spacing: 0;
     transition: background-color .2s ease, color .2s ease;
   }
 

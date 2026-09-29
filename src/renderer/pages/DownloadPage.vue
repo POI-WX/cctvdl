@@ -11,12 +11,12 @@
         </span>
       </div>
       <div class="dl-actions">
-        <button v-if="running" class="dl-action-btn danger" @click="cancelAll">⏹ 全部取消</button>
+        <button v-if="running" class="dl-action-btn danger" @click="cancelAll"><el-icon><Close /></el-icon>全部取消</button>
         <button v-if="!running && failedCount > 0" class="dl-action-btn primary" @click="retryAllFailed">
-          ↺ 重试失败 ({{ failedCount }})
+          <el-icon><RefreshRight /></el-icon>重试失败 ({{ failedCount }})
         </button>
         <button v-if="!running && finishedCount > 0" class="dl-action-btn" @click="dlStore.clearFinished()">清除已结束</button>
-        <button class="dl-action-btn" @click="openFolder">📂 打开文件夹</button>
+        <button class="dl-action-btn" @click="openFolder"><el-icon><FolderOpened /></el-icon>打开文件夹</button>
       </div>
     </div>
 
@@ -43,7 +43,7 @@
     <div class="dl-list">
       <!-- empty state -->
       <div v-if="!jobs.length" class="dl-empty">
-        <div class="dl-empty-icon">⬇️</div>
+        <div class="dl-empty-icon" aria-hidden="true">⬇️</div>
         <p class="dl-empty-title">暂无下载任务</p>
         <p class="dl-empty-hint">在「首页」选择视频并点击「下载选中」</p>
         <el-button size="small" @click="emit('go-home')">去首页选择视频</el-button>
@@ -52,7 +52,7 @@
       <!-- group: active -->
       <div v-if="activeJobs.length" class="dl-group">
         <button class="dl-group-header" @click="toggleGroup('active')">
-          <span class="dl-group-icon">⬇</span>
+          <span class="dl-group-icon" aria-hidden="true">⬇</span>
           <span class="dl-group-title">进行中</span>
           <span class="dl-group-count">{{ activeJobs.length }}</span>
           <span class="dl-group-chevron" :class="{ collapsed: groupCollapsed.active }">›</span>
@@ -123,7 +123,7 @@
       <!-- group: completed -->
       <div v-if="completedJobs.length" class="dl-group">
         <button class="dl-group-header" @click="toggleGroup('completed')">
-          <span class="dl-group-icon success">✓</span>
+          <span class="dl-group-icon success" aria-hidden="true">✓</span>
           <span class="dl-group-title">已完成</span>
           <span class="dl-group-count">{{ completedJobs.length }}</span>
           <span class="dl-group-chevron" :class="{ collapsed: groupCollapsed.completed }">›</span>
@@ -157,8 +157,8 @@
               </div>
             </div>
             <div class="dl-card-actions">
-              <button class="dl-card-btn primary" @click="playFile(job)">▶ 播放</button>
-              <button class="dl-card-btn" @click="revealFile(job)">📂 文件夹</button>
+              <button class="dl-card-btn primary" @click="playFile(job)"><el-icon><VideoPlay /></el-icon>播放</button>
+              <button class="dl-card-btn" @click="revealFile(job)"><el-icon><FolderOpened /></el-icon>文件夹</button>
             </div>
           </div>
         </TransitionGroup>
@@ -167,7 +167,7 @@
       <!-- group: failed / cancelled -->
       <div v-if="failedCancelledJobs.length" class="dl-group">
         <button class="dl-group-header" @click="toggleGroup('failed')">
-          <span class="dl-group-icon danger">✗</span>
+          <span class="dl-group-icon danger" aria-hidden="true">✗</span>
           <span class="dl-group-title">失败 / 取消</span>
           <span class="dl-group-count">{{ failedCancelledJobs.length }}</span>
           <span class="dl-group-chevron" :class="{ collapsed: groupCollapsed.failed }">›</span>
@@ -206,7 +206,7 @@
               </span>
             </div>
             <div class="dl-card-actions">
-              <button v-if="!running" class="dl-card-btn primary" @click="retry(job)">↺ 重试</button>
+              <button v-if="!running" class="dl-card-btn primary" @click="retry(job)"><el-icon><RefreshRight /></el-icon>重试</button>
             </div>
           </div>
         </TransitionGroup>
@@ -217,10 +217,10 @@
     <Teleport to="body">
       <div v-if="ctxMenu.visible" class="dl-ctx-overlay" @click="closeContextMenu" @contextmenu.prevent="closeContextMenu">
         <div class="dl-ctx-menu" :style="{ top: ctxMenu.y + 'px', left: ctxMenu.x + 'px' }">
-          <button class="dl-ctx-item" @click="ctxCopyTitle">📋 复制标题</button>
-          <button v-if="ctxMenu.job?.sourceJob?.outputPath" class="dl-ctx-item" @click="ctxOpenFile">▶ 播放</button>
-          <button v-if="ctxMenu.job?.sourceJob?.outputPath" class="dl-ctx-item" @click="ctxRevealFile">📂 定位文件</button>
-          <button v-if="ctxMenu.job?.state === 'Failed'" class="dl-ctx-item" @click="ctxRetry">↺ 重试</button>
+          <button class="dl-ctx-item" @click="ctxCopyTitle"><el-icon><CopyDocument /></el-icon>复制标题</button>
+          <button v-if="ctxMenu.job?.sourceJob?.outputPath" class="dl-ctx-item" @click="ctxOpenFile"><el-icon><VideoPlay /></el-icon>播放</button>
+          <button v-if="ctxMenu.job?.sourceJob?.outputPath" class="dl-ctx-item" @click="ctxRevealFile"><el-icon><FolderOpened /></el-icon>定位文件</button>
+          <button v-if="ctxMenu.job?.state === 'Failed'" class="dl-ctx-item" @click="ctxRetry"><el-icon><RefreshRight /></el-icon>重试</button>
         </div>
       </div>
     </Teleport>
@@ -230,6 +230,9 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { ElMessage, ElNotification } from 'element-plus'
+import {
+  Close, CopyDocument, FolderOpened, RefreshRight, VideoPlay
+} from '@element-plus/icons-vue'
 import { storeToRefs } from 'pinia'
 import { useDownloadStore } from '../stores/download'
 const emit = defineEmits<{ 'go-home': [] }>()
@@ -530,7 +533,7 @@ function ctxRetry() {
   font-size: 10px;
   font-weight: var(--app-font-weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
   color: var(--el-text-color-secondary);
 }
 
@@ -601,7 +604,7 @@ function ctxRetry() {
   color: var(--el-text-color-secondary);
 }
 
-.dl-empty-icon { font-size: 40px; opacity: .4; }
+.dl-empty-icon { font-size: 40px; opacity: .7; }
 .dl-empty-title { margin: 0; font-size: 15px; font-weight: var(--app-font-weight-medium); }
 .dl-empty-hint { margin: 0; font-size: 12px; color: var(--el-text-color-placeholder); }
 
@@ -892,7 +895,7 @@ html.dark .dl-group-icon.danger  { background: #2d0a0a; }
   font-weight: var(--app-font-weight-semibold);
   color: var(--el-text-color-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
   flex: 1;
 }
 
@@ -984,7 +987,9 @@ html.dark .dl-group-icon.danger  { background: #2d0a0a; }
 }
 
 .dl-ctx-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
   padding: 7px 14px;
