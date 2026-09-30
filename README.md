@@ -54,8 +54,8 @@
 | <img src="docs/assets/album.png" width="400" alt="专辑浏览"> | <img src="docs/assets/single-video.png" width="400" alt="单个视频下载"> |
 | **栏目片段** | **下载前确认** |
 | <img src="docs/assets/column-fragments.png" width="400" alt="栏目片段列表与类型标签"> | <img src="docs/assets/download-confirm.png" width="400" alt="下载前的大小估算与磁盘提示"> |
-| **选择时间范围** | **核对扫描结果** |
-| <img src="docs/assets/month-range-picker.png" width="400" alt="栏目起止月份与最早至最新快捷入口"> | <img src="docs/assets/month-range-review.png" width="400" alt="时间范围扫描结果与预计大小"> |
+| **按月份下载** | **核对下载内容** |
+| <img src="docs/assets/month-range-picker.png" width="400" alt="栏目起止月份与全部月份快捷入口"> | <img src="docs/assets/month-range-review.png" width="400" alt="跨月份下载内容与预计大小"> |
 | **封面大图预览** | **已选内容** |
 | <img src="docs/assets/lightbox.png" width="400" alt="封面大图预览"> | <img src="docs/assets/selected-videos.png" width="400" alt="已选内容"> |
 | **下载管理** | **任务排序** |
@@ -89,7 +89,7 @@
 
 1. 复制支持的央视页面链接，粘贴到首页导入栏，或拖放到窗口。
 2. 打开导入的栏目、专辑或「单个视频」，找到要下载的内容。
-3. 勾选后点「下载选中」，也可下载当前月份、按时间范围下载栏目，或下载预览中的单条视频；核对信息后加入队列。
+3. 勾选后点「下载选中」，也可使用「下载本月」「按月份下载」，或下载预览中的单条视频；核对信息后加入队列。
 4. 在下载页查看进度、调整顺序、取消或重试。
 
 完整图文步骤、设置说明与快捷键见 [使用指南](docs/USAGE.md)。

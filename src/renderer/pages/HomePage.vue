@@ -296,13 +296,13 @@
             >{{ estimating ? '估算中…' : '下载本月' }}</button>
             <button v-else class="footer-btn footer-btn-idle" disabled>选择视频后下载</button>
             <button v-if="!selectedCount && isMonthlyColumn" class="footer-range-btn" :disabled="startingDownload"
-              @click="rangeDialogOpen = true">时间范围</button>
+              title="选择起止月份，批量下载栏目视频" @click="rangeDialogOpen = true"><el-icon><Calendar /></el-icon>按月份下载</button>
             <el-dropdown v-if="selectedCount && isMonthlyColumn" trigger="click" placement="top-end" @command="onDownloadAction">
               <button class="footer-more-btn" title="更多下载方式" aria-label="更多下载方式" :disabled="startingDownload"><el-icon><MoreFilled /></el-icon></button>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item v-if="canDownloadMonth" command="month">下载本月全部 {{ videos.length }} 个视频</el-dropdown-item>
-                  <el-dropdown-item command="range">按时间范围下载…</el-dropdown-item>
+                  <el-dropdown-item command="range">按月份下载…</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -404,26 +404,27 @@
               <div class="guide-step">
                 <span class="guide-step-num">1</span>
                 <div class="guide-step-content">
-                  <strong>导入节目</strong>
-                  <span>将央视节目页面链接粘贴到左侧输入框，按回车</span>
+                  <strong>导入链接</strong>
+                  <span>粘贴央视栏目、专辑或视频链接，点击「导入」或按回车。</span>
                 </div>
               </div>
               <div class="guide-step">
                 <span class="guide-step-num">2</span>
                 <div class="guide-step-content">
                   <strong>选择视频</strong>
-                  <span>点击左侧节目，选择要下载的视频</span>
+                  <span>打开左侧内容，点击视频预览，勾选需要下载的视频。</span>
                 </div>
               </div>
               <div class="guide-step">
                 <span class="guide-step-num">3</span>
                 <div class="guide-step-content">
-                  <strong>下载</strong>
-                  <span>勾选视频后点击「下载选中」，或单集点击「下载此集」</span>
+                  <strong>开始下载</strong>
+                  <span>勾选后点<span class="guide-action-name">「下载选中」</span>，也可在预览区直接下载。</span>
+                  <span>栏目支持<span class="guide-action-name">「下载本月」</span>和<span class="guide-action-name">「按月份下载」</span>。</span>
                 </div>
               </div>
             </div>
-            <p class="preview-guide-tip">💡 也可以将链接直接拖入窗口快速导入</p>
+            <p class="preview-guide-tip">💡 也可将央视链接拖入窗口。</p>
           </div>
         </div>
     </div>
@@ -450,7 +451,7 @@ import { ref, h, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { storeToRefs } from 'pinia'
 import {
-  ArrowRight, Close, CopyDocument, Delete, Document, Download, MoreFilled,
+  ArrowRight, Calendar, Close, CopyDocument, Delete, Document, Download, MoreFilled,
   Picture, RefreshRight, Search, Star, StarFilled, Upload
 } from '@element-plus/icons-vue'
 import type { ProgramInfo, ProgramMonthBounds, VideoInfo } from '../../shared/types'
@@ -1856,6 +1857,10 @@ html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
 .footer-more-btn:disabled { opacity: .5; cursor: not-allowed; }
 .footer-range-btn {
   height: var(--app-control-height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   flex-shrink: 0;
   padding: 0 12px;
   border: 1px solid var(--el-border-color);
@@ -1863,6 +1868,7 @@ html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
   background: var(--el-fill-color-blank);
   color: var(--el-text-color-regular);
   font-size: 12px;
+  font-family: var(--el-font-family);
   font-weight: var(--app-font-weight-medium);
   cursor: pointer;
 }
@@ -2310,6 +2316,8 @@ html.dark .preview-downloaded-badge {
   color: var(--el-text-color-secondary);
   line-height: 1.5;
 }
+
+.guide-step-content .guide-action-name { white-space: nowrap; }
 
 .preview-guide-tip {
   margin: 0;

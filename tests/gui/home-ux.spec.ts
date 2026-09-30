@@ -142,6 +142,25 @@ test('首页选择、已选清单和下载确认在窄窗口保持可核对', as
     })
     await page.setViewportSize({ width: 720, height: 680 })
     await page.locator('.sidebar-nav-item', { hasText: '首页' }).click()
+    await page.mouse.move(700, 500)
+    await expect(page.getByRole('tooltip')).toHaveCount(0)
+    await expect(page.locator('.guide-step-content strong')).toHaveText(['导入链接', '选择视频', '开始下载'])
+    await expect(page.locator('.guide-step-content > span')).toHaveText([
+      '粘贴央视栏目、专辑或视频链接，点击「导入」或按回车。',
+      '打开左侧内容，点击视频预览，勾选需要下载的视频。',
+      '勾选后点「下载选中」，也可在预览区直接下载。',
+      '栏目支持「下载本月」和「按月份下载」。'
+    ])
+    await expect(page.locator('.preview-guide')).toContainText('央视栏目、专辑或视频链接')
+    await expect(page.locator('.preview-guide')).toContainText('按月份下载')
+    await expect(page.locator('.preview-guide-tip')).toHaveText('💡 也可将央视链接拖入窗口。')
+    const screenshotDir = path.join(__dirname, '../../test-results/home-ux')
+    fs.mkdirSync(screenshotDir, { recursive: true })
+    await page.screenshot({ path: path.join(screenshotDir, '720-guide.png') })
+    await page.setViewportSize({ width: 720, height: 520 })
+    await expect(page.locator('.preview-guide')).toBeInViewport({ ratio: 1 })
+    await page.screenshot({ path: path.join(screenshotDir, '720-520-guide.png') })
+    await page.setViewportSize({ width: 720, height: 680 })
     await expect(page.locator('.sidebar-nav-icon')).toHaveText(['🏠', '⬇️', '⚙️'])
     await expect(page.locator('button[title="从 JSON 导入节目"] svg')).toBeVisible()
     await page.locator('.program-item', { hasText: '测试栏目 1' }).click()
@@ -199,8 +218,6 @@ test('首页选择、已选清单和下载确认在窄窗口保持可核对', as
     await dialog.locator('.download-confirm-list summary').click()
     await expect(dialog.locator('.download-confirm-video')).toHaveCount(3)
     await expect(dialog.locator('.download-confirm-video', { hasText: '测试栏目 1 片段' })).toContainText('片段')
-    const screenshotDir = path.join(__dirname, '../../test-results/home-ux')
-    fs.mkdirSync(screenshotDir, { recursive: true })
     await page.screenshot({ path: path.join(screenshotDir, '720-confirm.png') })
     await dialog.getByRole('button', { name: '返回检查' }).click()
     await expect(dialog).toBeHidden()
