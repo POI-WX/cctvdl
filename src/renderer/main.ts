@@ -133,6 +133,17 @@ designTokens.textContent = `
   /* 统一按钮字重 */
   .el-button { font-weight: var(--app-font-weight-medium); }
 
+  .app-action-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1em;
+    height: 1em;
+    font-family: inherit;
+    line-height: 1;
+  }
+
   /* 所有自定义操作都具有一致、清晰的键盘焦点反馈 */
   button:focus-visible,
   [role='button']:focus-visible,

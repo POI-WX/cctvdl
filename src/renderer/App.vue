@@ -25,7 +25,7 @@
           class="sidebar-toggle sidebar-toggle-top"
           :aria-label="sidebarExpanded ? '收起侧边栏' : '展开侧边栏'"
           @click="appStore.toggleSidebar()"
-        ><el-icon><ArrowLeft v-if="sidebarExpanded" /><ArrowRight v-else /></el-icon></button>
+        ><span class="app-action-icon" aria-hidden="true">{{ sidebarExpanded ? '‹' : '›' }}</span></button>
       </el-tooltip>
 
       <nav class="sidebar-nav" role="navigation" aria-label="主导航">
@@ -104,7 +104,7 @@
     <Transition name="about-fade">
       <div v-if="aboutOpen" class="about-overlay" @click.self="aboutOpen = false">
         <div class="about-card">
-          <button class="about-close" @click="aboutOpen = false" title="关闭"><el-icon><Close /></el-icon></button>
+          <button class="about-close" @click="aboutOpen = false" title="关闭"><span class="app-action-icon" aria-hidden="true">✕</span></button>
           <div class="about-logo" aria-hidden="true">📺</div>
           <div class="about-name">cctvdl</div>
           <div class="about-version">v{{ appVersion }}</div>
@@ -128,7 +128,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowRight, Close } from '@element-plus/icons-vue'
 import { storeToRefs } from 'pinia'
 import { isCctvLink } from '../shared/cctv-link'
 import HomePage from './pages/HomePage.vue'

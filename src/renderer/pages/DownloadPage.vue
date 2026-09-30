@@ -11,12 +11,12 @@
         </span>
       </div>
       <div class="dl-actions">
-        <button v-if="running" class="dl-action-btn danger" @click="cancelAll"><el-icon><Close /></el-icon>全部取消</button>
+        <button v-if="running" class="dl-action-btn danger" @click="cancelAll"><span class="app-action-icon" aria-hidden="true">⏹</span>全部取消</button>
         <button v-if="!running && failedCount > 0" class="dl-action-btn primary" @click="retryAllFailed">
-          <el-icon><RefreshRight /></el-icon>重试失败 ({{ failedCount }})
+          <span class="app-action-icon" aria-hidden="true">↺</span>重试失败 ({{ failedCount }})
         </button>
         <button v-if="!running && finishedCount > 0" class="dl-action-btn" @click="dlStore.clearFinished()">清除已结束</button>
-        <button class="dl-action-btn" @click="openFolder"><el-icon><FolderOpened /></el-icon>打开文件夹</button>
+        <button class="dl-action-btn" @click="openFolder"><span class="app-action-icon" aria-hidden="true">📂</span>打开文件夹</button>
       </div>
     </div>
 
@@ -157,8 +157,8 @@
               </div>
             </div>
             <div class="dl-card-actions">
-              <button class="dl-card-btn primary" @click="playFile(job)"><el-icon><VideoPlay /></el-icon>播放</button>
-              <button class="dl-card-btn" @click="revealFile(job)"><el-icon><FolderOpened /></el-icon>文件夹</button>
+              <button class="dl-card-btn primary" @click="playFile(job)"><span class="app-action-icon" aria-hidden="true">▶</span>播放</button>
+              <button class="dl-card-btn" @click="revealFile(job)"><span class="app-action-icon" aria-hidden="true">📂</span>文件夹</button>
             </div>
           </div>
         </TransitionGroup>
@@ -206,7 +206,7 @@
               </span>
             </div>
             <div class="dl-card-actions">
-              <button v-if="!running" class="dl-card-btn primary" @click="retry(job)"><el-icon><RefreshRight /></el-icon>重试</button>
+              <button v-if="!running" class="dl-card-btn primary" @click="retry(job)"><span class="app-action-icon" aria-hidden="true">↺</span>重试</button>
             </div>
           </div>
         </TransitionGroup>
@@ -217,10 +217,10 @@
     <Teleport to="body">
       <div v-if="ctxMenu.visible" class="dl-ctx-overlay" @click="closeContextMenu" @contextmenu.prevent="closeContextMenu">
         <div class="dl-ctx-menu" :style="{ top: ctxMenu.y + 'px', left: ctxMenu.x + 'px' }">
-          <button class="dl-ctx-item" @click="ctxCopyTitle"><el-icon><CopyDocument /></el-icon>复制标题</button>
-          <button v-if="ctxMenu.job?.sourceJob?.outputPath" class="dl-ctx-item" @click="ctxOpenFile"><el-icon><VideoPlay /></el-icon>播放</button>
-          <button v-if="ctxMenu.job?.sourceJob?.outputPath" class="dl-ctx-item" @click="ctxRevealFile"><el-icon><FolderOpened /></el-icon>定位文件</button>
-          <button v-if="ctxMenu.job?.state === 'Failed'" class="dl-ctx-item" @click="ctxRetry"><el-icon><RefreshRight /></el-icon>重试</button>
+          <button class="dl-ctx-item" @click="ctxCopyTitle"><span class="app-action-icon" aria-hidden="true">📋</span>复制标题</button>
+          <button v-if="ctxMenu.job?.sourceJob?.outputPath" class="dl-ctx-item" @click="ctxOpenFile"><span class="app-action-icon" aria-hidden="true">▶</span>播放</button>
+          <button v-if="ctxMenu.job?.sourceJob?.outputPath" class="dl-ctx-item" @click="ctxRevealFile"><span class="app-action-icon" aria-hidden="true">📂</span>定位文件</button>
+          <button v-if="ctxMenu.job?.state === 'Failed'" class="dl-ctx-item" @click="ctxRetry"><span class="app-action-icon" aria-hidden="true">↺</span>重试</button>
         </div>
       </div>
     </Teleport>
@@ -230,9 +230,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { ElMessage, ElNotification } from 'element-plus'
-import {
-  Close, CopyDocument, FolderOpened, RefreshRight, VideoPlay
-} from '@element-plus/icons-vue'
 import { storeToRefs } from 'pinia'
 import { useDownloadStore } from '../stores/download'
 const emit = defineEmits<{ 'go-home': [] }>()

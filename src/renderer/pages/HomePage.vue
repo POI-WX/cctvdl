@@ -8,9 +8,9 @@
         <div class="section-header">
           <span class="section-title">我的内容</span>
           <div class="section-actions">
-            <button class="icon-btn" title="从 JSON 导入节目" @click="importPrograms"><el-icon><Upload /></el-icon></button>
-            <button class="icon-btn" title="导出节目" :disabled="!programs.length" @click="exportPrograms"><el-icon><Download /></el-icon></button>
-            <button class="icon-btn" title="清空全部节目" :disabled="!programs.length" @click="clearAllPrograms"><el-icon><Delete /></el-icon></button>
+            <button class="icon-btn" title="从 JSON 导入节目" @click="importPrograms"><span class="app-action-icon" aria-hidden="true">↓</span></button>
+            <button class="icon-btn" title="导出节目" :disabled="!programs.length" @click="exportPrograms"><span class="app-action-icon" aria-hidden="true">↑</span></button>
+            <button class="icon-btn" title="清空全部节目" :disabled="!programs.length" @click="clearAllPrograms"><span class="app-action-icon" aria-hidden="true">🧹</span></button>
           </div>
         </div>
         <!-- import input -->
@@ -82,12 +82,12 @@
                     :class="{ faved: isFav(row.program) }"
                     :title="isFav(row.program) ? '取消收藏' : '收藏'"
                     @click.stop="toggleFavorite(row.program)"
-                  ><el-icon><StarFilled v-if="isFav(row.program)" /><Star v-else /></el-icon></button>
+                  ><span class="app-action-icon" aria-hidden="true">⭐</span></button>
                   <button
                     class="prog-action-btn del"
                     :title="`删除${programKindLabel(row.program)}`"
                     @click.stop="deleteProgram(row.program)"
-                  ><el-icon><Delete /></el-icon></button>
+                  ><span class="app-action-icon" aria-hidden="true">🗑</span></button>
                 </span>
               </div>
             </div>
@@ -133,8 +133,8 @@
           <div v-else-if="viewMode === 'single'" class="single-mode-label">
             <span class="single-mode-caption"><span aria-hidden="true">📌</span>单个视频 · {{ singleVideos.length }}</span>
             <span class="single-mode-actions">
-              <button class="icon-btn" title="从 JSON 导入单视频" @click="importSingleVideos"><el-icon><Upload /></el-icon></button>
-              <button class="icon-btn" title="导出单视频备份" :disabled="!singleVideos.length" @click="exportSingleVideos"><el-icon><Download /></el-icon></button>
+              <button class="icon-btn" title="从 JSON 导入单视频" @click="importSingleVideos"><span class="app-action-icon" aria-hidden="true">↓</span></button>
+              <button class="icon-btn" title="导出单视频备份" :disabled="!singleVideos.length" @click="exportSingleVideos"><span class="app-action-icon" aria-hidden="true">↑</span></button>
             </span>
           </div>
           <div v-else class="single-mode-label">
@@ -167,7 +167,7 @@
               :disabled="!selectedProgram"
               :class="{ spinning: loadingVideos }"
               @click="loadVideos(true)"
-            ><el-icon><RefreshRight /></el-icon></button>
+            ><span class="app-action-icon" aria-hidden="true">↻</span></button>
           </div>
         </div>
         <!-- search -->
@@ -212,7 +212,7 @@
                   <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
                 </div>
                 <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
-                <button v-if="viewMode === 'single'" class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)"><el-icon><Delete /></el-icon></button>
+                <button v-if="viewMode === 'single'" class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)"><span class="app-action-icon" aria-hidden="true">🗑</span></button>
               </div>
               <div v-if="vPadBot" :style="{ height: vPadBot + 'px' }" />
             </template>
@@ -253,7 +253,7 @@
             <span v-else class="footer-list-count">{{ debouncedSearch ? '搜索结果' : '当前列表' }} {{ filteredVideos.length }}<span v-if="downloadedCount"> · 已下载 {{ downloadedCount }}</span></span>
             <el-popover v-if="selectedCount" placement="top-end" :width="336" trigger="click" popper-class="selected-videos-popper">
               <template #reference>
-                <button class="footer-review-btn">查看已选 <el-icon><ArrowRight /></el-icon></button>
+                <button class="footer-review-btn">查看已选 <span class="app-action-icon" aria-hidden="true">›</span></button>
               </template>
               <div class="selected-videos-panel">
               <div class="selected-videos-summary">
@@ -273,7 +273,7 @@
                         <span class="selected-video-title" :title="video.title">{{ video.title }}</span>
                         <span class="selected-video-meta">{{ video.time || '日期未知' }}<span v-if="video.contentType" class="video-type-badge" :class="`video-type-badge--${video.contentType}`">{{ contentTypeLabel(video.contentType) }}</span></span>
                       </div>
-                      <button title="从已选内容移除" :aria-label="`移除 ${video.title}`" @click="contentStore.removeVideoSelection(video.guid)"><el-icon><Close /></el-icon></button>
+                      <button title="从已选内容移除" :aria-label="`移除 ${video.title}`" @click="contentStore.removeVideoSelection(video.guid)"><span class="app-action-icon" aria-hidden="true">×</span></button>
                     </div>
                   </div>
                 </div>
@@ -296,9 +296,9 @@
             >{{ estimating ? '估算中…' : '下载本月' }}</button>
             <button v-else class="footer-btn footer-btn-idle" disabled>选择视频后下载</button>
             <button v-if="!selectedCount && isMonthlyColumn" class="footer-range-btn" :disabled="startingDownload"
-              title="选择起止月份，批量下载栏目视频" @click="rangeDialogOpen = true"><el-icon><Calendar /></el-icon>按月份下载</button>
+              title="选择起止月份，批量下载栏目视频" @click="rangeDialogOpen = true"><span class="app-action-icon" aria-hidden="true">🗓</span>按月份下载</button>
             <el-dropdown v-if="selectedCount && isMonthlyColumn" trigger="click" placement="top-end" @command="onDownloadAction">
-              <button class="footer-more-btn" title="更多下载方式" aria-label="更多下载方式" :disabled="startingDownload"><el-icon><MoreFilled /></el-icon></button>
+              <button class="footer-more-btn" title="更多下载方式" aria-label="更多下载方式" :disabled="startingDownload"><span class="app-action-icon" aria-hidden="true">⋯</span></button>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item v-if="canDownloadMonth" command="month">下载本月全部 {{ videos.length }} 个视频</el-dropdown-item>
@@ -346,10 +346,10 @@
           <div class="preview-content">
             <div class="preview-action-bar">
               <button class="preview-action-btn" title="复制标题" @click="copyTitle">
-                <el-icon><CopyDocument /></el-icon>复制标题
+                <span class="app-action-icon" aria-hidden="true">📋</span>复制标题
               </button>
               <button class="preview-action-btn" title="复制节目简介" @click="copyBrief">
-                <el-icon><Document /></el-icon>复制简介
+                <span class="app-action-icon" aria-hidden="true">📄</span>复制简介
               </button>
               <button
                 v-if="selectedVideo.coverUrl && !coverError"
@@ -357,7 +357,7 @@
                 :disabled="coverDownloading"
                 title="保存封面图片"
                 @click="downloadCoverImage"
-              ><el-icon><Picture /></el-icon>{{ coverDownloading ? '保存中…' : '保存封面' }}</button>
+              ><span class="app-action-icon" aria-hidden="true">🖼</span>{{ coverDownloading ? '保存中…' : '保存封面' }}</button>
             </div>
             <h2 class="preview-title">{{ selectedVideo.title }}</h2>
             <div class="preview-meta">
@@ -431,7 +431,7 @@
     <!-- lightbox -->
     <Transition name="lightbox-fade">
       <div v-if="lightboxOpen" class="lightbox" @click="closeLightbox">
-        <button class="lightbox-close" title="关闭大图" @click="closeLightbox"><el-icon><Close /></el-icon></button>
+        <button class="lightbox-close" title="关闭大图" @click="closeLightbox"><span class="app-action-icon" aria-hidden="true">✕</span></button>
         <img
           :src="selectedVideo?.coverUrl"
           class="lightbox-img"
@@ -450,10 +450,7 @@
 import { ref, h, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { storeToRefs } from 'pinia'
-import {
-  ArrowRight, Calendar, Close, CopyDocument, Delete, Document, Download, MoreFilled,
-  Picture, RefreshRight, Search, Star, StarFilled, Upload
-} from '@element-plus/icons-vue'
+import { Download, Search } from '@element-plus/icons-vue'
 import type { ProgramInfo, ProgramMonthBounds, VideoInfo } from '../../shared/types'
 import { isProgramDeleteKey, programKindLabel, snapshotProgram } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
@@ -1367,7 +1364,6 @@ async function downloadVideos(
 .icon-btn:hover { background: var(--el-fill-color); color: var(--el-text-color-primary); }
 .icon-btn:disabled { opacity: .4; cursor: not-allowed; }
 .icon-btn.spinning { animation: spin .6s linear infinite; }
-.icon-btn .el-icon { font-size: 15px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .select-current-list { margin: 0 5px 0 0; min-width: 28px; min-height: 28px; justify-content: center; }
@@ -2129,7 +2125,6 @@ html.dark .video-item.active.downloaded .video-item-title { color: #f8fafc; }
   color: var(--el-text-color-primary);
   border-color: var(--el-border-color-darker);
 }
-.preview-action-btn .el-icon { flex-shrink: 0; font-size: 14px; }
 
 /* 单个视频徽章 */
 .preview-single-badge {

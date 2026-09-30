@@ -10,7 +10,7 @@
   >
     <template #header="{ titleId }">
       <div class="range-heading">
-        <el-icon class="range-heading-icon" aria-hidden="true"><Calendar /></el-icon>
+        <span class="app-action-icon range-heading-icon" aria-hidden="true">🗓</span>
         <h2 :id="titleId">{{ program?.name || '栏目视频' }}</h2>
         <span class="range-heading-stage">{{ phase === 'idle' ? '选择月份' : phase === 'scanning' ? '查找中' : '核对下载' }}</span>
       </div>
@@ -42,7 +42,8 @@
         <span v-else class="range-month-count">{{ months.length }} 个月</span>
         <button class="range-boundary-btn range-all-months" :disabled="busy || boundaryLoading || !program"
           title="填入栏目最早和最新月份" @click="fillAllHistory">
-          <el-icon :class="{ 'is-loading': boundaryLoading }"><Loading v-if="boundaryLoading" /><Calendar v-else /></el-icon>
+          <el-icon v-if="boundaryLoading" class="is-loading"><Loading /></el-icon>
+          <span v-else class="app-action-icon" aria-hidden="true">🗓</span>
           {{ boundaryLoading ? '查询中…' : '全部月份' }}
         </button>
       </div>
@@ -107,14 +108,14 @@
 
     <template #footer>
       <div v-if="phase === 'review' && prepared && lowSpace" class="range-footer-warnings">
-        <el-icon class="range-warning-icon" aria-hidden="true"><WarningFilled /></el-icon>
+        <span class="app-action-icon range-warning-icon" aria-hidden="true">⚠</span>
         <p class="range-result-warning">按当前估算，磁盘空间可能不足；建议更换保存位置或释放空间。</p>
       </div>
       <div class="range-footer">
         <el-button :disabled="starting" @click="phase === 'scanning' ? cancelScan() : closeDialog()">{{ phase === 'scanning' ? '取消查找' : '关闭' }}</el-button>
         <el-button v-if="phase === 'idle'" type="primary"
-          :icon="Search" :disabled="busy || !months.length || !!validationMessage" @click="beginScan(false)">
-          查找视频
+          :disabled="busy || !months.length || !!validationMessage" @click="beginScan(false)">
+          <span class="app-action-icon range-search-icon" aria-hidden="true">🔍</span>查找视频
         </el-button>
         <el-button v-else-if="phase === 'review' && failedMonths.length" type="primary" @click="beginScan(true)">
           重试失败月份
@@ -131,7 +132,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Calendar, Loading, Search, WarningFilled } from '@element-plus/icons-vue'
+import { Loading } from '@element-plus/icons-vue'
 import type { ProgramInfo, VideoInfo } from '../../shared/types'
 import { enumerateMonths, scanMonths } from '../../shared/month-range'
 import { snapshotProgram } from '../../shared/programs'
@@ -435,5 +436,6 @@ async function addToQueue() {
 .range-review-more:hover { text-decoration: underline; }
 .range-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .range-footer .el-button { font-family: var(--el-font-family); font-size: 13px; }
+.range-search-icon { margin-right: 6px; }
 @media (max-width: 720px) { .range-settings { font-size: 12px; } }
 </style>

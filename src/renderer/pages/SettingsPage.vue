@@ -283,18 +283,18 @@
                 class="history-action-btn"
                 title="重新下载"
                 @click="redownload(entry)"
-              ><el-icon><RefreshRight /></el-icon></button>
+              ><span class="app-action-icon" aria-hidden="true">↺</span></button>
               <button
                 v-if="entry.outputPath"
                 class="history-action-btn"
                 title="在文件管理器中定位"
                 @click="revealHistoryFile(entry.outputPath)"
-              ><el-icon><FolderOpened /></el-icon></button>
+              ><span class="app-action-icon" aria-hidden="true">📂</span></button>
               <button
                 class="history-action-btn danger"
                 title="删除此条记录"
                 @click="removeHistoryEntry(entry.guid)"
-              ><el-icon><Delete /></el-icon></button>
+              ><span class="app-action-icon" aria-hidden="true">🗑</span></button>
             </div>
           </div>
         </div>
@@ -342,7 +342,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, toRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, FolderOpened, RefreshRight } from '@element-plus/icons-vue'
 import type { Settings } from '../../shared/types'
 import { DEFAULT_SETTINGS, MIN_THREADS, MAX_THREADS, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS, QUALITIES, QUALITY_LABELS } from '../../shared/settings'
 import { applyAccentColor } from '../utils/accent'
