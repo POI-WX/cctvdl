@@ -128,6 +128,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, WarningFilled } from '@element-plus/icons-vue'
 import type { ProgramInfo, VideoInfo } from '../../shared/types'
 import { enumerateMonths, scanMonths } from '../../shared/month-range'
+import { snapshotProgram } from '../../shared/programs'
 import type { MonthScanProgress } from '../../shared/month-range'
 import { formatFileSize } from '../../shared/format'
 import { describeDownloadEstimate } from '../../shared/estimate-presentation'
@@ -208,10 +209,7 @@ function disableMonth(date: Date): boolean {
 }
 async function fillAllHistory() {
   if (!props.program || boundaryLoading.value) return
-  const program: ProgramInfo = {
-    ...props.program,
-    ...(props.program.listSource ? { listSource: { ...props.program.listSource } } : {})
-  }
+  const program = snapshotProgram(props.program)
   const requestId = ++boundaryRequestId
   boundaryError.value = ''
   boundaryLoading.value = true
@@ -281,10 +279,7 @@ async function beginScan(retry: boolean) {
   if (retry && !previous) return
   if (!retry && (!props.program || validationMessage.value)) return
   const current: RangeScan = previous || {
-    program: {
-      ...props.program!,
-      ...(props.program!.listSource ? { listSource: { ...props.program!.listSource } } : {})
-    },
+    program: snapshotProgram(props.program!),
     months: months.value,
     includeHighlights: props.includeHighlights,
     byMonth: new Map(), videos: [], failedMonths: [], errors: new Map()

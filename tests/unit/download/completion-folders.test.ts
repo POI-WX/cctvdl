@@ -12,8 +12,8 @@ describe('completion folders', () => {
 
   it('opens the recorded root once for several programme folders', () => {
     expect(completionFolders([
-      { outputPath: '/videos/节目甲/a.mp4', saveRoot: '/videos' },
-      { outputPath: '/videos/节目乙/b.mp4', saveRoot: '/videos' },
+      { outputPath: '/videos/测试栏目 1/a.mp4', saveRoot: '/videos' },
+      { outputPath: '/videos/测试栏目 2/b.mp4', saveRoot: '/videos' },
       { outputPath: '/videos/c.mp4', saveRoot: '/videos' }
     ])).toEqual([path.resolve('/videos')])
   })

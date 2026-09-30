@@ -17,10 +17,10 @@ test.describe('单个视频集合', () => {
   test.beforeAll(async () => {
     userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cctvdl-e2e-single-'))
     const seed = {
-      programs: [{ name: '测试栏目甲', columnId: 'TEST_COL_001', itemId: '' }],
+      programs: [{ name: '测试栏目 1', columnId: 'TEST_COL_001', itemId: '' }],
       singleVideos: [
-        { guid: 'test-single-guid-001', title: '测试单视频壹', brief: '', coverUrl: '', time: '2026-06-12' },
-        { guid: 'test-single-guid-002', title: '测试单视频贰', brief: '', coverUrl: '', time: '2026-06-10' }
+        { guid: 'test-single-guid-001', title: '测试视频 1', brief: '', coverUrl: '', time: '2026-06-12' },
+        { guid: 'test-single-guid-002', title: '测试视频 2', brief: '', coverUrl: '', time: '2026-06-10' }
       ]
     }
     fs.writeFileSync(path.join(userDataDir, 'config.json'), JSON.stringify(seed), 'utf-8')
@@ -51,21 +51,21 @@ test.describe('单个视频集合', () => {
     await page.waitForTimeout(300)
     await expect(page.locator('.single-entry')).toHaveClass(/active/)
     await expect(page.locator('.video-item')).toHaveCount(2)
-    await expect(page.locator('.video-item', { hasText: '测试单视频壹' })).toBeVisible()
+    await expect(page.locator('.video-item', { hasText: '测试视频 1' })).toBeVisible()
     await expect(page.locator('.month-row')).toHaveCount(0)
     await expect(page.locator('.single-mode-label')).toBeVisible()
     await expect(page.locator('.download-all-btn')).toHaveCount(0)
   })
 
   test('选中单视频：预览显示「单个视频」徽标与「下载此视频」', async () => {
-    await page.locator('.video-item', { hasText: '测试单视频壹' }).click()
+    await page.locator('.video-item', { hasText: '测试视频 1' }).click()
     await page.waitForTimeout(300)
     await expect(page.locator('.preview-single-badge')).toBeVisible()
     await expect(page.locator('.preview-download-btn')).toContainText('下载此视频')
   })
 
   test('悬停行内移除单视频', async () => {
-    const target = page.locator('.video-item', { hasText: '测试单视频贰' })
+    const target = page.locator('.video-item', { hasText: '测试视频 2' })
     await target.hover()
     await target.locator('.video-del-btn').click()
     await page.waitForTimeout(300)
@@ -74,7 +74,7 @@ test.describe('单个视频集合', () => {
   })
 
   test('切回栏目：月份选择器恢复、单视频条目取消高亮', async () => {
-    await page.locator('.program-item', { hasText: '测试栏目甲' }).click()
+    await page.locator('.program-item', { hasText: '测试栏目 1' }).click()
     await page.waitForTimeout(300)
     await expect(page.locator('.month-row')).toBeVisible()
     await expect(page.locator('.single-entry')).not.toHaveClass(/active/)
@@ -89,10 +89,10 @@ test.describe('预览区重新下载', () => {
     fs.writeFileSync(path.join(userDataDir, 'config.json'), JSON.stringify({
       settings: { savePath },
       singleVideos: [{
-        guid: 'test-redownload-guid', title: '已下载测试视频', time: '2026-06-12',
+        guid: 'test-redownload-guid', title: '测试已下载视频', time: '2026-06-12',
         estimatedSizeBytes: 10 * 1024 * 1024
       }],
-      downloadHistory: [{ guid: 'test-redownload-guid', title: '已下载测试视频', outputPath: '', fileSize: 0, completedAt: 1 }]
+      downloadHistory: [{ guid: 'test-redownload-guid', title: '测试已下载视频', outputPath: '', fileSize: 0, completedAt: 1 }]
     }), 'utf-8')
     const app = await electron.launch({
       args: [path.join(__dirname, '../../out/main/index.js'), `--user-data-dir=${userDataDir}`]
@@ -102,7 +102,7 @@ test.describe('预览区重新下载', () => {
       await page.waitForLoadState('domcontentloaded')
       await page.locator('.sidebar-nav-item', { hasText: '首页' }).click()
       await page.locator('.single-entry').click()
-      await page.locator('.video-item', { hasText: '已下载测试视频' }).click()
+      await page.locator('.video-item', { hasText: '测试已下载视频' }).click()
       await expect(page.locator('.preview-download-btn')).toContainText('重新下载')
 
       const screenshotPath = path.join(__dirname, '../../test-results/gui/preview-redownload.png')
@@ -127,11 +127,11 @@ test.describe('预览区重新下载', () => {
 /**
  * 联网 GUI：粘贴真实电影链接（僵尸栏目页面）→ 应识别为单视频并导入集合，
  * 预览面板显示正确封面与简介。
- * 验证 browse-program 僵尸栏目检测 + resolveSingleVideo IPC 链路。
+ * 验证 browse-program 僵尸栏目检测 + resolve-video-batch IPC 链路。
  */
 test.describe('单视频真实链接导入（联网）', () => {
   // 浪浪山小妖怪：page has column_id but the column has no videos (zombie column)
-  // → should fall back to resolveSingleVideo and appear in 单个视频 collection
+  // Fall back to resolveVideoBatch and appear in the single-video collection.
   const MOVIE_URL = 'https://tv.cctv.com/2026/06/12/VIDEfgJBdxtUMoAkH5c89ZYZ260612.shtml'
 
   let electronApp: any

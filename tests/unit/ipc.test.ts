@@ -39,6 +39,9 @@ describe('IPC Handlers', () => {
   let mockBrowse: BrowseService
   let mockConfig: ConfigStore
   let checkClipboardNow: ReturnType<typeof vi.fn>
+  const setHistory = (...guids: string[]) => vi.mocked(mockConfig.getDownloadHistory).mockReturnValue(
+    guids.map(guid => ({ guid, title: '', outputPath: '', fileSize: 0, completedAt: 0 }))
+  )
 
   beforeEach(() => {
     handlers = {}
@@ -57,14 +60,12 @@ describe('IPC Handlers', () => {
       cancelAll: vi.fn(),
       setConcurrentVideos: vi.fn(),
       reorderQueue: vi.fn(),
-      downloadCover: vi.fn(),
       on: vi.fn()
     } as unknown as DownloadCoordinator
 
 
     mockBrowse = {
       resolveColumnInfo: vi.fn().mockResolvedValue({ name: 'Test', columnId: 'TOPC1', itemId: '' }),
-      resolveSingleVideo: vi.fn().mockResolvedValue({ guid: 'VIDE1', title: 'Movie', brief: '', coverUrl: '', time: '' }),
       getVideoMediaMetadata: vi.fn().mockResolvedValue({ channel: 'CCTV-1', durationSeconds: 60 }),
       getColumnVideoList: vi.fn().mockResolvedValue([{ guid: 'g1', title: 'V1', brief: '', coverUrl: '', time: '' }]),
       getAlbumVideoList: vi.fn().mockResolvedValue([]),
@@ -92,7 +93,6 @@ describe('IPC Handlers', () => {
       clearSingleVideos: vi.fn(),
       getDownloadHistory: vi.fn().mockReturnValue([]),
       addToDownloadHistory: vi.fn(),
-      isInDownloadHistory: vi.fn().mockReturnValue(false),
       clearDownloadHistory: vi.fn()
     } as unknown as ConfigStore
 
@@ -306,7 +306,7 @@ describe('IPC Handlers', () => {
 
     it('opens the actual programme subdirectory for a single-directory batch', async () => {
       settingsWith(true)
-      const nested = { ...job, savePath: path.join('/tmp/save', '节目甲', 'video.mp4') }
+      const nested = { ...job, savePath: path.join('/tmp/save', '测试栏目 1', 'video.mp4') }
       emit('jobFinished', { ...nested, state: 'Completed', outputPath: nested.savePath, saveRoot: '/tmp/save' })
       emit('batchFinished', done)
       expect(shell.openPath).toHaveBeenCalledWith(path.resolve(path.dirname(nested.savePath)))
@@ -314,8 +314,8 @@ describe('IPC Handlers', () => {
 
     it('uses successful outputs and recorded roots instead of changed settings or failed destinations', () => {
       settingsWith(true)
-      emit('jobFinished', { ...job, state: 'Completed', outputPath: '/tmp/save/节目甲/a.mp4', saveRoot: '/tmp/save' })
-      emit('jobFinished', { ...job, state: 'Completed', outputPath: '/tmp/save/节目乙/b.mp4', saveRoot: '/tmp/save' })
+      emit('jobFinished', { ...job, state: 'Completed', outputPath: '/tmp/save/测试栏目 1/a.mp4', saveRoot: '/tmp/save' })
+      emit('jobFinished', { ...job, state: 'Completed', outputPath: '/tmp/save/测试栏目 2/b.mp4', saveRoot: '/tmp/save' })
       emit('jobFinished', { ...job, state: 'Failed', savePath: '/tmp/failed/c.mp4' })
       vi.mocked(mockConfig.getSettings).mockReturnValue({ autoOpenFolder: true, savePath: '/tmp/new-location' } as any)
       emit('batchFinished', { ...done, completed: 2, failed: 1, total: 3 })
@@ -357,11 +357,6 @@ describe('IPC Handlers', () => {
   })
 
   describe('single videos', () => {
-    it('resolve-single-video delegates to browse.resolveSingleVideo', async () => {
-      const result = await handlers['resolve-single-video']({}, 'https://tv.cctv.com/x.shtml')
-      expect(mockBrowse.resolveSingleVideo).toHaveBeenCalledWith('https://tv.cctv.com/x.shtml')
-      expect(result).toEqual({ guid: 'VIDE1', title: 'Movie', brief: '', coverUrl: '', time: '' })
-    })
     it('resolve-video-batch forwards the selected quality', async () => {
       ;(mockBrowse as any).resolveSingleVideoBatch = vi.fn().mockResolvedValue([])
       await handlers['resolve-video-batch']({}, 'https://content-static.cctvnews.cctv.com/snow-book/x.html?item_id=1', 'gaoqing')
@@ -425,9 +420,22 @@ describe('IPC Handlers', () => {
   })
 
   describe('start-download', () => {
+    it('reads history once for a large batch and only sends pending jobs to the queue', async () => {
+      const jobs = Array.from({ length: 1000 }, (_, index) => ({
+        id: `job-${index}`, guid: `guid-${index}`, title: `测试视频 ${index + 1}`,
+        savePath: '/tmp/video.mp4', quality: 'auto', threadCount: 1, reencode: false,
+        state: 'Created', stage: 'None', progressPercent: 0, sourceUrl: ''
+      }))
+      setHistory(...jobs.slice(0, 500).map(job => job.guid))
+      const result = await handlers['start-download']({}, jobs)
+      expect(mockConfig.getDownloadHistory).toHaveBeenCalledOnce()
+      expect(mockCoordinator.appendJobs).toHaveBeenCalledWith(jobs.slice(500))
+      expect(result).toEqual({ added: 500, skipped: 500, addedGuids: jobs.slice(500).map(job => job.guid) })
+    })
+
     it('does not create directories for videos skipped by history', async () => {
       vi.mocked(checkSaveDir).mockClear()
-      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValueOnce(true)
+      setHistory('old')
       await handlers['start-download']({}, [{
         id: 'old', guid: 'old', sourceUrl: 'old', title: 'Old', savePath: '/tmp/old-programme/video.mp4',
         quality: 'auto', threadCount: 1, reencode: false, state: 'Created', stage: 'None', progressPercent: 0
@@ -453,7 +461,6 @@ describe('IPC Handlers', () => {
 
     it('calls coordinator.appendJobs for new jobs', async () => {
       const jobs = [{ id: 'j1', guid: 'g1', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
-      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
       await handlers['start-download']({}, jobs)
       expect(mockCoordinator.appendJobs).toHaveBeenCalledWith(jobs)
     })
@@ -485,7 +492,7 @@ describe('IPC Handlers', () => {
 
     it('skips already-downloaded jobs', async () => {
       const jobs = [{ id: 'j1', guid: 'g1', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
-      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
+      setHistory('g1')
       await handlers['start-download']({}, jobs)
       expect(mockCoordinator.appendJobs).not.toHaveBeenCalled()
       expect(mockWindow.webContents.send).toHaveBeenCalledWith('download-skipped', expect.any(Object))
@@ -493,7 +500,7 @@ describe('IPC Handlers', () => {
 
     it('does not finish the current batch when all submitted jobs are skipped', async () => {
       const jobs = [{ id: 'j1', guid: 'g1', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
-      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
+      setHistory('g1')
       const result = await handlers['start-download']({}, jobs)
       expect(result).toEqual({ added: 0, skipped: 1, addedGuids: [] })
       expect(mockWindow.webContents.send).not.toHaveBeenCalledWith('batch-finished', expect.anything())
@@ -511,10 +518,9 @@ describe('IPC Handlers', () => {
         .find(c => c[0] === 'jobFinished')?.[1] as (j: any) => void
       const job = { id: 'skipped', guid: 'g', title: 'T', savePath: '/tmp/save/a.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }
 
-      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
       await handlers['start-download']({}, [job])
       jobFinished({ ...job, state: 'Completed', outputPath: job.savePath })
-      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
+      setHistory('g')
       await handlers['start-download']({}, [{ ...job, id: 'skipped-again' }])
       finished({ completed: 1, failed: 0, cancelled: 0, total: 1, failedJobs: [] })
 
@@ -523,23 +529,23 @@ describe('IPC Handlers', () => {
 
     it('force-redownload bypasses history but still uses coordinator dedupe', async () => {
       const job = { id: 'redo', guid: 'g', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }
-      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
+      setHistory('g')
 
       const result = await handlers['start-download']({}, [job], true)
 
-      expect(mockConfig.isInDownloadHistory).not.toHaveBeenCalled()
+      expect(mockConfig.getDownloadHistory).not.toHaveBeenCalled()
       expect(mockCoordinator.appendJobs).toHaveBeenCalledWith([job])
       expect(result).toEqual({ added: 1, skipped: 0, addedGuids: ['g'] })
     })
 
     it('force-redownload still skips a guid already active in the queue', async () => {
       const job = { id: 'redo-active', guid: 'g', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }
-      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
+      setHistory('g')
       vi.mocked(mockCoordinator.appendJobs).mockReturnValueOnce([])
 
       const result = await handlers['start-download']({}, [job], true)
 
-      expect(mockConfig.isInDownloadHistory).not.toHaveBeenCalled()
+      expect(mockConfig.getDownloadHistory).not.toHaveBeenCalled()
       expect(result).toEqual({ added: 0, skipped: 1, addedGuids: [] })
       expect(mockWindow.webContents.send).toHaveBeenCalledWith('download-skipped', {
         guid: 'g', title: 'T', reason: '已在下载队列中'
@@ -547,7 +553,6 @@ describe('IPC Handlers', () => {
     })
 
     it('two consecutive start-download calls both append (no queue replace)', async () => {
-      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
       const jobsA = [{ id: 'jA', guid: 'gA', title: 'A', savePath: '/tmp/a.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
       const jobsB = [{ id: 'jB', guid: 'gB', title: 'B', savePath: '/tmp/b.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
 
@@ -582,10 +587,10 @@ describe('IPC Handlers', () => {
     it('starts a single-job batch bypassing the download-history filter', async () => {
       const job = { id: 'j1', guid: 'g1', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, reencode: false, sourceUrl: '' }
       // Even though it's in history, retry should still run it.
-      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
+      setHistory('g1')
       await handlers['retry-job']({}, job)
       expect(mockCoordinator.appendJobs).toHaveBeenCalledWith([job])
-      expect(mockConfig.isInDownloadHistory).not.toHaveBeenCalled()
+      expect(mockConfig.getDownloadHistory).not.toHaveBeenCalled()
     })
   })
 
@@ -595,10 +600,10 @@ describe('IPC Handlers', () => {
         { id: 'j1', guid: 'g1', title: 'A', savePath: '/tmp/a.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, reencode: false, sourceUrl: '' },
         { id: 'j2', guid: 'g2', title: 'B', savePath: '/tmp/b.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, reencode: false, sourceUrl: '' },
       ]
-      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
+      setHistory('g1', 'g2')
       await handlers['retry-jobs']({}, jobs)
       expect(mockCoordinator.appendJobs).toHaveBeenCalledWith(jobs)
-      expect(mockConfig.isInDownloadHistory).not.toHaveBeenCalled()
+      expect(mockConfig.getDownloadHistory).not.toHaveBeenCalled()
     })
   })
 
@@ -627,8 +632,8 @@ describe('IPC Handlers', () => {
   describe('download history', () => {
     it('get-download-history returns HistoryEntry[]', async () => {
       const entries = [
-        { guid: 'guid-1', title: '测试视频一', outputPath: '/tmp/a.mp4', fileSize: 1024, completedAt: 1000 },
-        { guid: 'guid-2', title: '测试视频二', outputPath: '/tmp/b.mp4', fileSize: 2048, completedAt: 2000 }
+        { guid: 'guid-1', title: '测试视频 1', outputPath: '/tmp/a.mp4', fileSize: 1024, completedAt: 1000 },
+        { guid: 'guid-2', title: '测试视频 2', outputPath: '/tmp/b.mp4', fileSize: 2048, completedAt: 2000 }
       ]
       vi.mocked(mockConfig.getDownloadHistory).mockReturnValue(entries)
       const result = await handlers['get-download-history']({})

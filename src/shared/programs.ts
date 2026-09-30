@@ -2,6 +2,14 @@
 
 import type { ProgramInfo, ProgramListSource } from './types'
 
+/** Copy the programme and its nested transport metadata into a plain IPC-safe snapshot. */
+export function snapshotProgram(program: ProgramInfo): ProgramInfo {
+  return {
+    ...program,
+    ...(program.listSource ? { listSource: { ...program.listSource } } : {})
+  }
+}
+
 export function programKindLabel(program: Pick<ProgramInfo, 'kind'>): string {
   return program.kind === 'album' ? '专辑' : '栏目'
 }

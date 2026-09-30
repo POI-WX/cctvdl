@@ -9,11 +9,11 @@ test('按节目分文件夹覆盖混选与时间范围，并在确认时显示�
   fs.writeFileSync(path.join(userDataDir, 'config.json'), JSON.stringify({
     settings: { savePath: 'C:\\Videos', coverSavePath: 'C:\\Pictures', logPath: 'C:\\Logs' },
     programs: [
-      { name: '虚构栏目甲', columnId: 'VIDA-dir-a', itemId: '', kind: 'column',
+      { name: '测试栏目 1', columnId: 'VIDA-dir-a', itemId: '', kind: 'column',
         listSource: { type: 'album', id: 'VIDA-dir-a', serviceId: 'tvcctv' } },
-      { name: '虚构专辑乙', columnId: 'VIDA-dir-b', itemId: '', kind: 'album' }
+      { name: '测试专辑 2', columnId: 'VIDA-dir-b', itemId: '', kind: 'album' }
     ],
-    singleVideos: [{ guid: 'dir-single', title: '虚构独立视频', brief: '', coverUrl: '', time: '2026-01-01' }]
+    singleVideos: [{ guid: 'dir-single', title: '测试独立视频', brief: '', coverUrl: '', time: '2026-01-01' }]
   }))
   const app = await electron.launch({
     args: [path.join(__dirname, '../../out/main/index.js'), `--user-data-dir=${userDataDir}`]
@@ -26,7 +26,7 @@ test('按节目分文件夹覆盖混选与时间范围，并在确认时显示�
       state.directoryJobs = []
       ipcMain.removeHandler('list-videos')
       ipcMain.handle('list-videos', (_event, program: { columnId: string }) => [{
-        guid: program.columnId, title: '虚构节目视频', brief: '', coverUrl: '', time: '2026-01-01'
+        guid: program.columnId, title: '测试视频 1', brief: '', coverUrl: '', time: '2026-01-01'
       }])
       ipcMain.removeHandler('get-program-month-bounds')
       ipcMain.handle('get-program-month-bounds', () => ({ earliest: '202601', latest: '202601' }))
@@ -61,7 +61,7 @@ test('按节目分文件夹覆盖混选与时间范围，并在确认时显示�
     await capture('1280-settings.png')
     await page.setViewportSize({ width: 720, height: 680 })
     await page.locator('.sidebar-nav-item', { hasText: '首页' }).click()
-    for (const name of ['虚构栏目甲', '虚构专辑乙']) {
+    for (const name of ['测试栏目 1', '测试专辑 2']) {
       await page.locator('.program-item', { hasText: name }).click()
       await expect(page.locator('.video-item')).toHaveCount(1)
       await page.locator('.video-item .el-checkbox__inner').click()
@@ -72,8 +72,8 @@ test('按节目分文件夹覆盖混选与时间范围，并在确认时显示�
     const confirm = page.locator('.download-confirm-dialog')
     await expect(confirm.locator('.download-confirm-destination')).toHaveCount(3)
     await expect(confirm).toContainText('1 个专辑')
-    await expect(confirm.locator('.download-confirm-destinations')).toContainText('C:\\Videos\\虚构栏目甲')
-    await expect(confirm.locator('.download-confirm-destinations')).toContainText('C:\\Videos\\虚构专辑乙')
+    await expect(confirm.locator('.download-confirm-destinations')).toContainText('C:\\Videos\\测试栏目 1')
+    await expect(confirm.locator('.download-confirm-destinations')).toContainText('C:\\Videos\\测试专辑 2')
     await capture('720-mixed-confirm.png')
     await page.setViewportSize({ width: 1280, height: 800 })
     await page.evaluate(() => document.documentElement.classList.add('dark'))
@@ -84,18 +84,18 @@ test('按节目分文件夹覆盖混选与时间范围，并在确认时显示�
       directoryJobs?: Array<Array<{ guid: string; savePath: string; saveRoot?: string; programName?: string }>>
     }).directoryJobs![0])
     expect(jobs.map(job => job.savePath.replace(/\\/g, '/'))).toEqual([
-      'C:/Videos/虚构栏目甲/虚构节目视频.mp4',
-      'C:/Videos/虚构专辑乙/虚构节目视频.mp4',
-      'C:/Videos/虚构独立视频.mp4'
+      'C:/Videos/测试栏目 1/测试视频 1.mp4',
+      'C:/Videos/测试专辑 2/测试视频 1.mp4',
+      'C:/Videos/测试独立视频.mp4'
     ])
     expect(jobs.every(job => job.saveRoot === 'C:\\Videos')).toBe(true)
 
-    await page.locator('.program-item', { hasText: '虚构栏目甲' }).click()
+    await page.locator('.program-item', { hasText: '测试栏目 1' }).click()
     await page.locator('.footer-range-btn').click()
     const range = page.locator('.month-range-dialog')
     await range.getByRole('button', { name: '最早至最新' }).click()
     await range.getByRole('button', { name: '扫描 1 个月' }).click()
-    await expect(range.locator('.range-save-path')).toHaveText('C:\\Videos\\虚构栏目甲')
+    await expect(range.locator('.range-save-path')).toHaveText('C:\\Videos\\测试栏目 1')
     await capture('1280-range.png')
     await range.getByRole('button', { name: '加入队列' }).click()
     await expect(range).toBeHidden()
@@ -104,16 +104,16 @@ test('按节目分文件夹覆盖混选与时间范围，并在确认时显示�
     await setting.locator('.el-switch').click()
     await page.locator('.settings-save-btn').click()
     await page.locator('.sidebar-nav-item', { hasText: '首页' }).click()
-    await page.locator('.program-item', { hasText: '虚构栏目甲' }).click()
+    await page.locator('.program-item', { hasText: '测试栏目 1' }).click()
     await page.locator('.video-item .el-checkbox__inner').click()
     await page.getByRole('button', { name: '下载选中' }).click()
     await expect(confirm.locator('.download-confirm-row', { hasText: '保存到' })).toContainText('C:\\Videos')
-    await expect(confirm.locator('.download-confirm-row', { hasText: '保存到' })).not.toContainText('虚构栏目甲')
+    await expect(confirm.locator('.download-confirm-row', { hasText: '保存到' })).not.toContainText('测试栏目 1')
     await confirm.getByRole('button', { name: '返回检查' }).click()
-    const album = page.locator('.program-item', { hasText: '虚构专辑乙' })
+    const album = page.locator('.program-item', { hasText: '测试专辑 2' })
     await album.hover()
     await album.getByTitle('删除专辑').click()
-    await expect(page.locator('.el-message-box')).toContainText('确定删除专辑「虚构专辑乙」吗？')
+    await expect(page.locator('.el-message-box')).toContainText('确定删除专辑「测试专辑 2」吗？')
     await page.locator('.el-message-box').getByRole('button', { name: '取消', exact: true }).click()
   } finally {
     await app.close()
@@ -126,9 +126,9 @@ test('下载历史重新下载采用当前目录，兼容有节目来源和旧�
   fs.writeFileSync(path.join(userDataDir, 'config.json'), JSON.stringify({
     settings: { savePath: 'C:\\Videos', groupByProgram: true },
     downloadHistory: [
-      { guid: 'history-programme', title: '虚构有来源记录', programName: '虚构专辑甲',
-        outputPath: 'C:\\OldVideos\\虚构专辑甲\\旧视频.mp4', completedAt: 1, fileSize: 1024 },
-      { guid: 'history-legacy', title: '虚构旧记录',
+      { guid: 'history-programme', title: '测试历史视频 1', programName: '测试专辑 1',
+        outputPath: 'C:\\OldVideos\\测试专辑 1\\旧视频.mp4', completedAt: 1, fileSize: 1024 },
+      { guid: 'history-legacy', title: '测试历史视频 2',
         outputPath: 'C:\\OldVideos\\旧视频.mp4', completedAt: 1, fileSize: 1024 }
     ]
   }))
@@ -157,10 +157,10 @@ test('下载历史重新下载采用当前目录，兼容有节目来源和旧�
     await page.locator('.settings-item', { hasText: '视频保存目录' }).getByRole('button', { name: '浏览…' }).click()
     await page.locator('.settings-save-btn').click()
 
-    const programme = page.locator('.history-item', { hasText: '虚构有来源记录' })
+    const programme = page.locator('.history-item', { hasText: '测试历史视频 1' })
     await programme.getByTitle('重新下载').click()
     await expect.poll(async () => (await recordedJobs()).length).toBe(1)
-    await page.locator('.history-item', { hasText: '虚构旧记录' }).getByTitle('重新下载').click()
+    await page.locator('.history-item', { hasText: '测试历史视频 2' }).getByTitle('重新下载').click()
     await expect.poll(async () => (await recordedJobs()).length).toBe(2)
 
     await page.locator('.settings-item', { hasText: '按节目分文件夹' }).locator('.el-switch').click()
@@ -169,12 +169,12 @@ test('下载历史重新下载采用当前目录，兼容有节目来源和旧�
     await expect.poll(async () => (await recordedJobs()).length).toBe(3)
     const jobs = await recordedJobs()
     expect(jobs.map(job => job.savePath.replace(/\\/g, '/'))).toEqual([
-      'C:/NewVideos/虚构专辑甲/虚构有来源记录.mp4',
-      'C:/NewVideos/虚构旧记录.mp4',
-      'C:/NewVideos/虚构有来源记录.mp4'
+      'C:/NewVideos/测试专辑 1/测试历史视频 1.mp4',
+      'C:/NewVideos/测试历史视频 2.mp4',
+      'C:/NewVideos/测试历史视频 1.mp4'
     ])
     expect(jobs.every(job => job.saveRoot === 'C:\\NewVideos')).toBe(true)
-    expect(jobs.map(job => job.programName)).toEqual(['虚构专辑甲', undefined, '虚构专辑甲'])
+    expect(jobs.map(job => job.programName)).toEqual(['测试专辑 1', undefined, '测试专辑 1'])
   } finally {
     await app.close()
     fs.rmSync(userDataDir, { recursive: true, force: true })

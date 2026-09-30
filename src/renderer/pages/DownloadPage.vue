@@ -239,7 +239,7 @@ const emit = defineEmits<{ 'go-home': [] }>()
 import type { DownloadProgress, DownloadJob, BatchStartInfo, JobState, JobStage } from '../../shared/types'
 import { formatSpeed, formatTime } from '../../shared/format'
 import { humanizeError } from '../../shared/errors'
-import { buildOutputPath } from '../../shared/filename'
+import { buildDownloadJob } from '../utils/download-jobs'
 
 const dlStore = useDownloadStore()
 const { jobs, running, stats, finishedCount, failedCount, batchPercent, batchJobs,
@@ -372,14 +372,7 @@ async function retry(job: typeof jobs.value[0]) {
 async function rebuildJob(job: typeof jobs.value[0]): Promise<DownloadJob | null> {
   const settings = await window.cctvdlApi.getSettings()
   if (!settings.savePath) { ElMessage.warning('请先在设置中配置保存位置'); return null }
-  return {
-    id: job.id, guid: job.guid, sourceUrl: job.guid, title: job.title,
-    savePath: buildOutputPath(settings.savePath, job.title),
-    saveRoot: settings.savePath,
-    quality: settings.quality, threadCount: settings.threadCount,
-    reencode: settings.reencode ?? false,
-    state: 'Created', stage: 'None', progressPercent: 0
-  }
+  return buildDownloadJob({ guid: job.guid, title: job.title }, settings, { id: job.id })
 }
 
 async function retryAllFailed() {

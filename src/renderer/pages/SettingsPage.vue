@@ -344,23 +344,16 @@ import { ref, computed, onMounted, toRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, FolderOpened, RefreshRight } from '@element-plus/icons-vue'
 import type { Settings } from '../../shared/types'
-import { MIN_THREADS, MAX_THREADS, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS, QUALITIES, QUALITY_LABELS } from '../../shared/settings'
+import { DEFAULT_SETTINGS, MIN_THREADS, MAX_THREADS, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS, QUALITIES, QUALITY_LABELS } from '../../shared/settings'
 import { applyAccentColor } from '../utils/accent'
-import { buildOutputPath } from '../../shared/filename'
-import { downloadDirectory } from '../utils/download-jobs'
+import { buildDownloadJob } from '../utils/download-jobs'
 import { applyDarkMode } from '../utils/dark-mode'
 import { displayPath } from '../../shared/path-display'
 import { relativeTime, formatFileSize } from '../../shared/format'
 import { useContentStore } from '../stores/content'
 
 const contentStore = useContentStore()
-const form = ref<Settings>({
-  savePath: '', groupByProgram: false, threadCount: 8, quality: 'auto',
-  reencode: false, logLevel: 'info', darkMode: false, logPath: '', autoOpenFolder: false, clipboardWatch: false,
-  includeHighlights: false,
-  concurrentVideos: 1,
-  coverSavePath: ''
-})
+const form = ref<Settings>({ ...DEFAULT_SETTINGS })
 
 const history = ref<import('../../shared/types').HistoryEntry[]>([])
 const historyQuery = ref('')
@@ -476,22 +469,10 @@ async function redownload(entry: import('../../shared/types').HistoryEntry) {
     title = source.title || title
     m3u8Url = source.m3u8Url
   }
-  const job: import('../../shared/types').DownloadJob = {
-    id: crypto.randomUUID(),
-    guid,
-    sourceUrl: entry.sourceUrl || guid,
-    title,
-    savePath: buildOutputPath(downloadDirectory(settings, entry.programName), title),
-    saveRoot: settings.savePath,
-    quality: settings.quality,
-    threadCount: settings.threadCount,
-    reencode: settings.reencode ?? false,
-    state: 'Created',
-    stage: 'None',
-    progressPercent: 0
-  }
-  if (entry.programName) job.programName = entry.programName
-  if (m3u8Url) { job.m3u8Url = m3u8Url; job.sourceVideoIndex = entry.sourceVideoIndex }
+  const job = buildDownloadJob({
+    guid, title, sourceUrl: entry.sourceUrl || guid,
+    ...(m3u8Url ? { m3u8Url, sourceVideoIndex: entry.sourceVideoIndex } : {})
+  }, settings, { programName: entry.programName })
   // Use retryJob (skipHistory=true) so the history dedup filter is bypassed —
   // startDownload would silently skip it if the guid is still in history.
   await window.cctvdlApi.retryJob(job)
@@ -531,12 +512,6 @@ async function save() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.settings-header-right {
-  display: flex;
-  align-items: center;
-  gap: var(--app-spacing-md);
 }
 
 .settings-last-saved {

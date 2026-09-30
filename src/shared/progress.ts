@@ -1,5 +1,10 @@
 // Pure progress aggregation helpers (unit-tested). Used by main for the OS
 // taskbar/dock progress bar and reusable by the renderer.
+import type { JobState } from './types'
+
+export function isActiveJobState(state: JobState): boolean {
+  return state === 'Queued' || state === 'ResolvingM3u8' || state === 'Downloading' || state === 'Merging'
+}
 
 /**
  * Overall batch completion as a fraction in [0,1], or -1 when there is nothing

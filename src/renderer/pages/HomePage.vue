@@ -190,103 +190,31 @@
           </div>
           <div v-else-if="!filteredVideos.length" class="video-hint">{{ emptyHint }}</div>
           <template v-else>
-            <!-- 单视频集合：扁平列表 + 行内移除（> 100 条用虚拟滚动） -->
-            <template v-if="viewMode === 'single'">
-              <template v-if="filteredVideos.length > 100">
-                <div :style="{ height: vPadTop + 'px' }" />
-                <div
-                  v-for="v in vVisibleItems"
-                  :key="v.guid"
-                  class="video-item"
-                  :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
-                  @click="onVideoClick(v)"
-                >
-                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v, selectionSource)" @click.stop size="small" />
-                  <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
-                       @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
-                  <div class="video-item-info">
-                    <span class="video-item-title" :title="v.title">{{ v.title }}</span>
-                    <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
+            <!-- Flat single-video/search lists share the same virtual window. -->
+            <template v-if="viewMode === 'single' || debouncedSearch.trim()">
+              <div v-if="vPadTop" :style="{ height: vPadTop + 'px' }" />
+              <div
+                v-for="v in vVisibleItems"
+                :key="v.guid"
+                class="video-item"
+                :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
+                @click="onVideoClick(v)"
+              >
+                <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v, selectionSource)" @click.stop size="small" />
+                <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
+                     @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
+                <div class="video-item-info">
+                  <span v-if="viewMode === 'single'" class="video-item-title" :title="v.title">{{ v.title }}</span>
+                  <div v-else class="video-item-heading">
+                    <span v-if="v.contentType" class="video-type-badge" :class="`video-type-badge--${v.contentType}`">{{ contentTypeLabel(v.contentType) }}</span>
+                    <span class="video-item-title" :title="v.title" v-html="highlightText(v.title, debouncedSearch)" />
                   </div>
-                  <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
-                  <button class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)"><el-icon><Delete /></el-icon></button>
+                  <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
                 </div>
-                <div :style="{ height: vPadBot + 'px' }" />
-              </template>
-              <template v-else>
-                <div
-                  v-for="v in filteredVideos"
-                  :key="v.guid"
-                  class="video-item"
-                  :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
-                  @click="onVideoClick(v)"
-                >
-                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v, selectionSource)" @click.stop size="small" />
-                  <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
-                       @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
-                  <div class="video-item-info">
-                    <span class="video-item-title" :title="v.title">{{ v.title }}</span>
-                    <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
-                  </div>
-                  <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
-                  <button class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)"><el-icon><Delete /></el-icon></button>
-                </div>
-              </template>
-            </template>
-            <!-- 栏目·搜索：扁平高亮（> 100 条用虚拟滚动） -->
-            <template v-else-if="debouncedSearch.trim()">
-              <template v-if="filteredVideos.length > 100">
-                <div :style="{ height: vPadTop + 'px' }" />
-                <div
-                  v-for="v in vVisibleItems"
-                  :key="v.guid"
-                  class="video-item"
-                  :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
-                  @click="onVideoClick(v)"
-                >
-                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v, selectionSource)" @click.stop size="small" />
-                  <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
-                       @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
-                  <div class="video-item-info">
-                    <div class="video-item-heading">
-                      <span
-                        v-if="v.contentType"
-                        class="video-type-badge"
-                        :class="`video-type-badge--${v.contentType}`"
-                      >{{ contentTypeLabel(v.contentType) }}</span>
-                      <span class="video-item-title" :title="v.title" v-html="highlightText(v.title, debouncedSearch)" />
-                    </div>
-                    <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
-                  </div>
-                  <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
-                </div>
-                <div :style="{ height: vPadBot + 'px' }" />
-              </template>
-              <template v-else>
-                <div
-                  v-for="v in filteredVideos"
-                  :key="v.guid"
-                  class="video-item"
-                  :class="{ active: selectedVideo?.guid === v.guid, downloaded: downloadedSet.has(v.guid) }"
-                  @click="onVideoClick(v)"
-                >
-                  <el-checkbox :model-value="isVideoSelected(v)" @update:model-value="() => toggleVideoSelection(v, selectionSource)" @click.stop size="small" />
-                  <img v-if="v.coverUrl" :src="v.coverUrl" loading="lazy" class="v-thumb"
-                       @error="(e: Event) => ((e.target as HTMLImageElement).style.display = 'none')" />
-                  <div class="video-item-info">
-                    <div class="video-item-heading">
-                      <span
-                        v-if="v.contentType"
-                        class="video-type-badge"
-                        :class="`video-type-badge--${v.contentType}`"
-                      >{{ contentTypeLabel(v.contentType) }}</span>
-                      <span class="video-item-title" :title="v.title" v-html="highlightText(v.title, debouncedSearch)" />
-                    </div>
-                    <span v-if="v.time" class="video-item-date">{{ v.time }}</span>
-                  </div>
-                  <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
-                </div>
-              </template>
+                <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
+                <button v-if="viewMode === 'single'" class="video-del-btn" title="从单个视频移除" @click.stop="removeSingleVideo(v)"><el-icon><Delete /></el-icon></button>
+              </div>
+              <div v-if="vPadBot" :style="{ height: vPadBot + 'px' }" />
             </template>
             <!-- grouped by date -->
             <template v-else>
@@ -526,7 +454,7 @@ import {
   Picture, RefreshRight, Search, Star, StarFilled, Upload
 } from '@element-plus/icons-vue'
 import type { ProgramInfo, ProgramMonthBounds, VideoInfo } from '../../shared/types'
-import { isProgramDeleteKey, programKindLabel } from '../../shared/programs'
+import { isProgramDeleteKey, programKindLabel, snapshotProgram } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
 import { safeFilename } from '../../shared/filename'
 import { formatFileSize, formatMediaDuration } from '../../shared/format'
@@ -534,7 +462,7 @@ import { describeDownloadEstimate } from '../../shared/estimate-presentation'
 import { displayPath } from '../../shared/path-display'
 import { QUALITY_LABELS } from '../../shared/settings'
 import { createLatestRequestGuard } from '../../shared/latest-request'
-import { VideoMetadataLoader } from '../../shared/video-metadata'
+import { sortVideosChronologically, VideoMetadataLoader } from '../../shared/video-metadata'
 import { useContentStore } from '../stores/content'
 import { prepareDownloadBatch, startDownloadBatch } from '../utils/download-jobs'
 import MonthRangeDialog from '../components/MonthRangeDialog.vue'
@@ -581,10 +509,7 @@ watch(selectedProgram, async program => {
   monthBoundsLoading.value = true
   try {
     const sourceProgram = programs.value.find(item => item.columnId === program.columnId) || program
-    const canonical: ProgramInfo = {
-      ...sourceProgram,
-      ...(sourceProgram.listSource ? { listSource: { ...sourceProgram.listSource } } : {})
-    }
+    const canonical = snapshotProgram(sourceProgram)
     let bounds: ProgramMonthBounds | null = null
     for (let attempt = 0; attempt < 3 && !bounds; attempt++) {
       try { bounds = await window.cctvdlApi.getProgramMonthBounds(canonical) } catch {
@@ -664,27 +589,17 @@ const VBUFFER = 8   // extra rows above/below viewport
 const videoListEl = ref<HTMLElement | null>(null)
 const vScrollTop = ref(0)
 
-const vVisibleItems = computed(() => {
-  if (filteredVideos.value.length <= 100) return filteredVideos.value
+const vWindow = computed(() => {
+  const total = filteredVideos.value.length
+  if (total <= 100) return { start: 0, end: total }
   const containerH = videoListEl.value?.clientHeight ?? 400
   const start = Math.max(0, Math.floor(vScrollTop.value / VITEM_H) - VBUFFER)
-  const end = Math.min(filteredVideos.value.length, start + Math.ceil(containerH / VITEM_H) + VBUFFER * 2)
-  return filteredVideos.value.slice(start, end)
+  const end = Math.min(total, start + Math.ceil(containerH / VITEM_H) + VBUFFER * 2)
+  return { start, end }
 })
-
-const vPadTop = computed(() => {
-  if (filteredVideos.value.length <= 100) return 0
-  const start = Math.max(0, Math.floor(vScrollTop.value / VITEM_H) - VBUFFER)
-  return start * VITEM_H
-})
-
-const vPadBot = computed(() => {
-  if (filteredVideos.value.length <= 100) return 0
-  const containerH = videoListEl.value?.clientHeight ?? 400
-  const start = Math.max(0, Math.floor(vScrollTop.value / VITEM_H) - VBUFFER)
-  const end = Math.min(filteredVideos.value.length, start + Math.ceil(containerH / VITEM_H) + VBUFFER * 2)
-  return Math.max(0, (filteredVideos.value.length - end) * VITEM_H)
-})
+const vVisibleItems = computed(() => filteredVideos.value.slice(vWindow.value.start, vWindow.value.end))
+const vPadTop = computed(() => vWindow.value.start * VITEM_H)
+const vPadBot = computed(() => Math.max(0, (filteredVideos.value.length - vWindow.value.end) * VITEM_H))
 
 function onVideoListScroll(e: Event) {
   vScrollTop.value = (e.target as HTMLElement).scrollTop
@@ -1019,12 +934,7 @@ async function clearAllPrograms() {
 
 async function loadVideos(forceRefresh = false) {
   if (!selectedProgram.value) return
-  const program: ProgramInfo = {
-    ...selectedProgram.value,
-    ...(selectedProgram.value.listSource
-      ? { listSource: { ...selectedProgram.value.listSource } }
-      : {})
-  }
+  const program = snapshotProgram(selectedProgram.value)
   const isAlbum = (program.kind ?? 'column') === 'album'
   const month = isAlbum ? '' : selectedMonth.value
   const includeHighlightsForRequest = includeHighlightsEnabled.value
@@ -1067,19 +977,7 @@ async function loadVideos(forceRefresh = false) {
 }
 
 function sortAlbumList(list: VideoInfo[]): VideoInfo[] {
-  const direction = albumSort.value === 'asc' ? 1 : -1
-  return list
-    .map((video, index) => ({ video, index }))
-    .sort((a, b) => {
-      // Undated entries cannot participate in chronological ordering. Keep
-      // them stable at the end in both ascending and descending modes.
-      if (!a.video.time && !b.video.time) return a.index - b.index
-      if (!a.video.time) return 1
-      if (!b.video.time) return -1
-      const byTime = a.video.time.localeCompare(b.video.time)
-      return byTime === 0 ? a.index - b.index : direction * byTime
-    })
-    .map(({ video }) => video)
+  return sortVideosChronologically(list, albumSort.value)
 }
 
 function sortDisplayedAlbum() {

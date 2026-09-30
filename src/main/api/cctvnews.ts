@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { createResilientFetch, type Fetcher, DEFAULT_UA } from './http'
 import type { VideoInfo, Quality } from '../../shared/types'
+import { formatVideoTime } from './browse-data'
 
 /**
  * 央视新闻（cctvnews.cctv.com）雪书视频页解析服务。
@@ -17,8 +18,6 @@ import type { VideoInfo, Quality } from '../../shared/types'
  *   - 不需要 fetch HTML 解析 guid
  *   - 没有 master playlist（每条 quality 都是独立的 variant m3u8）
  *   - segment 未加密（AES-128 不存在），可直接 HTTP GET
- *
- * 参考实现：E:/CNTV/videodl/videodl/modules/sources/cctvnews.py
  */
 
 export const EMAS_APP_KEY = '20000009'
@@ -213,7 +212,7 @@ export class CctvNewsService {
       const picked = pickQuality(v.qualities, maxBw) ?? v.qualities[0]
       const guid = `cctvnews_${article.id}_${idx}`
       const time = article.publishTime > 0
-        ? formatEpochMsChina(article.publishTime)
+        ? formatVideoTime(article.publishTime)
         : ''
       return {
         guid,
@@ -254,10 +253,4 @@ export function isCctvNewsSnowBookPage(pageUrl: string): boolean {
   } catch {
     return false
   }
-}
-
-function formatEpochMsChina(ms: number): string {
-  const d = new Date(ms + 8 * 60 * 60 * 1000)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
 }

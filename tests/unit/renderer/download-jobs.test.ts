@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildDownloadJobs, prepareDownloadBatch, startDownloadBatch } from '../../../src/renderer/utils/download-jobs'
+import { buildDownloadJob, buildDownloadJobs, prepareDownloadBatch, startDownloadBatch } from '../../../src/renderer/utils/download-jobs'
 import type { Settings, VideoInfo } from '../../../src/shared/types'
 
 const settings: Settings = {
@@ -19,6 +19,31 @@ vi.stubGlobal('window', { cctvdlApi: { getSettings, estimateDownload, startDownl
 
 describe('shared renderer download batch', () => {
   beforeEach(() => { vi.clearAllMocks() })
+
+  it('rebuilds a minimal retry with its original id and current settings', () => {
+    const job = buildDownloadJob({ guid: 'retry', title: '测试视频 1' }, settings, { id: 'original-id' })
+    expect(job).toEqual({
+      id: 'original-id', guid: 'retry', sourceUrl: 'retry', title: '测试视频 1',
+      savePath: 'C:\\Videos/测试视频 1.mp4', saveRoot: 'C:\\Videos',
+      quality: 'auto', threadCount: 8, reencode: false,
+      state: 'Created', stage: 'None', progressPercent: 0
+    })
+  })
+
+  it('creates independent jobs retaining source metadata and a settings snapshot', () => {
+    const selectedSettings = { ...settings, groupByProgram: true }
+    const source = { guid: 'direct', title: '测试视频 1', sourceUrl: 'https://example.test/article',
+      m3u8Url: 'https://example.test/stream.m3u8', sourceVideoIndex: 0 }
+    const job = buildDownloadJob(source, selectedSettings, { programName: '测试专辑 1' })
+    const second = buildDownloadJob(source, selectedSettings)
+    expect(job.id).not.toBe(second.id)
+    selectedSettings.savePath = 'C:\\OtherVideos'
+    selectedSettings.quality = 'liuchang'
+    expect(job).toMatchObject({
+      savePath: 'C:\\Videos\\测试专辑 1/测试视频 1.mp4', saveRoot: 'C:\\Videos', quality: 'auto',
+      sourceUrl: source.sourceUrl, m3u8Url: source.m3u8Url, sourceVideoIndex: 0, programName: '测试专辑 1'
+    })
+  })
 
   it('estimates only videos not in history and preserves all jobs for coordinator dedupe', async () => {
     const prepared = await prepareDownloadBatch(videos, new Set(['old']))
@@ -58,21 +83,21 @@ describe('shared renderer download batch', () => {
 
   it('separates mixed programme and independent videos when enabled', async () => {
     const mixed = [...videos, { ...videos[1], guid: 'single', title: '独立视频' }]
-    const names = new Map([['old', '栏目甲'], ['new', '专辑乙']])
+    const names = new Map([['old', '测试栏目 1'], ['new', '测试专辑 2']])
     const grouped = { ...settings, groupByProgram: true }
     getSettings.mockResolvedValueOnce(grouped)
     const prepared = await prepareDownloadBatch(mixed, new Set(), false, names)
 
     expect(prepared.destinations).toEqual([
-      { path: 'C:\\Videos\\栏目甲', count: 1 },
-      { path: 'C:\\Videos\\专辑乙', count: 1 },
+      { path: 'C:\\Videos\\测试栏目 1', count: 1 },
+      { path: 'C:\\Videos\\测试专辑 2', count: 1 },
       { path: 'C:\\Videos', count: 1 }
     ])
     const jobs = buildDownloadJobs(mixed, grouped, prepared.programNames)
     expect(jobs.map(job => job.savePath)).toEqual([
-      'C:\\Videos\\栏目甲/已下载.mp4', 'C:\\Videos\\专辑乙/待下载.mp4', 'C:\\Videos/独立视频.mp4'
+      'C:\\Videos\\测试栏目 1/已下载.mp4', 'C:\\Videos\\测试专辑 2/待下载.mp4', 'C:\\Videos/独立视频.mp4'
     ])
-    expect(jobs.map(job => job.programName)).toEqual(['栏目甲', '专辑乙', undefined])
+    expect(jobs.map(job => job.programName)).toEqual(['测试栏目 1', '测试专辑 2', undefined])
   })
 
   it('keeps flat output when disabled and retains origin for history redownload', () => {

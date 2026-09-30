@@ -1,11 +1,11 @@
 import Store from 'electron-store'
 import { app } from 'electron'
 import type { Settings, ProgramInfo, VideoInfo, HistoryEntry, DownloadJob } from '../shared/types'
-import { normalizeSettings } from '../shared/settings'
+import { DEFAULT_SETTINGS, normalizeSettings, QUALITIES as QUALITY_VALUES } from '../shared/settings'
 import type { WindowBounds } from '../shared/window-bounds'
 
 const MAX_HISTORY_SIZE = 1000
-const QUALITIES = new Set<DownloadJob['quality']>(['auto', 'bluray', 'chaoqing', 'gaoqing', 'biaoqing', 'liuchang'])
+const QUALITIES = new Set(QUALITY_VALUES)
 const JOB_STATES = new Set<DownloadJob['state']>(['Created', 'Queued', 'ResolvingM3u8', 'Downloading', 'Merging', 'Completed', 'Failed', 'Cancelled'])
 const JOB_STAGES = new Set<DownloadJob['stage']>(['None', 'FetchingPlaylist', 'DownloadingShards', 'MergingShards', 'PublishingOutput'])
 
@@ -20,18 +20,9 @@ interface StoreSchema {
 
 const defaults: StoreSchema = {
   settings: {
+    ...DEFAULT_SETTINGS,
     savePath: app?.getPath?.('videos') || '',
-    groupByProgram: false,
-    threadCount: 8,
-    quality: 'auto',
-    reencode: false,
-    logLevel: 'info',
-    darkMode: false,
     logPath: app?.getPath?.('userData') || '',
-    autoOpenFolder: false,
-    clipboardWatch: false,
-    includeHighlights: false,
-    concurrentVideos: 1,
     coverSavePath: app?.getPath?.('pictures') || ''
   },
   programs: [],
@@ -182,10 +173,6 @@ export class ConfigStore {
     this.store.set('singleVideos', [])
   }
 
-  exportSingleVideos(): VideoInfo[] {
-    return [...this.getSingleVideos()]
-  }
-
   importSingleVideos(data: unknown): number {
     if (!Array.isArray(data)) throw new Error('JSON 格式不正确（应为单视频数组）')
     let added = 0
@@ -225,10 +212,6 @@ export class ConfigStore {
         : history
       this.store.set('downloadHistory', trimmed as unknown as HistoryEntry[])
     }
-  }
-
-  isInDownloadHistory(guid: string): boolean {
-    return this.getDownloadHistory().some(e => e.guid === guid)
   }
 
   clearDownloadHistory(): void {

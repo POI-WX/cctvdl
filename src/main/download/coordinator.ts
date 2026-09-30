@@ -2,7 +2,7 @@ import { EventEmitter } from 'events'
 import fs from 'fs'
 import path from 'path'
 import PQueue from 'p-queue'
-import type { DownloadJob, JobState, JobStage, DownloadProgress, BatchResult, HistoryEntry } from '../../shared/types'
+import type { DownloadJob, JobState, DownloadProgress, BatchResult, HistoryEntry } from '../../shared/types'
 import type { CctvApiService } from '../api/cctv'
 import { parseSegmentUrls } from '../api/cctv'
 import { createResilientFetch, uaInit } from '../api/http'
@@ -10,7 +10,7 @@ import type { SegmentDecryptor, ProgressInfo } from './decryptor'
 import { segmentFileName } from './decryptor'
 import type { Finalizer } from './finalizer'
 import { ensureMp4Extension } from '../../shared/filename'
-import { estimateEta } from '../../shared/progress'
+import { estimateEta, isActiveJobState } from '../../shared/progress'
 import { logger } from '../logger'
 
 const DOWNLOAD_PHASE_MAX_PCT = 80  // progress % cap during segment download phase
@@ -43,6 +43,12 @@ interface HistoryStore {
   clearPendingJobs(): void
 }
 
+interface SegmentState {
+  index: number
+  status: 'pending' | 'completed' | 'failed'
+  error?: string
+}
+
 export class DownloadCoordinator extends EventEmitter {
   private queue: DownloadJob[] = []
   // Map<jobId, AbortController> — all currently executing jobs
@@ -64,10 +70,6 @@ export class DownloadCoordinator extends EventEmitter {
     this.config = config
   }
 
-  get isBusy(): boolean {
-    return this.activeJobs.size > 0
-  }
-
   setConcurrentVideos(n: number): void {
     this.concurrentVideos = Math.max(1, Math.min(3, Math.floor(n)))
   }
@@ -75,7 +77,7 @@ export class DownloadCoordinator extends EventEmitter {
   addJob(job: DownloadJob): boolean {
     const duplicate = this.queue.some(existing =>
       existing.guid === job.guid
-      && ['Queued', 'ResolvingM3u8', 'Downloading', 'Merging'].includes(existing.state)
+      && isActiveJobState(existing.state)
     )
     if (duplicate) return false
     job.state = 'Queued'
@@ -102,10 +104,7 @@ export class DownloadCoordinator extends EventEmitter {
    */
   appendJobs(jobs: DownloadJob[]): DownloadJob[] {
     const hasActive = this.activeJobs.size > 0
-      || this.queue.some(j =>
-        j.state === 'Queued' || j.state === 'ResolvingM3u8'
-        || j.state === 'Downloading' || j.state === 'Merging'
-      )
+      || this.queue.some(j => isActiveJobState(j.state))
     if (!hasActive) {
       this.queue = this.queue.filter(j => !['Completed', 'Failed', 'Cancelled'].includes(j.state))
       this.batchStats = { completed: 0, failed: 0, cancelled: 0, total: 0 }
@@ -171,8 +170,10 @@ export class DownloadCoordinator extends EventEmitter {
     if (!newOrder.length) return
     const running = this.queue.filter(j => j.state !== 'Queued')
     const queued = this.queue.filter(j => j.state === 'Queued')
+    const byId = new Map<string, DownloadJob>()
+    for (const job of queued) if (!byId.has(job.id)) byId.set(job.id, job)
     const ordered = newOrder
-      .map(id => queued.find(j => j.id === id))
+      .map(id => byId.get(id))
       .filter((j): j is DownloadJob => j !== undefined)
     // append any queued jobs not mentioned in newOrder at the end
     const mentioned = new Set(newOrder)
@@ -198,42 +199,22 @@ export class DownloadCoordinator extends EventEmitter {
   }
 
   private async executeJob(job: DownloadJob, abort: AbortController): Promise<void> {
-    if (job.m3u8Url) {
-      return this.executeM3u8UrlJob(job, abort)
+    try {
+      if (job.m3u8Url) await this.executeM3u8UrlJob(job, abort)
+      else await this.executeCctvJob(job, abort)
+    } finally {
+      this.activeJobs.delete(job.id)
+      this.persistPendingJobs()
+      this.startNext()
     }
+  }
+
+  private async executeCctvJob(job: DownloadJob, abort: AbortController): Promise<void> {
     // Per-job runtime state (not shared between parallel jobs)
-    let jobTotalBytes = 0
-    let jobLastBytes = 0
-    let jobBytesSampleCount = 0
-    let jobLastProgressTime = Date.now()
-    let jobLastEmitTime = 0
-    let jobSegments: Array<{ index: number; status: 'pending' | 'completed' | 'failed'; progress: number; error?: string }> = []
+    const jobSegments: SegmentState[] = []
+    const { recordBytes, emitProgress: emitJobProgress } = this.createProgressReporter(job, jobSegments)
     let jobSaveStateTimer: NodeJS.Timeout | null = null
     let jobPendingState: { workDir: string; state: StateFile } | null = null
-
-    const emitJobProgress = (forceEmit = false): void => {
-      const now = Date.now()
-      if (!forceEmit && now - jobLastEmitTime < PROGRESS_EMIT_INTERVAL_MS) return
-      jobLastEmitTime = now
-      const bytesDelta = jobTotalBytes - jobLastBytes
-      const timeDelta = (now - jobLastProgressTime) / 1000
-      let speed = 0
-      if (timeDelta > 0 && bytesDelta > 0) speed = bytesDelta / timeDelta
-      const completedCount = jobSegments.filter(s => s.status === 'completed').length
-      const totalCount = jobSegments.length
-      const eta = estimateEta(jobTotalBytes, jobBytesSampleCount, completedCount, totalCount, speed)
-      if (bytesDelta > 0) { jobLastProgressTime = now; jobLastBytes = jobTotalBytes }
-      const progress: DownloadProgress = {
-        jobId: job.id, percent: job.progressPercent,
-        state: job.state, stage: job.stage,
-        speed, eta, title: job.title,
-        segmentsDone: completedCount > 0 ? completedCount : undefined,
-        segmentsTotal: totalCount > 0 ? totalCount : undefined,
-        batchCompleted: this.batchStats.completed + this.batchStats.failed + this.batchStats.cancelled,
-        batchTotal: this.batchStats.total,
-      }
-      this.emit('progress', progress)
-    }
 
     const saveJobState = (workDir: string, state: StateFile): void => {
       jobPendingState = { workDir, state }
@@ -260,7 +241,7 @@ export class DownloadCoordinator extends EventEmitter {
       fs.mkdirSync(workDir, { recursive: true })
 
       this.transition(job, 'ResolvingM3u8')
-      this.setStage(job, 'FetchingPlaylist')
+      job.stage = 'FetchingPlaylist'
       emitJobProgress(true)
 
       const result = await this.api.resolveSegmentUrls(job.guid, job.quality, abort.signal)
@@ -268,8 +249,6 @@ export class DownloadCoordinator extends EventEmitter {
       if (abort.signal.aborted) {
         this.markCancelled(job)
         flushJobState(workDir)
-        this.activeJobs.delete(job.id)
-        this.startNext()
         return
       }
 
@@ -278,8 +257,6 @@ export class DownloadCoordinator extends EventEmitter {
       if (!segments.length) {
         this.markFailed(job, 'no segment urls')
         this.cleanWorkDir(workDir)
-        this.activeJobs.delete(job.id)
-        this.startNext()
         return
       }
 
@@ -298,14 +275,12 @@ export class DownloadCoordinator extends EventEmitter {
 
       logger.debug(`[${job.guid}] quality=${job.quality}, ${segments.length} ${encrypted ? 'encrypted' : 'clear'} segments; resume: ${completedSet.size} done, ${pendingIndices.length} pending`)
 
-      jobSegments = segments.map((_, i) => ({
-        index: i,
-        status: completedSet.has(i) ? 'completed' : 'pending',
-        progress: completedSet.has(i) ? 100 : 0
-      }))
+      for (let index = 0; index < segments.length; index++) {
+        jobSegments.push({ index, status: completedSet.has(index) ? 'completed' : 'pending' })
+      }
 
       this.transition(job, 'Downloading')
-      this.setStage(job, 'DownloadingShards')
+      job.stage = 'DownloadingShards'
       emitJobProgress(true)
 
       const totalSegments = segments.length
@@ -320,12 +295,9 @@ export class DownloadCoordinator extends EventEmitter {
           if (jobSegments[idx]) {
             if (info.failed) {
               jobSegments[idx].status = 'failed'
-              jobSegments[idx].error = 'decrypt failed'
             } else {
               jobSegments[idx].status = 'completed'
-              jobSegments[idx].progress = 100
-              jobTotalBytes += info.bytes
-              jobBytesSampleCount++
+              recordBytes(info.bytes)
             }
           }
           let completedCount = 0
@@ -346,8 +318,6 @@ export class DownloadCoordinator extends EventEmitter {
       if (abort.signal.aborted) {
         this.markCancelled(job)
         flushJobState(workDir)
-        this.activeJobs.delete(job.id)
-        this.startNext()
         return
       }
 
@@ -356,13 +326,11 @@ export class DownloadCoordinator extends EventEmitter {
         logger.debug(`[${job.guid}] ${decryptResult.failed.length} segment(s) failed: ` + decryptResult.failed.slice(0, 3).map(f => `#${f.index} ${f.error}`).join('; '))
         this.markFailed(job, `segment ${firstFail.index} failed: ${firstFail.error}`, firstFail.index)
         flushJobState(workDir)
-        this.activeJobs.delete(job.id)
-        this.startNext()
         return
       }
 
       this.transition(job, 'Merging')
-      this.setStage(job, 'MergingShards')
+      job.stage = 'MergingShards'
       job.progressPercent = MERGE_START_PCT
       emitJobProgress(true)
 
@@ -375,30 +343,13 @@ export class DownloadCoordinator extends EventEmitter {
       if (abort.signal.aborted) {
         this.markCancelled(job)
         flushJobState(workDir)
-        this.activeJobs.delete(job.id)
-        this.persistPendingJobs()
-        this.startNext()
         return
       }
 
-      if (!this.transition(job, 'Completed')) {
+      if (!this.markCompleted(job, finalPath)) {
         flushJobState(workDir)
-        this.activeJobs.delete(job.id)
-        this.startNext()
         return
       }
-      job.outputPath = finalPath
-      logger.debug(`[${job.guid}] completed → ${finalPath}`)
-      this.setStage(job, 'PublishingOutput')
-      job.progressPercent = 100
-      this.batchStats.completed++
-
-      if (job.guid && this.config) {
-        const fileSize = (() => { try { return fs.statSync(finalPath).size } catch { return 0 } })()
-        this.config.addToDownloadHistory({ guid: job.guid, title: job.title, outputPath: finalPath, fileSize, completedAt: Date.now(), sourceUrl: job.sourceUrl, sourceVideoIndex: job.sourceVideoIndex, programName: job.programName })
-      }
-
-      this.emit('jobFinished', job)
       emitJobProgress(true)
       this.cleanWorkDir(workDir)
     } catch (err) {
@@ -409,16 +360,12 @@ export class DownloadCoordinator extends EventEmitter {
       }
       if (jobSaveStateTimer) { clearTimeout(jobSaveStateTimer); jobSaveStateTimer = null }
     }
-
-    this.activeJobs.delete(job.id)
-    this.persistPendingJobs()
-    this.startNext()
   }
 
   /**
    * Execute a download job whose source is a pre-resolved variant m3u8 URL
    * (currently used only by cctvnews snow-book videos). Differences from the
-   * regular executeJob pipeline:
+   * regular executeCctvJob pipeline:
    *   - No CctvApiService.resolveSegmentUrls call — we already have the variant URL
    *   - No SegmentDecryptor — segments are plain (no EXT-X-KEY)
    *   - Direct HTTP GET per segment, streamed to disk with segmentFileName naming
@@ -426,42 +373,15 @@ export class DownloadCoordinator extends EventEmitter {
    */
   private async executeM3u8UrlJob(job: DownloadJob, abort: AbortController): Promise<void> {
     const workDir = path.join(path.dirname(job.savePath), `.cctvdl_${job.guid}`)
-    let jobTotalBytes = 0
-    let jobBytesSampleCount = 0
-    let jobLastBytes = 0
-    let jobLastProgressTime = Date.now()
-    let jobLastEmitTime = 0
-    const segments: Array<{ index: number; status: 'pending' | 'completed' | 'failed'; progress: number; error?: string }> = []
-
-    const emitJobProgress = (forceEmit = false): void => {
-      const now = Date.now()
-      if (!forceEmit && now - jobLastEmitTime < PROGRESS_EMIT_INTERVAL_MS) return
-      jobLastEmitTime = now
-      const bytesDelta = jobTotalBytes - jobLastBytes
-      const timeDelta = (now - jobLastProgressTime) / 1000
-      let speed = 0
-      if (timeDelta > 0 && bytesDelta > 0) { speed = bytesDelta / timeDelta; jobLastProgressTime = now; jobLastBytes = jobTotalBytes }
-      const completedCount = segments.filter(s => s.status === 'completed').length
-      const totalCount = segments.length
-      const eta = estimateEta(jobTotalBytes, jobBytesSampleCount, completedCount, totalCount, speed)
-      const progress: DownloadProgress = {
-        jobId: job.id, percent: job.progressPercent,
-        state: job.state, stage: job.stage,
-        speed, eta, title: job.title,
-        segmentsDone: completedCount > 0 ? completedCount : undefined,
-        segmentsTotal: totalCount > 0 ? totalCount : undefined,
-        batchCompleted: this.batchStats.completed + this.batchStats.failed + this.batchStats.cancelled,
-        batchTotal: this.batchStats.total
-      }
-      this.emit('progress', progress)
-    }
+    const segments: SegmentState[] = []
+    const { recordBytes, emitProgress: emitJobProgress } = this.createProgressReporter(job, segments)
 
     try {
       fs.mkdirSync(workDir, { recursive: true })
 
       // Phase 1: resolve segments from the variant m3u8
       this.transition(job, 'ResolvingM3u8')
-      this.setStage(job, 'FetchingPlaylist')
+      job.stage = 'FetchingPlaylist'
       emitJobProgress(true)
 
       const resilientFetch = createResilientFetch()
@@ -472,7 +392,7 @@ export class DownloadCoordinator extends EventEmitter {
       const segmentUrls = parseSegmentUrls(m3u8Text, m3u8Base)
       if (!segmentUrls.length) throw new Error('cctvnews m3u8 contained no segments')
 
-      if (abort.signal.aborted) { this.markCancelled(job); this.activeJobs.delete(job.id); this.startNext(); return }
+      if (abort.signal.aborted) { this.markCancelled(job); return }
 
       const stateFile = this.loadState(workDir)
       const completedSet = new Set(
@@ -485,7 +405,7 @@ export class DownloadCoordinator extends EventEmitter {
           : []
       )
       for (let i = 0; i < segmentUrls.length; i++) {
-        segments.push({ index: i, status: completedSet.has(i) ? 'completed' : 'pending', progress: completedSet.has(i) ? 100 : 0 })
+        segments.push({ index: i, status: completedSet.has(i) ? 'completed' : 'pending' })
       }
       const totalSegments = segmentUrls.length
 
@@ -499,7 +419,7 @@ export class DownloadCoordinator extends EventEmitter {
 
       // Phase 2: download each segment directly (no decrypt)
       this.transition(job, 'Downloading')
-      this.setStage(job, 'DownloadingShards')
+      job.stage = 'DownloadingShards'
       emitJobProgress(true)
 
       const queue = new PQueue({ concurrency: Math.max(1, Math.floor(job.threadCount / this.concurrentVideos)) })
@@ -518,9 +438,7 @@ export class DownloadCoordinator extends EventEmitter {
             if (abort.signal.aborted) return
             fs.writeFileSync(outPath, buf)
             segments[idx].status = 'completed'
-            segments[idx].progress = 100
-            jobTotalBytes += buf.length
-            jobBytesSampleCount++
+            recordBytes(buf.length)
             const completedCount = segments.filter(s => s.status === 'completed').length
             job.progressPercent = Math.round((completedCount / totalSegments) * DOWNLOAD_PHASE_MAX_PCT)
             saveState()
@@ -534,20 +452,18 @@ export class DownloadCoordinator extends EventEmitter {
       }
       await queue.onIdle()
 
-      if (abort.signal.aborted) { saveState(); this.markCancelled(job); this.activeJobs.delete(job.id); this.startNext(); return }
+      if (abort.signal.aborted) { saveState(); this.markCancelled(job); return }
 
       const failedSeg = segments.find(s => s.status === 'failed')
       if (failedSeg) {
         saveState()
         this.markFailed(job, `segment ${failedSeg.index} failed: ${failedSeg.error}`, failedSeg.index)
-        this.activeJobs.delete(job.id)
-        this.startNext()
         return
       }
 
       // Phase 3: merge via ffmpeg stream-copy concat
       this.transition(job, 'Merging')
-      this.setStage(job, 'MergingShards')
+      job.stage = 'MergingShards'
       job.progressPercent = MERGE_START_PCT
       emitJobProgress(true)
 
@@ -559,29 +475,10 @@ export class DownloadCoordinator extends EventEmitter {
 
       if (abort.signal.aborted) {
         this.markCancelled(job)
-        this.activeJobs.delete(job.id)
-        this.persistPendingJobs()
-        this.startNext()
         return
       }
 
-      if (!this.transition(job, 'Completed')) {
-        this.activeJobs.delete(job.id)
-        this.startNext()
-        return
-      }
-      job.outputPath = finalPath
-      logger.debug(`[${job.guid}] completed → ${finalPath}`)
-      this.setStage(job, 'PublishingOutput')
-      job.progressPercent = 100
-      this.batchStats.completed++
-
-      if (job.guid && this.config) {
-        const fileSize = (() => { try { return fs.statSync(finalPath).size } catch { return 0 } })()
-        this.config.addToDownloadHistory({ guid: job.guid, title: job.title, outputPath: finalPath, fileSize, completedAt: Date.now(), sourceUrl: job.sourceUrl, sourceVideoIndex: job.sourceVideoIndex, programName: job.programName })
-      }
-
-      this.emit('jobFinished', job)
+      if (!this.markCompleted(job, finalPath)) return
       emitJobProgress(true)
       this.cleanWorkDir(workDir)
     } catch (err) {
@@ -591,10 +488,54 @@ export class DownloadCoordinator extends EventEmitter {
         logger.error(`cctvnews job ${job.id} failed: ${err}`)
       }
     }
+  }
 
-    this.activeJobs.delete(job.id)
-    this.persistPendingJobs()
-    this.startNext()
+  private createProgressReporter(job: DownloadJob, segments: SegmentState[]) {
+    let totalBytes = 0
+    let sampleCount = 0
+    let lastBytes = 0
+    let lastProgressTime = Date.now()
+    let lastEmitTime = 0
+    return {
+      recordBytes(bytes: number): void { totalBytes += bytes; sampleCount++ },
+      emitProgress: (force = false): void => {
+        const now = Date.now()
+        if (!force && now - lastEmitTime < PROGRESS_EMIT_INTERVAL_MS) return
+        lastEmitTime = now
+        const bytesDelta = totalBytes - lastBytes
+        const timeDelta = (now - lastProgressTime) / 1000
+        const speed = timeDelta > 0 && bytesDelta > 0 ? bytesDelta / timeDelta : 0
+        const completedCount = segments.filter(segment => segment.status === 'completed').length
+        if (bytesDelta > 0) { lastProgressTime = now; lastBytes = totalBytes }
+        const progress: DownloadProgress = {
+          jobId: job.id, percent: job.progressPercent, state: job.state, stage: job.stage,
+          speed, eta: estimateEta(totalBytes, sampleCount, completedCount, segments.length, speed),
+          title: job.title,
+          segmentsDone: completedCount || undefined, segmentsTotal: segments.length || undefined,
+          batchCompleted: this.batchStats.completed + this.batchStats.failed + this.batchStats.cancelled,
+          batchTotal: this.batchStats.total
+        }
+        this.emit('progress', progress)
+      }
+    }
+  }
+
+  private markCompleted(job: DownloadJob, finalPath: string): boolean {
+    if (!this.transition(job, 'Completed')) return false
+    job.outputPath = finalPath
+    logger.debug(`[${job.guid}] completed → ${finalPath}`)
+    job.stage = 'PublishingOutput'
+    job.progressPercent = 100
+    this.batchStats.completed++
+    if (job.guid && this.config) {
+      const fileSize = (() => { try { return fs.statSync(finalPath).size } catch { return 0 } })()
+      this.config.addToDownloadHistory({
+        guid: job.guid, title: job.title, outputPath: finalPath, fileSize, completedAt: Date.now(),
+        sourceUrl: job.sourceUrl, sourceVideoIndex: job.sourceVideoIndex, programName: job.programName
+      })
+    }
+    this.emit('jobFinished', job)
+    return true
   }
 
   /**
@@ -632,10 +573,6 @@ export class DownloadCoordinator extends EventEmitter {
     }
   }
 
-  private setStage(job: DownloadJob, stage: JobStage): void {
-    job.stage = stage
-  }
-
   /** Guard against a silent ffmpeg success that produced a missing/empty file. */
   private assertNonEmptyOutput(p: string): void {
     let size = 0
@@ -657,13 +594,11 @@ export class DownloadCoordinator extends EventEmitter {
   }
 
   private persistPendingJobs(): void {
-    this.config?.savePendingJobs(this.queue.filter(j =>
-      j.state === 'Queued' || j.state === 'ResolvingM3u8' || j.state === 'Downloading' || j.state === 'Merging'
-    ))
+    this.config?.savePendingJobs(this.queue.filter(j => isActiveJobState(j.state)))
   }
 
   private finishBatchIfIdle(): void {
-    if (this.activeJobs.size === 0 && !this.queue.some(j => j.state === 'Queued' || j.state === 'ResolvingM3u8' || j.state === 'Downloading' || j.state === 'Merging')) {
+    if (this.activeJobs.size === 0 && !this.queue.some(j => isActiveJobState(j.state))) {
       this.emitBatchFinished()
     }
   }

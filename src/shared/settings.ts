@@ -1,5 +1,12 @@
 import type { Settings, Quality } from './types'
 
+// Platform paths are filled by the main process; the remaining defaults are shared.
+export const DEFAULT_SETTINGS: Readonly<Required<Settings>> = {
+  savePath: '', groupByProgram: false, threadCount: 8, quality: 'auto', reencode: false,
+  logLevel: 'info', darkMode: false, logPath: '', autoOpenFolder: false,
+  clipboardWatch: false, includeHighlights: false, concurrentVideos: 1, coverSavePath: ''
+}
+
 export const QUALITIES: Quality[] = ['auto', 'bluray', 'chaoqing', 'gaoqing', 'biaoqing', 'liuchang']
 export const QUALITY_LABELS: Record<Quality, string> = {
   auto: '自动（最高画质）',

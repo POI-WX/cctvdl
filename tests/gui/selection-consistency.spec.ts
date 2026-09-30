@@ -9,8 +9,8 @@ test('跨视图已选清单只移除删除来源和实际入队的视频', async
   fs.writeFileSync(path.join(userDataDir, 'config.json'), JSON.stringify({
     settings: { savePath: path.join(userDataDir, 'videos') },
     programs: [
-      { name: '测试栏目甲', columnId: 'TOPC-test-a', itemId: '', kind: 'column' },
-      { name: '测试栏目乙', columnId: 'TOPC-test-b', itemId: '', kind: 'column' }
+      { name: '测试栏目 1', columnId: 'TOPC-test-a', itemId: '', kind: 'column' },
+      { name: '测试栏目 2', columnId: 'TOPC-test-b', itemId: '', kind: 'column' }
     ],
     singleVideos: [{ guid: 'single', title: '独立视频', brief: '', coverUrl: '', time: '2026-09-03' }]
   }), 'utf-8')
@@ -28,7 +28,7 @@ test('跨视图已选清单只移除删除来源和实际入队的视频', async
       ipcMain.removeHandler('list-videos')
       ipcMain.handle('list-videos', (_event, program: { columnId: string }) => [{
         guid: program.columnId === 'TOPC-test-a' ? 'column-a' : 'column-b',
-        title: program.columnId === 'TOPC-test-a' ? '栏目甲视频' : '栏目乙视频',
+        title: program.columnId === 'TOPC-test-a' ? '测试栏目 1 视频' : '测试栏目 2 视频',
         brief: '', coverUrl: '', time: '2026-09-01'
       }])
       ipcMain.removeHandler('get-program-month-bounds')
@@ -49,7 +49,7 @@ test('跨视图已选清单只移除删除来源和实际入队的视频', async
     })
 
     await page.locator('.sidebar-nav-item', { hasText: '首页' }).click()
-    for (const [program, title] of [['测试栏目甲', '栏目甲视频'], ['测试栏目乙', '栏目乙视频']]) {
+    for (const [program, title] of [['测试栏目 1', '测试栏目 1 视频'], ['测试栏目 2', '测试栏目 2 视频']]) {
       await page.locator('.program-item', { hasText: program }).click()
       const row = page.locator('.video-item', { hasText: title })
       await expect(row).toBeVisible()
@@ -61,7 +61,7 @@ test('跨视图已选清单只移除删除来源和实际入队的视频', async
     await single.locator('.el-checkbox__inner').click()
     await expect(page.locator('button', { hasText: '下载选中' })).toContainText('3')
 
-    const firstProgram = page.locator('.program-item', { hasText: '测试栏目甲' })
+    const firstProgram = page.locator('.program-item', { hasText: '测试栏目 1' })
     await firstProgram.hover()
     await firstProgram.locator('.prog-action-btn.del').click()
     await page.locator('.el-message-box').getByRole('button', { name: '删除' }).click()
@@ -135,8 +135,8 @@ test('导入多条单视频后保留此前栏目的已选项', async () => {
       ipcMain.handle('browse-program', () => { throw new Error('not a program') })
       ipcMain.removeHandler('resolve-video-batch')
       ipcMain.handle('resolve-video-batch', () => [
-        { guid: 'single-1', title: '文章视频一', brief: '', coverUrl: '', time: '2026-09-02' },
-        { guid: 'single-2', title: '文章视频二', brief: '', coverUrl: '', time: '2026-09-02' }
+        { guid: 'single-1', title: '测试文章视频 1', brief: '', coverUrl: '', time: '2026-09-02' },
+        { guid: 'single-2', title: '测试文章视频 2', brief: '', coverUrl: '', time: '2026-09-02' }
       ])
     })
 
@@ -150,8 +150,8 @@ test('导入多条单视频后保留此前栏目的已选项', async () => {
     await input.fill('https://tv.cctv.com/2026/09/02/VIDEtest.shtml')
     await input.press('Enter')
     await expect(page.locator('.single-entry-count')).toHaveText('2')
-    await expect(page.locator('.video-item', { hasText: '文章视频一' })).toBeVisible()
-    await expect(page.locator('.video-item', { hasText: '文章视频二' })).toBeVisible()
+    await expect(page.locator('.video-item', { hasText: '测试文章视频 1' })).toBeVisible()
+    await expect(page.locator('.video-item', { hasText: '测试文章视频 2' })).toBeVisible()
     await expect(page.locator('button', { hasText: '下载选中' })).toContainText('1')
   } finally {
     await app.close()

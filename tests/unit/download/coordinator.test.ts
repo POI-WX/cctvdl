@@ -6,7 +6,7 @@ import { DownloadCoordinator } from '../../../src/main/download/coordinator'
 import type { CctvApiService } from '../../../src/main/api/cctv'
 import type { SegmentDecryptor } from '../../../src/main/download/decryptor'
 import type { Finalizer } from '../../../src/main/download/finalizer'
-import type { DownloadJob } from '../../../src/shared/types'
+import type { BatchResult, DownloadJob } from '../../../src/shared/types'
 
 describe('DownloadCoordinator', () => {
   let coordinator: DownloadCoordinator
@@ -14,6 +14,16 @@ describe('DownloadCoordinator', () => {
   let mockDecryptor: SegmentDecryptor
   let mockFinalizer: Finalizer
   let outDir: string
+  const makeJob = (overrides: Partial<DownloadJob> = {}): DownloadJob => ({
+    id: 'test-1', guid: 'guid-1', sourceUrl: 'https://tv.cctv.com/test', title: 'Test Video',
+    savePath: path.join(outDir, 'test.mp4'), quality: 'auto', threadCount: 8, reencode: false,
+    state: 'Created', stage: 'None', progressPercent: 0, ...overrides
+  })
+  const runJobs = async (jobs: DownloadJob[]): Promise<BatchResult> => {
+    const finished = new Promise<BatchResult>(resolve => coordinator.once('batchFinished', resolve))
+    coordinator.appendJobs(jobs)
+    return finished
+  }
   // Helper: a finalizer mock method that writes a real non-empty file and returns its path.
   const writeOut = (name: string) => vi.fn().mockImplementation(async () => {
     const p = path.join(outDir, name)
@@ -39,8 +49,7 @@ describe('DownloadCoordinator', () => {
 
     mockFinalizer = {
       writeConcatList: vi.fn().mockReturnValue('/tmp/concat.txt'),
-      merge: writeOut('merged.mp4'),
-      uniquePath: vi.fn((p: string) => p)
+      merge: writeOut('merged.mp4')
     } as unknown as Finalizer
 
     coordinator = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer)
@@ -52,24 +61,13 @@ describe('DownloadCoordinator', () => {
     // temporary output directories are replaced by the next test.
     coordinator.cancelAll()
     await new Promise(resolve => setTimeout(resolve, 0))
+    vi.unstubAllGlobals()
     fs.rmSync(outDir, { recursive: true, force: true })
   })
 
   describe('state transitions', () => {
     it('transitions job from Created to Queued when added', () => {
-      const job: DownloadJob = {
-        id: 'test-1',
-        guid: 'guid-1',
-        sourceUrl: 'https://tv.cctv.com/test',
-        title: 'Test Video',
-        savePath: '/tmp/test.mp4',
-        quality: 'auto',
-        threadCount: 8,
-
-        state: 'Created',
-        stage: 'None',
-        progressPercent: 0
-      }
+      const job = makeJob()
 
       coordinator.addJob(job)
       expect(job.state).toBe('Queued')
@@ -79,24 +77,9 @@ describe('DownloadCoordinator', () => {
       const progressHandler = vi.fn()
       coordinator.on('progress', progressHandler)
 
-      const job: DownloadJob = {
-        id: 'test-1',
-        guid: 'guid-1',
-        sourceUrl: 'https://tv.cctv.com/test',
-        title: 'Test Video',
-        savePath: '/tmp/test.mp4',
-        quality: 'auto',
-        threadCount: 8,
+      const job = makeJob()
 
-        state: 'Created',
-        stage: 'None',
-        progressPercent: 0
-      }
-
-      coordinator.appendJobs([job])
-
-      // Wait for async operations
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      await runJobs([job])
 
       expect(progressHandler).toHaveBeenCalled()
     })
@@ -123,48 +106,20 @@ describe('DownloadCoordinator', () => {
         id: 'clear-job', guid: 'clear-guid', sourceUrl: '', title: 'Clear', savePath: path.join(outDir, 'clear.mp4'),
         quality: 'auto', threadCount: 2, reencode: false, state: 'Created', stage: 'None', progressPercent: 0
       }
-      coordinator.appendJobs([job])
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await runJobs([job])
       expect(mockDecryptor.downloadPlainAll).toHaveBeenCalled()
       expect(mockDecryptor.decryptAll).not.toHaveBeenCalled()
     })
 
     it('processes jobs serially', async () => {
-      const job1: DownloadJob = {
-        id: 'job-1',
-        guid: 'guid-1',
-        sourceUrl: 'https://tv.cctv.com/1',
-        title: 'Video 1',
-        savePath: '/tmp/video1.mp4',
-        quality: 'auto',
-        threadCount: 8,
+      const job1 = makeJob({ id: 'job-1', guid: 'guid-1', title: 'Video 1' })
 
-        state: 'Created',
-        stage: 'None',
-        progressPercent: 0
-      }
-
-      const job2: DownloadJob = {
-        id: 'job-2',
-        guid: 'guid-2',
-        sourceUrl: 'https://tv.cctv.com/2',
-        title: 'Video 2',
-        savePath: '/tmp/video2.mp4',
-        quality: 'auto',
-        threadCount: 8,
-
-        state: 'Created',
-        stage: 'None',
-        progressPercent: 0
-      }
+      const job2 = makeJob({ id: 'job-2', guid: 'guid-2', title: 'Video 2' })
 
       const finishedHandler = vi.fn()
       coordinator.on('jobFinished', finishedHandler)
 
-      coordinator.appendJobs([job1, job2])
-
-      // Wait for async operations
-      await new Promise((resolve) => setTimeout(resolve, 200))
+      await runJobs([job1, job2])
 
       expect(finishedHandler).toHaveBeenCalledTimes(2)
       expect(finishedHandler).toHaveBeenCalledWith(expect.objectContaining({ id: 'job-1' }))
@@ -175,24 +130,9 @@ describe('DownloadCoordinator', () => {
       const batchHandler = vi.fn()
       coordinator.on('batchFinished', batchHandler)
 
-      const job: DownloadJob = {
-        id: 'test-1',
-        guid: 'guid-1',
-        sourceUrl: 'https://tv.cctv.com/test',
-        title: 'Test Video',
-        savePath: '/tmp/test.mp4',
-        quality: 'auto',
-        threadCount: 8,
+      const job = makeJob()
 
-        state: 'Created',
-        stage: 'None',
-        progressPercent: 0
-      }
-
-      coordinator.appendJobs([job])
-
-      // Wait for async operations
-      await new Promise((resolve) => setTimeout(resolve, 200))
+      await runJobs([job])
 
       expect(batchHandler).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -215,24 +155,9 @@ describe('DownloadCoordinator', () => {
       const finishedHandler = vi.fn()
       coordinator.on('jobFinished', finishedHandler)
 
-      const job: DownloadJob = {
-        id: 'test-1',
-        guid: 'guid-1',
-        sourceUrl: 'https://tv.cctv.com/test',
-        title: 'Test Video',
-        savePath: '/tmp/test.mp4',
-        quality: 'auto',
-        threadCount: 8,
+      const job = makeJob()
 
-        state: 'Created',
-        stage: 'None',
-        progressPercent: 0
-      }
-
-      coordinator.appendJobs([job])
-
-      // Wait for async operations
-      await new Promise((resolve) => setTimeout(resolve, 200))
+      await runJobs([job])
 
       expect(finishedHandler).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -257,38 +182,11 @@ describe('DownloadCoordinator', () => {
       const finishedHandler = vi.fn()
       coordinator.on('jobFinished', finishedHandler)
 
-      const job1: DownloadJob = {
-        id: 'job-1',
-        guid: 'guid-1',
-        sourceUrl: 'https://tv.cctv.com/1',
-        title: 'Video 1',
-        savePath: '/tmp/video1.mp4',
-        quality: 'auto',
-        threadCount: 8,
+      const job1 = makeJob({ id: 'job-1', guid: 'guid-1', title: 'Video 1' })
 
-        state: 'Created',
-        stage: 'None',
-        progressPercent: 0
-      }
+      const job2 = makeJob({ id: 'job-2', guid: 'guid-2', title: 'Video 2' })
 
-      const job2: DownloadJob = {
-        id: 'job-2',
-        guid: 'guid-2',
-        sourceUrl: 'https://tv.cctv.com/2',
-        title: 'Video 2',
-        savePath: '/tmp/video2.mp4',
-        quality: 'auto',
-        threadCount: 8,
-
-        state: 'Created',
-        stage: 'None',
-        progressPercent: 0
-      }
-
-      coordinator.appendJobs([job1, job2])
-
-      // Wait for async operations
-      await new Promise((resolve) => setTimeout(resolve, 300))
+      await runJobs([job1, job2])
 
       expect(finishedHandler).toHaveBeenCalledTimes(2)
       expect(finishedHandler).toHaveBeenCalledWith(expect.objectContaining({ id: 'job-1', state: 'Failed' }))
@@ -658,6 +556,19 @@ describe('DownloadCoordinator', () => {
   })
 
   describe('reorderQueue', () => {
+    it('preserves running jobs and unspecified queue order for a large partial reorder', () => {
+      const jobs = Array.from({ length: 2000 }, (_, index) => makeJob({
+        id: `order-${index}`, guid: `order-guid-${index}`
+      }))
+      jobs.forEach(job => coordinator.addJob(job))
+      jobs[0].state = 'Downloading'
+      coordinator.reorderQueue(['order-1999', 'unknown', 'order-1000'])
+      const queue = (coordinator as any).queue as DownloadJob[]
+      expect(queue).toEqual([
+        jobs[0], jobs[1999], jobs[1000], ...jobs.slice(1, 1000), ...jobs.slice(1001, 1999)
+      ])
+    })
+
     it('reorders queued jobs by new id sequence', () => {
       const mkJob = (id: string): DownloadJob => ({
         id, guid: `guid-${id}`, sourceUrl: '', title: id,
@@ -729,6 +640,48 @@ describe('DownloadCoordinator', () => {
       return { fn, calls }
     }
 
+    it.each([
+      ['cctv', false], ['cctv', true], ['cctvnews', false], ['cctvnews', true]
+    ] as const)('%s shares completion cleanup (cancelled during merge: %s)', async (source, cancelDuringMerge) => {
+      const config = { addToDownloadHistory: vi.fn(), savePendingJobs: vi.fn(), clearPendingJobs: vi.fn() }
+      coordinator = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer, config)
+      const fetchMock = buildFetchMock([
+        { match: url => url.endsWith('.m3u8'), body: '#EXTM3U\n#EXTINF:10,\nseg.ts\n' },
+        { match: url => url.endsWith('seg.ts'), body: Buffer.from('segment') }
+      ])
+      vi.stubGlobal('fetch', fetchMock.fn)
+      const merge = vi.fn(async () => {
+        if (cancelDuringMerge) coordinator.shutdown()
+        const output = path.join(outDir, 'shared.mp4')
+        fs.writeFileSync(output, 'video-bytes')
+        return output
+      })
+      mockFinalizer.merge = merge
+      mockFinalizer.mergeCopy = merge
+      const job = makeJob({
+        programName: 'Test programme', saveRoot: outDir,
+        ...(source === 'cctvnews' ? { m3u8Url: 'https://res.example.com/foo.m3u8', sourceVideoIndex: 0 } : {})
+      })
+      const finished = vi.fn()
+      coordinator.on('jobFinished', finished)
+      const result = await runJobs([job])
+      expect(finished).toHaveBeenCalledOnce()
+      expect(config.clearPendingJobs).toHaveBeenCalledOnce()
+      expect(config.savePendingJobs).toHaveBeenLastCalledWith([])
+      expect(result).toMatchObject({ total: 1, failed: 0, completed: cancelDuringMerge ? 0 : 1, cancelled: cancelDuringMerge ? 1 : 0 })
+      if (cancelDuringMerge) {
+        expect(config.addToDownloadHistory).not.toHaveBeenCalled()
+        expect(job.state).toBe('Cancelled')
+      } else {
+        expect(config.addToDownloadHistory).toHaveBeenCalledOnce()
+        expect(config.addToDownloadHistory).toHaveBeenCalledWith(expect.objectContaining({
+          guid: job.guid, outputPath: job.outputPath, sourceUrl: job.sourceUrl,
+          programName: job.programName, sourceVideoIndex: job.sourceVideoIndex, fileSize: 11
+        }))
+        expect(fs.existsSync(path.join(outDir, `.cctvdl_${job.guid}`))).toBe(false)
+      }
+    })
+
     it('downloads segments directly and merges into a completed mp4', async () => {
       const m3u8 = [
         '#EXTM3U',
@@ -760,8 +713,7 @@ describe('DownloadCoordinator', () => {
         reencode: false, state: 'Created', stage: 'None', progressPercent: 0,
         m3u8Url: 'https://res.example.com/v/foo.m3u8'
       }
-      coordinator.appendJobs([job])
-      await new Promise(r => setTimeout(r, 200))
+      await runJobs([job])
 
       // API must NOT have been called — m3u8Url bypasses resolveSegmentUrls
       expect(mockApi.resolveSegmentUrls).not.toHaveBeenCalled()
@@ -796,13 +748,12 @@ describe('DownloadCoordinator', () => {
       }))
       ;(mockFinalizer as any).mergeCopy = writeOut('m3u8-resumed.mp4')
 
-      coordinator.appendJobs([{
+      await runJobs([{
         id: 'm3u8-resume', guid, sourceUrl: 'https://x', title: 'M',
         savePath: path.join(outDir, 'out.mp4'), quality: 'auto', threadCount: 2,
         reencode: false, state: 'Created', stage: 'None', progressPercent: 0,
         m3u8Url: 'https://res.example.com/v/foo.m3u8'
       }])
-      await new Promise(r => setTimeout(r, 200))
 
       expect(fetchMock.calls).toEqual([
         'https://res.example.com/v/foo.m3u8',
@@ -826,8 +777,7 @@ describe('DownloadCoordinator', () => {
         reencode: false, state: 'Created', stage: 'None', progressPercent: 0,
         m3u8Url: 'https://res.example.com/v/bad.m3u8'
       }
-      coordinator.appendJobs([job])
-      await new Promise(r => setTimeout(r, 200))
+      await runJobs([job])
 
       expect(finished).toHaveBeenCalledWith(expect.objectContaining({
         id: 'm3u8-err', state: 'Failed',
@@ -855,8 +805,7 @@ describe('DownloadCoordinator', () => {
         reencode: false, state: 'Created', stage: 'None', progressPercent: 0,
         m3u8Url: 'https://res.example.com/v/foo.m3u8'
       }
-      coordinator.appendJobs([job])
-      await new Promise(r => setTimeout(r, 200))
+      await runJobs([job])
 
       expect(finished).toHaveBeenCalledWith(expect.objectContaining({
         id: 'm3u8-seg', state: 'Failed',

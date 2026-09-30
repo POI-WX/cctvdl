@@ -20,8 +20,8 @@ describe('useDownloadStore', () => {
       const info: BatchStartInfo = {
         total: 2,
         jobs: [
-          { id: 'j1', title: '视频A', guid: 'G1' },
-          { id: 'j2', title: '视频B', guid: 'G2' },
+          { id: 'j1', title: '测试视频 1', guid: 'G1' },
+          { id: 'j2', title: '测试视频 2', guid: 'G2' },
         ]
       }
       store.applyBatchStarted(info)

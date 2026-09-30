@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { BatchResult, DownloadProgress, DownloadJob, BatchStartInfo, JobState, JobStage } from '../../shared/types'
+import { isActiveJobState as isActive } from '../../shared/progress'
 
 interface JobCard {
   id: string; title: string; guid: string
@@ -19,13 +20,9 @@ export const useDownloadStore = defineStore('download', () => {
   const updateVersion = ref('')
   const batchJobIds = ref<Set<string>>(new Set())
 
-  const ACTIVE_STATES: JobState[] = ['Queued', 'ResolvingM3u8', 'Downloading', 'Merging']
-  function isActive(s: JobState) { return ACTIVE_STATES.includes(s) }
-
   const activeJobs = computed(() => jobs.value.filter(j => isActive(j.state)))
   const completedJobs = computed(() => jobs.value.filter(j => j.state === 'Completed'))
   const failedCancelledJobs = computed(() => jobs.value.filter(j => j.state === 'Failed' || j.state === 'Cancelled'))
-  const doneCount = computed(() => completedJobs.value.length)
   const finishedCount = computed(() => completedJobs.value.length + failedCancelledJobs.value.length)
   const failedCount = computed(() => jobs.value.filter(j => j.state === 'Failed').length)
   const batchJobs = computed(() => jobs.value.filter(j => batchJobIds.value.has(j.id)))
@@ -94,7 +91,8 @@ export const useDownloadStore = defineStore('download', () => {
 
   function clearFinished() {
     jobs.value = jobs.value.filter(j => isActive(j.state))
-    batchJobIds.value = new Set([...batchJobIds.value].filter(id => jobs.value.some(j => j.id === id)))
+    const remainingIds = new Set(jobs.value.map(job => job.id))
+    batchJobIds.value = new Set([...batchJobIds.value].filter(id => remainingIds.has(id)))
   }
 
   function reorderJobs(ids: string[]) {
@@ -109,7 +107,7 @@ export const useDownloadStore = defineStore('download', () => {
   return {
     jobs, running, stats, activeDownloads, updateVersion,
     activeJobs, completedJobs, failedCancelledJobs, batchJobs,
-    doneCount, finishedCount, failedCount, batchPercent, totalSpeed,
+    finishedCount, failedCount, batchPercent, totalSpeed,
     downloadBadge,
     isActive, applyProgress, applyJobFinished, applyBatchFinished, applyBatchStarted,
     clearFinished, reorderJobs

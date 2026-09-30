@@ -1,24 +1,26 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeSettings, QUALITIES, QUALITY_LABELS, MIN_THREADS, MAX_THREADS } from '../../src/shared/settings'
+import { DEFAULT_SETTINGS, normalizeSettings, QUALITIES, QUALITY_LABELS, MIN_THREADS, MAX_THREADS } from '../../src/shared/settings'
 import type { Settings } from '../../src/shared/types'
 
 const fallback: Settings = {
+  ...DEFAULT_SETTINGS,
   savePath: '/videos',
-  groupByProgram: false,
-  threadCount: 8,
-  quality: 'auto',
-  reencode: false,
-  logLevel: 'info',
-  darkMode: false,
   logPath: '/logs',
-  autoOpenFolder: false,
-  clipboardWatch: false,
-  includeHighlights: false,
-  concurrentVideos: 1,
   coverSavePath: '/pictures'
 }
 
 describe('normalizeSettings', () => {
+  it('keeps the shared defaults platform-neutral and unchanged', () => {
+    expect(DEFAULT_SETTINGS).toEqual({
+      savePath: '', groupByProgram: false, threadCount: 8, quality: 'auto', reencode: false,
+      logLevel: 'info', darkMode: false, logPath: '', autoOpenFolder: false,
+      clipboardWatch: false, includeHighlights: false, concurrentVideos: 1, coverSavePath: ''
+    })
+    const copy = { ...DEFAULT_SETTINGS }
+    copy.threadCount = 2
+    expect(DEFAULT_SETTINGS.threadCount).toBe(8)
+  })
+
   it('provides a user-facing label for every quality value', () => {
     expect(QUALITIES.map(quality => QUALITY_LABELS[quality])).toEqual([
       '自动（最高画质）',

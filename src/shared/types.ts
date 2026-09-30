@@ -206,7 +206,6 @@ export interface CctvdlApi {
   clearPrograms(): Promise<void>
   setProgramFavorite(columnId: string, favorite: boolean): Promise<void>
   getPrograms(): Promise<ProgramInfo[]>
-  resolveSingleVideo(url: string): Promise<VideoInfo>
   // Returns all videos reachable from a single URL. Regular pages yield a
   // single-element array; cctvnews snow-book articles may yield N.
   resolveVideoBatch(url: string, quality?: Quality): Promise<VideoInfo[]>

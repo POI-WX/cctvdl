@@ -28,7 +28,7 @@ function planSamples(videos: DownloadEstimateInput[]): {
   const bucketWidth = Math.max(1, Math.ceil(span / maxBuckets))
   const groups = new Map<string, number[]>()
   const groupKeys: string[] = []
-  videos.forEach((video, index) => {
+  videos.forEach((_, index) => {
     const month = dates[index]
     const key = `${types[index]}:${month == null ? 'unknown' : Math.floor((month - earliest) / bucketWidth)}`
     groupKeys.push(key)

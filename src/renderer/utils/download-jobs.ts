@@ -5,23 +5,28 @@ export function downloadDirectory(settings: Settings, programName?: string): str
   return buildProgramDirectory(settings.savePath, settings.groupByProgram ? programName : undefined)
 }
 
-export function buildDownloadJobs(videos: VideoInfo[], settings: Settings, programNames: ReadonlyMap<string, string> = new Map()): DownloadJob[] {
-  return videos.map(video => {
-    const programName = programNames.get(video.guid)
-    const job: DownloadJob = {
-      id: crypto.randomUUID(), guid: video.guid,
-      sourceUrl: video.sourceUrl ?? video.guid, title: video.title,
-      savePath: buildOutputPath(downloadDirectory(settings, programName), video.title),
-      saveRoot: settings.savePath,
-      quality: settings.quality, threadCount: settings.threadCount,
-      reencode: settings.reencode ?? false,
-      state: 'Created', stage: 'None', progressPercent: 0
-    }
-    if (programName) job.programName = programName
-    if (video.m3u8Url) job.m3u8Url = video.m3u8Url
-    if (video.sourceVideoIndex != null) job.sourceVideoIndex = video.sourceVideoIndex
-    return job
-  })
+type DownloadSource = Pick<VideoInfo, 'guid' | 'title' | 'sourceUrl' | 'm3u8Url' | 'sourceVideoIndex'>
+
+export function buildDownloadJob(video: DownloadSource, settings: Settings,
+  options: { id?: string; programName?: string } = {}): DownloadJob {
+  const { programName } = options
+  const job: DownloadJob = {
+    id: options.id ?? crypto.randomUUID(), guid: video.guid,
+    sourceUrl: video.sourceUrl ?? video.guid, title: video.title,
+    savePath: buildOutputPath(downloadDirectory(settings, programName), video.title),
+    saveRoot: settings.savePath,
+    quality: settings.quality, threadCount: settings.threadCount,
+    reencode: settings.reencode ?? false,
+    state: 'Created', stage: 'None', progressPercent: 0
+  }
+  if (programName) job.programName = programName
+  if (video.m3u8Url) job.m3u8Url = video.m3u8Url
+  if (video.sourceVideoIndex != null) job.sourceVideoIndex = video.sourceVideoIndex
+  return job
+}
+
+export function buildDownloadJobs(videos: readonly DownloadSource[], settings: Settings, programNames: ReadonlyMap<string, string> = new Map()): DownloadJob[] {
+  return videos.map(video => buildDownloadJob(video, settings, { programName: programNames.get(video.guid) }))
 }
 
 export async function prepareDownloadBatch(videos: VideoInfo[], downloaded: Set<string>, forceRedownload = false,

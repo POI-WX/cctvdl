@@ -257,10 +257,10 @@ describe('ConfigStore', () => {
       expect(store.getSingleVideos()).toEqual([])
     })
 
-    it('exportSingleVideos returns a copy of the current list', () => {
+    it('getSingleVideos returns a copy suitable for export', () => {
       store.addSingleVideo(mk('A'))
       store.addSingleVideo(mk('B'))
-      const exported = store.exportSingleVideos()
+      const exported = store.getSingleVideos()
       expect(exported.map(v => v.guid)).toEqual(['B', 'A'])
       // Mutation of returned array must not affect store
       exported.pop()
@@ -320,15 +320,6 @@ describe('ConfigStore', () => {
       expect(store.getDownloadHistory()).toHaveLength(1)
     })
 
-    it('isInDownloadHistory returns true for existing', () => {
-      store.addToDownloadHistory(mkEntry('guid-001'))
-      expect(store.isInDownloadHistory('guid-001')).toBe(true)
-    })
-
-    it('isInDownloadHistory returns false for missing', () => {
-      expect(store.isInDownloadHistory('missing')).toBe(false)
-    })
-
     it('clearDownloadHistory empties the list', () => {
       store.addToDownloadHistory(mkEntry('guid-001'))
       store.addToDownloadHistory(mkEntry('guid-002'))
@@ -356,16 +347,13 @@ describe('ConfigStore', () => {
       expect(history[0].guid).toBe('legacy-guid-a')
       expect(history[0].title).toBe('')
       expect(history[0].fileSize).toBe(0)
-      expect(store.isInDownloadHistory('legacy-guid-a')).toBe(true)
     })
 
     it('removeFromDownloadHistory removes the matching entry', () => {
       store.addToDownloadHistory(mkEntry('guid-rm-1'))
       store.addToDownloadHistory(mkEntry('guid-rm-2'))
       store.removeFromDownloadHistory('guid-rm-1')
-      expect(store.isInDownloadHistory('guid-rm-1')).toBe(false)
-      expect(store.isInDownloadHistory('guid-rm-2')).toBe(true)
-      expect(store.getDownloadHistory()).toHaveLength(1)
+      expect(store.getDownloadHistory().map(entry => entry.guid)).toEqual(['guid-rm-2'])
     })
 
     it('removeFromDownloadHistory with unknown guid is a no-op', () => {
@@ -401,13 +389,13 @@ describe('ConfigStore', () => {
     })
 
     it('preserves programme origin in restored jobs and download history', () => {
-      const job = { ...mkJob('grouped'), programName: '专辑甲', saveRoot: '/tmp' }
+      const job = { ...mkJob('grouped'), programName: '测试专辑 1', saveRoot: '/tmp' }
       store.savePendingJobs([job])
-      expect(store.getPendingJobs()[0].programName).toBe('专辑甲')
+      expect(store.getPendingJobs()[0].programName).toBe('测试专辑 1')
       expect(store.getPendingJobs()[0].saveRoot).toBe('/tmp')
       store.addToDownloadHistory({ guid: job.guid, title: job.title, outputPath: job.savePath,
         fileSize: 12, completedAt: 1, programName: job.programName })
-      expect(store.getDownloadHistory()[0].programName).toBe('专辑甲')
+      expect(store.getDownloadHistory()[0].programName).toBe('测试专辑 1')
     })
 
     it('clearPendingJobs empties the list', () => {

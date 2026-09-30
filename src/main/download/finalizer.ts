@@ -63,7 +63,7 @@ export class Finalizer {
 
   async mergeCopy(listPath: string, outputPath: string, signal?: AbortSignal): Promise<string> {
     const finalPath = this.uniquePath(outputPath)
-    return this.runMerge(listPath, finalPath, [
+    return this.runMerge(finalPath, [
       '-y',
       '-fflags', '+genpts',
       '-f', 'concat', '-safe', '0', '-i', listPath,
@@ -76,7 +76,7 @@ export class Finalizer {
 
   async mergeReencode(listPath: string, outputPath: string, signal?: AbortSignal): Promise<string> {
     const finalPath = this.uniquePath(outputPath)
-    return this.runMerge(listPath, finalPath, [
+    return this.runMerge(finalPath, [
       '-y',
       '-fflags', '+genpts',
       '-f', 'concat', '-safe', '0', '-i', listPath,
@@ -89,7 +89,7 @@ export class Finalizer {
     ], signal, 'ffmpeg')
   }
 
-  private async runMerge(listPath: string, finalPath: string, args: string[], signal: AbortSignal | undefined, label: string): Promise<string> {
+  private async runMerge(finalPath: string, args: string[], signal: AbortSignal | undefined, label: string): Promise<string> {
     const ext = path.extname(finalPath)
     const base = path.basename(finalPath, ext)
     const tempPath = path.join(path.dirname(finalPath), `.${base}.${crypto.randomUUID()}.part${ext}`)

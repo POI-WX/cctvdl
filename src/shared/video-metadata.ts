@@ -15,15 +15,16 @@ export function readVideoDurationSeconds(data: Record<string, unknown>): number 
   return Math.round(parts.reduce((total, part) => total * 60 + part, 0))
 }
 
-/** Sort dated videos oldest-to-newest and keep unknown dates stable at the end. */
-export function sortVideosChronologically(videos: VideoInfo[]): VideoInfo[] {
+/** Sort dated videos, retaining input order for ties and unknown dates at the end. */
+export function sortVideosChronologically(videos: readonly VideoInfo[], order: 'asc' | 'desc' = 'asc'): VideoInfo[] {
+  const direction = order === 'asc' ? 1 : -1
   return videos
     .map((video, index) => ({ video, index }))
     .sort((a, b) => {
       if (!a.video.time && !b.video.time) return a.index - b.index
       if (!a.video.time) return 1
       if (!b.video.time) return -1
-      return a.video.time.localeCompare(b.video.time) || a.index - b.index
+      return direction * a.video.time.localeCompare(b.video.time) || a.index - b.index
     })
     .map(({ video }) => video)
 }

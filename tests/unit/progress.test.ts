@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { taskbarFraction, estimateEta } from '../../src/shared/progress'
+import { taskbarFraction, estimateEta, isActiveJobState } from '../../src/shared/progress'
+import type { JobState } from '../../src/shared/types'
+
+describe('isActiveJobState', () => {
+  it.each<[JobState, boolean]>([
+    ['Created', false], ['Queued', true], ['ResolvingM3u8', true], ['Downloading', true],
+    ['Merging', true], ['Completed', false], ['Failed', false], ['Cancelled', false]
+  ])('%s is active: %s', (state, expected) => {
+    expect(isActiveJobState(state)).toBe(expected)
+  })
+})
 
 describe('taskbarFraction', () => {
   it('returns -1 when there is no batch', () => {

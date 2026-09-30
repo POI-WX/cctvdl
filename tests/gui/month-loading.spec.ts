@@ -9,8 +9,8 @@ test('切换月份或栏目时不暴露旧列表操作，失败后可重试', as
   fs.writeFileSync(path.join(userDataDir, 'config.json'), JSON.stringify({
     settings: { savePath: path.join(userDataDir, 'videos') },
     programs: [
-      { name: '测试栏目甲', columnId: 'TOPC-test-a', itemId: '', kind: 'column' },
-      { name: '测试栏目乙', columnId: 'TOPC-test-b', itemId: '', kind: 'column' }
+      { name: '测试栏目 1', columnId: 'TOPC-test-a', itemId: '', kind: 'column' },
+      { name: '测试栏目 2', columnId: 'TOPC-test-b', itemId: '', kind: 'column' }
     ],
     singleVideos: [
       { guid: 'single', title: '独立视频', brief: '', coverUrl: '', time: '2026-08-01' }
@@ -37,7 +37,7 @@ test('切换月份或栏目时不暴露旧列表操作，失败后可重试', as
       ipcMain.removeHandler('list-videos')
       ipcMain.handle('list-videos', (_event, program: { columnId: string }, month: string) => {
         if (program.columnId === 'TOPC-test-a' && month === '202609') {
-          return [video('september', '九月旧视频')]
+          return [video('september', '测试视频（9月）')]
         }
         if (program.columnId === 'TOPC-test-a' && month === '202608') {
           testState.augustRequests++
@@ -45,7 +45,7 @@ test('切换月份或栏目时不暴露旧列表操作，失败后可重试', as
             const key = `a-${testState.augustRequests}`
             return new Promise((resolve, reject) => { testState.pending[key] = { resolve, reject } })
           }
-          return [video('august', '八月新视频')]
+          return [video('august', '测试视频（8月）')]
         }
         if (program.columnId === 'TOPC-test-b') {
           testState.otherRequests++
@@ -64,8 +64,8 @@ test('切换月份或栏目时不暴露旧列表操作，失败后可重试', as
     const month = page.locator('.month-row input')
     await month.fill('2026-09')
     await month.press('Enter')
-    await page.locator('.program-item', { hasText: '测试栏目甲' }).click()
-    await expect(page.locator('.video-item', { hasText: '九月旧视频' })).toBeVisible()
+    await page.locator('.program-item', { hasText: '测试栏目 1' }).click()
+    await expect(page.locator('.video-item', { hasText: '测试视频（9月）' })).toBeVisible()
     await page.locator('.video-item').first().locator('.el-checkbox__inner').click()
 
     await month.fill('2026-08')
@@ -91,27 +91,27 @@ test('切换月份或栏目时不暴露旧列表操作，失败后可重试', as
     await expect(page.locator('.video-load-error')).toContainText('视频列表加载失败')
     await expect(page.locator('.video-hint')).not.toContainText('该月份暂无视频')
     await page.locator('.video-load-error button', { hasText: '重试' }).click()
-    await expect(page.locator('.video-item', { hasText: '八月新视频' })).toBeVisible()
-    await expect(page.locator('.video-item', { hasText: '九月旧视频' })).toHaveCount(0)
+    await expect(page.locator('.video-item', { hasText: '测试视频（8月）' })).toBeVisible()
+    await expect(page.locator('.video-item', { hasText: '测试视频（9月）' })).toHaveCount(0)
 
-    await page.locator('.program-item', { hasText: '测试栏目甲' }).click()
+    await page.locator('.program-item', { hasText: '测试栏目 1' }).click()
     await expect(page.locator('.video-skeleton')).toBeVisible()
     await expect.poll(() => app.evaluate(() => Boolean((globalThis as typeof globalThis & {
       monthLoadTest?: { pending: Record<string, unknown> }
     }).monthLoadTest?.pending['a-3']))).toBe(true)
-    await page.locator('.program-item', { hasText: '测试栏目乙' }).click()
+    await page.locator('.program-item', { hasText: '测试栏目 2' }).click()
     await expect(page.locator('.video-item', { hasText: '乙栏目视频' })).toBeVisible()
     await app.evaluate(() => {
       const state = (globalThis as typeof globalThis & {
         monthLoadTest?: { pending: Record<string, { resolve: (videos: unknown[]) => void }> }
       }).monthLoadTest
-      state?.pending['a-3'].resolve([{ guid: 'late', title: '迟到的甲栏目视频', brief: '', coverUrl: '', time: '2026-08-01' }])
+      state?.pending['a-3'].resolve([{ guid: 'late', title: '测试栏目 1 视频（延迟返回）', brief: '', coverUrl: '', time: '2026-08-01' }])
       if (state) delete state.pending['a-3']
     })
     await page.waitForTimeout(100)
     await expect(page.locator('.video-item', { hasText: '迟到的甲栏目视频' })).toHaveCount(0)
 
-    await page.locator('.program-item', { hasText: '测试栏目乙' }).click()
+    await page.locator('.program-item', { hasText: '测试栏目 2' }).click()
     await expect(page.locator('.video-skeleton')).toBeVisible()
     await expect.poll(() => app.evaluate(() => Boolean((globalThis as typeof globalThis & {
       monthLoadTest?: { pending: Record<string, unknown> }
@@ -122,7 +122,7 @@ test('切换月份或栏目时不暴露旧列表操作，失败后可重试', as
       const state = (globalThis as typeof globalThis & {
         monthLoadTest?: { pending: Record<string, { resolve: (videos: unknown[]) => void }> }
       }).monthLoadTest
-      state?.pending['b-2'].resolve([{ guid: 'late-other', title: '迟到的乙栏目视频', brief: '', coverUrl: '', time: '2026-08-01' }])
+      state?.pending['b-2'].resolve([{ guid: 'late-other', title: '测试栏目 2 视频（延迟返回）', brief: '', coverUrl: '', time: '2026-08-01' }])
       if (state) delete state.pending['b-2']
     })
     await page.waitForTimeout(100)

@@ -140,10 +140,7 @@ export const useContentStore = defineStore('content', () => {
     newContentMap.value = next
   }
 
-  // Toggle one video's membership in the cross-month selection map.
-  // Idempotent and safe to call from any view mode (single mode is no-op in
-  // practice because singleVideos don't typically go through this flow, but
-  // the function handles it correctly if called).
+  // Toggle one video's membership from any view, retaining its programme origin.
   function toggleVideoSelection(v: VideoInfo, source = '') {
     const next = new Map(selectedVideoMap.value)
     if (next.has(v.guid)) {
@@ -205,8 +202,7 @@ export const useContentStore = defineStore('content', () => {
     selectedVideoMap.value = next
   }
 
-  // Drop every entry from the selection map. Called when entering the separate
-  // single-video collection and can also be exposed as a "清空选择" action.
+  // Clear selection explicitly; switching views preserves it.
   function clearAllSelection() {
     if (selectedVideoMap.value.size === 0) return
     selectedVideoMap.value = new Map()

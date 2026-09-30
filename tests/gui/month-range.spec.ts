@@ -3,12 +3,12 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
-const column = { name: '虚构跨月栏目', columnId: 'TOPC-range', itemId: '', kind: 'column' }
+const column = { name: '测试跨月栏目', columnId: 'TOPC-range', itemId: '', kind: 'column' }
 const monthlyVida = {
-  name: '虚构 VIDA 长期栏目', columnId: 'VIDA-range', itemId: '', kind: 'column',
+  name: '测试长期栏目', columnId: 'VIDA-range', itemId: '', kind: 'column',
   listSource: { type: 'album', id: 'VIDA-range', serviceId: 'tvcctv' }
 }
-const album = { name: '虚构选集', columnId: 'VIDA-album', itemId: '', kind: 'album' }
+const album = { name: '测试专辑 1', columnId: 'VIDA-album', itemId: '', kind: 'album' }
 
 async function launch(programs = [column, monthlyVida, album], includeHighlights = false) {
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cctvdl-e2e-range-'))
@@ -47,12 +47,12 @@ test('范围扫描失败月重试后才入队，且入口按栏目类型而非�
         testState.calls.push({ month, highlights: options.includeHighlights, strict: options.strictSupplementary })
         if (month === '202402' && !failedOnce) { failedOnce = true; throw new Error('HTTP 503') }
         if (month === '202401') return [
-          { guid: 'history', title: '虚构已下载节目', brief: '', coverUrl: '', time: '2024-01-02' },
-          { guid: 'shared', title: '虚构节目一', brief: '', coverUrl: '', time: '2024-01-03' }
+          { guid: 'history', title: '测试已下载视频', brief: '', coverUrl: '', time: '2024-01-02' },
+          { guid: 'shared', title: '测试视频 1', brief: '', coverUrl: '', time: '2024-01-03' }
         ]
         if (month === '202402') return [
           { guid: 'shared', title: '重复节目', brief: '', coverUrl: '', time: '2024-02-01' },
-          { guid: 'new', title: '虚构节目二', brief: '', coverUrl: '', time: '2024-02-02', contentType: 'fragment' }
+          { guid: 'new', title: '测试视频 2', brief: '', coverUrl: '', time: '2024-02-02', contentType: 'fragment' }
         ]
         return []
       })
@@ -60,7 +60,7 @@ test('范围扫描失败月重试后才入队，且入口按栏目类型而非�
       ipcMain.handle('get-program-month-bounds', () => ({ earliest: '202401', latest: '202403' }))
       ipcMain.removeHandler('get-download-history')
       ipcMain.handle('get-download-history', () => [{
-        guid: 'history', title: '虚构已下载节目', outputPath: 'C:\\Videos\\history.mp4', fileSize: 1024, completedAt: 1
+        guid: 'history', title: '测试已下载视频', outputPath: 'C:\\Videos\\history.mp4', fileSize: 1024, completedAt: 1
       }])
       ipcMain.removeHandler('estimate-download')
       ipcMain.handle('estimate-download', (_event, videos: unknown[]) => ({
@@ -176,7 +176,7 @@ test('大量范围任务显示警示并要求再次确认', async () => {
         if (!options?.strictSupplementary) return []
         const start = (Number(month.slice(4)) - 1) * 21
         return Array.from({ length: Math.min(21, 188 - start) }, (_, offset) => ({
-          guid: `large-${start + offset}`, title: `虚构节目 ${start + offset}`,
+          guid: `large-${start + offset}`, title: `测试视频 ${start + offset}`,
           brief: '', coverUrl: '', time: `${month.slice(0, 4)}-${month.slice(4)}-01`
         }))
       })
@@ -240,7 +240,7 @@ test('空间足够时大范围结果不展示冗余警示或采样细节', async
         _refresh: unknown, options?: { strictSupplementary?: boolean }) => options?.strictSupplementary
         ? Array.from({ length: 1000 }, (_, index) => ({
             guid: `sample-${index}`,
-            title: index === 98 ? '虚构节目：跨月份专题回顾与完整期内容展示，包含多段不同主题与后续访谈内容' : `虚构节目 ${index}`,
+            title: index === 98 ? '测试视频：跨月份专题回顾、历史事件与人物访谈，记录不同年代的社会变迁与时代记忆' : `测试视频 ${index}`,
             brief: '', coverUrl: '', time: '2024-01-01'
           })) : [])
       ipcMain.removeHandler('estimate-download')

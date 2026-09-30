@@ -10,8 +10,8 @@ test('单个与批量下载确认显示自适应大小和磁盘提醒', async ()
     settings: { savePath: path.join(os.homedir(), 'Videos') },
     programs: [{ name: '测试栏目', columnId: 'TOPC-test', itemId: '', kind: 'column' }],
     singleVideos: [
-      { guid: 'single-known', title: '单个已知视频', time: '2026-09-01' },
-      { guid: 'single-unknown', title: '单个未知视频', time: '2026-09-02' }
+      { guid: 'single-known', title: '测试视频（大小已知）', time: '2026-09-01' },
+      { guid: 'single-unknown', title: '测试视频（大小未知）', time: '2026-09-02' }
     ]
   }), 'utf-8')
   const app = await electron.launch({
@@ -35,8 +35,8 @@ test('单个与批量下载确认显示自适应大小和磁盘提醒', async ()
       })
       ipcMain.removeHandler('list-videos')
       ipcMain.handle('list-videos', () => [
-        { guid: 'batch-1', title: '批量视频一', brief: '', coverUrl: '', time: '2026-09-01' },
-        { guid: 'batch-2', title: '批量视频二', brief: '', coverUrl: '', time: '2026-09-02' }
+        { guid: 'batch-1', title: '测试批量视频 1', brief: '', coverUrl: '', time: '2026-09-01' },
+        { guid: 'batch-2', title: '测试批量视频 2', brief: '', coverUrl: '', time: '2026-09-02' }
       ])
       ipcMain.removeHandler('get-program-month-bounds')
       ipcMain.handle('get-program-month-bounds', () => ({ earliest: '202609', latest: '202609' }))
@@ -44,7 +44,7 @@ test('单个与批量下载确认显示自适应大小和磁盘提醒', async ()
     await page.locator('.sidebar-nav-item', { hasText: '首页' }).click()
     await expect(page.locator('.single-entry-count')).toHaveText('2')
     await page.locator('.single-entry').click()
-    await page.locator('.video-item', { hasText: '单个已知视频' }).click()
+    await page.locator('.video-item', { hasText: '测试视频（大小已知）' }).click()
     await page.locator('.preview-download-btn').click()
 
     const dialog = page.locator('.el-message-box')
@@ -62,7 +62,7 @@ test('单个与批量下载确认显示自适应大小和磁盘提醒', async ()
     await page.screenshot({ path: path.join(screenshotDir, 'single-download-confirm.png') })
     await dialog.getByRole('button', { name: '返回检查' }).click()
 
-    await page.locator('.video-item', { hasText: '单个未知视频' }).click()
+    await page.locator('.video-item', { hasText: '测试视频（大小未知）' }).click()
     await page.locator('.preview-download-btn').click()
     await expect(dialog.locator('.download-confirm-row', { hasText: '预计大小' })).toContainText('暂无法估算')
     await expect(dialog.locator('.download-confirm-row', { hasText: '磁盘剩余' })).toContainText('无法检查')
@@ -86,11 +86,11 @@ test('单个与批量下载确认显示自适应大小和磁盘提醒', async ()
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('get-download-history')
       ipcMain.handle('get-download-history', () => [{
-        guid: 'batch-1', title: '批量视频一', outputPath: '', fileSize: 0, completedAt: 1
+        guid: 'batch-1', title: '测试批量视频 1', outputPath: '', fileSize: 0, completedAt: 1
       }])
     })
     await page.locator('.program-item', { hasText: '测试栏目' }).click()
-    await expect(page.locator('.video-item', { hasText: '批量视频一' })).toHaveClass(/downloaded/)
+    await expect(page.locator('.video-item', { hasText: '测试批量视频 1' })).toHaveClass(/downloaded/)
     await page.locator('button', { hasText: '下载选中' }).click()
     await expect(dialog.locator('.el-message-box__title')).toHaveText('下载 1 个视频')
     await expect(dialog.locator('.download-confirm-note', { hasText: '已下载' }))

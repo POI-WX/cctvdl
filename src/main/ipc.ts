@@ -113,7 +113,6 @@ export function registerIpcHandlers(
   ipcMain.handle('get-programs', () => config.getPrograms())
 
   // Standalone (non-column) videos: resolve a video page → persist/list/remove.
-  ipcMain.handle('resolve-single-video', (_, url: string) => browse.resolveSingleVideo(url))
   ipcMain.handle('resolve-video-batch', (_, url: string, quality?: Settings['quality']) =>
     browse.resolveSingleVideoBatch(url, quality))
   ipcMain.handle('get-video-media-metadata', (_, guid: string) => browse.getVideoMediaMetadata(guid))
@@ -155,7 +154,7 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle('export-single-videos', async () => {
-    const videos = config.exportSingleVideos()
+    const videos = config.getSingleVideos()
     if (!videos.length) return false
     const result = await dialog.showSaveDialog(getWindow(), {
       defaultPath: 'single-videos.json',
@@ -168,10 +167,12 @@ export function registerIpcHandlers(
 
   const launchBatch = (jobs: DownloadJob[], skipHistory: boolean): DownloadStartResult => {
     // Filter out already-downloaded videos (unless this is an explicit retry).
+    const downloadedGuids = new Set(skipHistory || !jobs.length
+      ? [] : config.getDownloadHistory().map(entry => entry.guid))
     const newJobs = skipHistory
       ? jobs
       : jobs.filter(job => {
-          if (job.guid && config.isInDownloadHistory(job.guid)) {
+          if (job.guid && downloadedGuids.has(job.guid)) {
             send('download-skipped', { guid: job.guid, title: job.title, reason: '已下载' })
             return false
           }

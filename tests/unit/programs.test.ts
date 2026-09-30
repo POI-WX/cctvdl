@@ -1,8 +1,32 @@
 import { describe, it, expect } from 'vitest'
-import { sortPrograms, isProgramDeleteKey } from '../../src/shared/programs'
+import { sortPrograms, isProgramDeleteKey, snapshotProgram } from '../../src/shared/programs'
 import type { SortableProgram } from '../../src/shared/programs'
+import type { ProgramInfo } from '../../src/shared/types'
+import { reactive, isProxy } from 'vue'
 
 const p = (columnId: string, favoritedAt?: number): SortableProgram => ({ columnId, favoritedAt })
+
+describe('snapshotProgram', () => {
+  it.each<ProgramInfo['listSource']>([
+    undefined,
+    { type: 'column', id: 'TOPC-test', serviceId: 'tvcctv' },
+    { type: 'album', id: 'VIDA-test', serviceId: 'cctv4k' },
+    { type: 'vcctv', id: 'mid-test', chid: 'chid-test', serviceId: 'tvcctv' }
+  ])('creates an independent IPC-safe snapshot for %j', listSource => {
+    const program = reactive<ProgramInfo>({
+      name: '测试栏目 1', columnId: 'TOPC-test', itemId: 'VIDE-test', favoritedAt: 1000,
+      ...(listSource ? { listSource } : {})
+    })
+    const snapshot = snapshotProgram(program)
+    expect(isProxy(snapshot)).toBe(false)
+    expect(isProxy(snapshot.listSource)).toBe(false)
+    expect(structuredClone(snapshot)).toEqual(program)
+    snapshot.name = '测试栏目 2'
+    if (snapshot.listSource) snapshot.listSource.id = 'other'
+    expect(program.name).toBe('测试栏目 1')
+    expect(program.listSource?.id).toBe(listSource?.id)
+  })
+})
 
 describe('sortPrograms', () => {
   it('keeps import order when nothing is favorited', () => {

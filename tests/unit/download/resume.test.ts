@@ -190,14 +190,15 @@ describe('Resume 功能测试（真实 fs）', () => {
     )
 
     const coordinator = new DownloadCoordinator(mockApi, mockDecryptor, mockFinalizer)
+    const finished = new Promise(resolve => coordinator.once('batchFinished', resolve))
     coordinator.appendJobs([job])
     // let it reach the Downloading phase
-    await new Promise((r) => setTimeout(r, 50))
+    await vi.waitFor(() => expect(job.state).toBe('Downloading'))
 
-    // shutdown aborts the active job — after a brief wait it finishes and is no longer busy
+    // Shutdown must let the cancelled job finish, not just clear the active slot.
     coordinator.shutdown()
-    await new Promise((r) => setTimeout(r, 50))
-    expect(coordinator.isBusy).toBe(false)
+    await finished
+    expect(job.state).toBe('Cancelled')
   })
 
   it('空 segmentUrls 时标记为 Failed 并清理 workDir', async () => {

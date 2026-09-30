@@ -13,16 +13,21 @@ describe('video metadata helpers', () => {
     expect(readVideoDurationSeconds({ len: 'invalid' })).toBeUndefined()
   })
 
-  it('sorts dated videos oldest-first and keeps unknown dates stable at the end', () => {
+  it.each(['asc', 'desc'] as const)('sorts %s with stable ties and unknown dates at the end', order => {
     const videos = [
       { guid: 'unknown-1', title: '', brief: '', coverUrl: '', time: '' },
       { guid: 'new', title: '', brief: '', coverUrl: '', time: '2026-02-01' },
+      { guid: 'same-date', title: '', brief: '', coverUrl: '', time: '2026-02-01' },
       { guid: 'old', title: '', brief: '', coverUrl: '', time: '2026-01-01' },
       { guid: 'unknown-2', title: '', brief: '', coverUrl: '', time: '' }
     ]
-    expect(sortVideosChronologically(videos).map(video => video.guid)).toEqual([
-      'old', 'new', 'unknown-1', 'unknown-2'
-    ])
+    const original = [...videos]
+    expect(sortVideosChronologically(videos, order).map(video => video.guid)).toEqual(
+      order === 'asc'
+        ? ['old', 'new', 'same-date', 'unknown-1', 'unknown-2']
+        : ['new', 'same-date', 'old', 'unknown-1', 'unknown-2']
+    )
+    expect(videos).toEqual(original)
   })
 
   it('coalesces concurrent requests and caches even an empty successful result', async () => {
