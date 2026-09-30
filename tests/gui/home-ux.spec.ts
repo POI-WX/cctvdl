@@ -3,6 +3,61 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
+test('滚动时日期分组遮住行内控件，并在进入下一组时更新', async () => {
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cctvdl-e2e-date-groups-'))
+  fs.writeFileSync(path.join(userDataDir, 'config.json'), JSON.stringify({
+    settings: { savePath: 'C:\\Videos' },
+    programs: [{ name: '测试栏目 1', columnId: 'TOPC-scroll', itemId: '' }]
+  }), 'utf-8')
+  const app = await electron.launch({
+    args: [path.join(__dirname, '../../out/main/index.js'), `--user-data-dir=${userDataDir}`]
+  })
+  try {
+    const page = await app.firstWindow()
+    await page.waitForLoadState('domcontentloaded')
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('get-program-month-bounds')
+      ipcMain.handle('get-program-month-bounds', () => ({ earliest: '202609', latest: '202609' }))
+      ipcMain.removeHandler('list-videos')
+      ipcMain.handle('list-videos', () => Array.from({ length: 36 }, (_, index) => ({
+        guid: `scroll-${index}`, title: `测试视频 ${index + 1}`, brief: '', coverUrl: '',
+        time: `2026-09-${String(Math.floor(index / 12) + 1).padStart(2, '0')}`
+      })))
+    })
+    await page.locator('.program-item', { hasText: '测试栏目 1' }).click()
+    await expect(page.locator('.video-item')).toHaveCount(36)
+    await page.locator('.video-item').first().locator('.el-checkbox').click()
+    for (const dark of [false, true]) {
+      await page.evaluate(value => document.documentElement.classList.toggle('dark', value), dark)
+      const covered = await page.locator('.video-list').evaluate(list => {
+        list.scrollTop = 0
+        const header = list.querySelector('.video-date-header')!.getBoundingClientRect()
+        const checkbox = list.querySelector('.el-checkbox__inner')!.getBoundingClientRect()
+        list.scrollTop = checkbox.y + checkbox.height / 2 - header.y - header.height / 2
+        const scrolled = list.querySelector('.el-checkbox__inner')!.getBoundingClientRect()
+        return !!document.elementFromPoint(scrolled.x + scrolled.width / 2, scrolled.y + scrolled.height / 2)
+          ?.closest('.video-date-header')
+      })
+      expect(covered).toBe(true)
+      const screenshotDir = path.join(__dirname, '../../test-results/home-ux')
+      fs.mkdirSync(screenshotDir, { recursive: true })
+      await page.screenshot({ path: path.join(screenshotDir, `date-groups-${dark ? 'dark' : 'light'}.png`) })
+      await page.locator('.video-list').evaluate(list => {
+        const header = list.querySelectorAll('.video-date-header')[1]
+        list.scrollTop += header.getBoundingClientRect().top - list.getBoundingClientRect().top + 15
+      })
+      await expect.poll(() => page.locator('.video-list').evaluate(list => {
+        const box = list.getBoundingClientRect()
+        return document.elementFromPoint(box.x + box.width / 2, box.y + 5)?.closest('.video-date-header')?.textContent
+      })).toBe('2026-09-02')
+    }
+    await expect(page.locator('.footer-selection-count')).toContainText('已选 1')
+  } finally {
+    await app.close()
+    fs.rmSync(userDataDir, { recursive: true, force: true })
+  }
+})
+
 test('单视频与搜索列表共用虚拟滚动，过滤和滚动后保留选择', async () => {
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cctvdl-e2e-flat-list-'))
   const videos = Array.from({ length: 180 }, (_, index) => ({

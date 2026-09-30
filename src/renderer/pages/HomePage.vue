@@ -218,7 +218,7 @@
             </template>
             <!-- grouped by date -->
             <template v-else>
-              <template v-for="group in groupedVideos" :key="group.date">
+              <div v-for="group in groupedVideos" :key="group.date" class="video-date-group">
                 <div class="video-date-header">{{ group.date || '未知日期' }}</div>
                 <div
                   v-for="v in group.items"
@@ -242,7 +242,7 @@
                   </div>
                   <span v-if="downloadedSet.has(v.guid)" class="v-dl-check" title="已下载">✓</span>
                 </div>
-              </template>
+              </div>
             </template>
           </template>
         </div>
@@ -1574,6 +1574,7 @@ html.dark .single-entry.active {
 /* 视频列表 */
 .video-list {
   flex: 1;
+  isolation: isolate;
   overflow-y: auto;
   overflow-x: hidden;
   margin: var(--app-spacing-sm) calc(-1 * var(--app-spacing-md));
@@ -1610,7 +1611,7 @@ html.dark .single-entry.active {
   border-bottom: 1px solid var(--app-border-subtle);
   margin-bottom: 2px;
   user-select: none;
-  /* Sticky: sticks to top of .video-list container */
+  /* Each header sticks only within its date group, above the row controls. */
   position: sticky;
   top: 0;
   background: var(--app-bg-sidebar);
@@ -1618,6 +1619,8 @@ html.dark .single-entry.active {
 }
 
 .video-item {
+  position: relative;
+  z-index: 0;
   display: flex;
   align-items: center;
   gap: 8px;
