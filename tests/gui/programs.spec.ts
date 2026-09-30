@@ -55,7 +55,7 @@ test.describe('栏目管理（收藏/删除/清空）', () => {
 
   test('在搜索框按 Delete 不会误删选中栏目（焦点保护）', async () => {
     await page.locator('.program-item', { hasText: '测试栏目乙' }).click()
-    const search = page.locator('input[placeholder*="搜索栏目"]')
+    const search = page.locator('input[placeholder*="搜索节目"]')
     await search.fill('')
     const before = await page.locator('.program-item').count()
     await search.fill('测试')
@@ -85,7 +85,7 @@ test.describe('栏目管理（收藏/删除/清空）', () => {
   })
 
   test('清空全部栏目', async () => {
-    await page.locator('.icon-btn[title="清空全部栏目"]').click()
+    await page.locator('.icon-btn[title="清空全部节目"]').click()
     await page.locator('.el-message-box__btns .el-button--primary').click()
     await page.waitForTimeout(300)
     await expect(page.locator('.program-item')).toHaveCount(0)

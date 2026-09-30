@@ -400,6 +400,16 @@ describe('ConfigStore', () => {
       expect(jobs[1].id).toBe('b')
     })
 
+    it('preserves programme origin in restored jobs and download history', () => {
+      const job = { ...mkJob('grouped'), programName: '专辑甲', saveRoot: '/tmp' }
+      store.savePendingJobs([job])
+      expect(store.getPendingJobs()[0].programName).toBe('专辑甲')
+      expect(store.getPendingJobs()[0].saveRoot).toBe('/tmp')
+      store.addToDownloadHistory({ guid: job.guid, title: job.title, outputPath: job.savePath,
+        fileSize: 12, completedAt: 1, programName: job.programName })
+      expect(store.getDownloadHistory()[0].programName).toBe('专辑甲')
+    })
+
     it('clearPendingJobs empties the list', () => {
       store.savePendingJobs([mkJob('a')])
       store.clearPendingJobs()

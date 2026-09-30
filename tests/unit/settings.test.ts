@@ -4,6 +4,7 @@ import type { Settings } from '../../src/shared/types'
 
 const fallback: Settings = {
   savePath: '/videos',
+  groupByProgram: false,
   threadCount: 8,
   quality: 'auto',
   reencode: false,
@@ -41,6 +42,7 @@ describe('normalizeSettings', () => {
     expect(out.reencode).toBe(false)      // new field filled from fallback
     expect(out.darkMode).toBe(false)
     expect(out.includeHighlights).toBe(false)
+    expect(out.groupByProgram).toBe(false)
     expect(out.savePath).toBe('/x')
     expect(out.threadCount).toBe(4)
     expect(out.quality).toBe('chaoqing')
@@ -101,6 +103,11 @@ describe('normalizeSettings', () => {
   it('falls back coverSavePath when not a string', () => {
     expect(normalizeSettings({ coverSavePath: 123 }, fallback).coverSavePath).toBe('/pictures')
     expect(normalizeSettings({ coverSavePath: '' }, fallback).coverSavePath).toBe('')
+  })
+
+  it('accepts the programme-folder switch only as a boolean', () => {
+    expect(normalizeSettings({ groupByProgram: true }, fallback).groupByProgram).toBe(true)
+    expect(normalizeSettings({ groupByProgram: 'true' }, fallback).groupByProgram).toBe(false)
   })
 
   it('accepts valid coverSavePath string', () => {

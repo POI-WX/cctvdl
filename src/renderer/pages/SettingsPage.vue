@@ -30,6 +30,16 @@
           </div>
         </div>
 
+        <div class="settings-item">
+          <div class="settings-item-label">
+            <span class="settings-item-name">按节目分文件夹</span>
+            <span class="settings-item-desc">栏目和专辑分别建立文件夹，「单个视频」直接保存</span>
+          </div>
+          <div class="settings-item-control">
+            <el-switch v-model="form.groupByProgram" aria-label="按节目分文件夹" />
+          </div>
+        </div>
+
         <!-- cover save path -->
         <div class="settings-item">
           <div class="settings-item-label">
@@ -120,7 +130,7 @@
         <div class="settings-item">
           <div class="settings-item-label">
             <span class="settings-item-name">下载完成后打开文件夹</span>
-            <span class="settings-item-desc">「下载本月」或单视频下载完成后，自动打开保存目录</span>
+            <span class="settings-item-desc">队列结束后，自动打开本次下载的保存位置</span>
           </div>
           <div class="settings-item-control">
             <el-switch v-model="form.autoOpenFolder" />
@@ -337,6 +347,7 @@ import type { Settings } from '../../shared/types'
 import { MIN_THREADS, MAX_THREADS, MIN_CONCURRENT_VIDEOS, MAX_CONCURRENT_VIDEOS, QUALITIES, QUALITY_LABELS } from '../../shared/settings'
 import { applyAccentColor } from '../utils/accent'
 import { buildOutputPath } from '../../shared/filename'
+import { downloadDirectory } from '../utils/download-jobs'
 import { applyDarkMode } from '../utils/dark-mode'
 import { displayPath } from '../../shared/path-display'
 import { relativeTime, formatFileSize } from '../../shared/format'
@@ -344,7 +355,7 @@ import { useContentStore } from '../stores/content'
 
 const contentStore = useContentStore()
 const form = ref<Settings>({
-  savePath: '', threadCount: 8, quality: 'auto',
+  savePath: '', groupByProgram: false, threadCount: 8, quality: 'auto',
   reencode: false, logLevel: 'info', darkMode: false, logPath: '', autoOpenFolder: false, clipboardWatch: false,
   includeHighlights: false,
   concurrentVideos: 1,
@@ -470,7 +481,8 @@ async function redownload(entry: import('../../shared/types').HistoryEntry) {
     guid,
     sourceUrl: entry.sourceUrl || guid,
     title,
-    savePath: buildOutputPath(settings.savePath, title),
+    savePath: buildOutputPath(downloadDirectory(settings, entry.programName), title),
+    saveRoot: settings.savePath,
     quality: settings.quality,
     threadCount: settings.threadCount,
     reencode: settings.reencode ?? false,
@@ -478,6 +490,7 @@ async function redownload(entry: import('../../shared/types').HistoryEntry) {
     stage: 'None',
     progressPercent: 0
   }
+  if (entry.programName) job.programName = entry.programName
   if (m3u8Url) { job.m3u8Url = m3u8Url; job.sourceVideoIndex = entry.sourceVideoIndex }
   // Use retryJob (skipHistory=true) so the history dedup filter is bypassed —
   // startDownload would silently skip it if the guid is still in history.

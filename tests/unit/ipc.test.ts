@@ -29,6 +29,8 @@ import { registerIpcHandlers } from '../../src/main/ipc'
 import { DownloadEstimator } from '../../src/main/download/estimate'
 import { ipcMain, shell } from 'electron'
 import fs from 'fs'
+import path from 'path'
+import { checkSaveDir } from '../../src/main/preflight'
 
 describe('IPC Handlers', () => {
   let handlers: Record<string, Function>
@@ -281,9 +283,9 @@ describe('IPC Handlers', () => {
       quality: 'auto', threadCount: 8, reencode: false, state: 'Created', stage: 'None', progressPercent: 0
     } as any
     const done = { completed: 1, failed: 0, cancelled: 0, total: 1, failedJobs: [] }
-    function batchFinishedHandler() {
-      const call = vi.mocked(mockCoordinator.on).mock.calls.find((c) => c[0] === 'batchFinished')
-      return call?.[1] as (r: any) => void
+    function emit(event: string, payload: any) {
+      const handler = vi.mocked(mockCoordinator.on).mock.calls.find(call => call[0] === event)?.[1]
+      handler?.(payload)
     }
     const settingsWith = (autoOpenFolder: boolean) =>
       vi.mocked(mockConfig.getSettings).mockReturnValue(
@@ -292,24 +294,50 @@ describe('IPC Handlers', () => {
 
     beforeEach(() => vi.mocked(shell.openPath).mockClear())
 
-    it('opens the save folder for a full-set download (autoOpen) when enabled', async () => {
+    it.each(['start-download', 'retry-job', 'retry-jobs', 'restored'])(
+      'opens successful output for %s without a caller-specific flag', async channel => {
       settingsWith(true)
-      await handlers['start-download']({}, [job], true)
-      batchFinishedHandler()(done)
-      expect(shell.openPath).toHaveBeenCalledWith('/tmp/save')
+      if (channel === 'retry-job') await handlers[channel]({}, job)
+      else if (channel !== 'restored') await handlers[channel]({}, [job])
+      emit('jobFinished', { ...job, state: 'Completed', outputPath: job.savePath })
+      emit('batchFinished', done)
+      expect(shell.openPath).toHaveBeenCalledWith(path.resolve('/tmp/save'))
     })
 
-    it('does NOT open for a partial download (autoOpen false)', async () => {
+    it('opens the actual programme subdirectory for a single-directory batch', async () => {
       settingsWith(true)
-      await handlers['start-download']({}, [job], false)
-      batchFinishedHandler()(done)
+      const nested = { ...job, savePath: path.join('/tmp/save', '节目甲', 'video.mp4') }
+      emit('jobFinished', { ...nested, state: 'Completed', outputPath: nested.savePath, saveRoot: '/tmp/save' })
+      emit('batchFinished', done)
+      expect(shell.openPath).toHaveBeenCalledWith(path.resolve(path.dirname(nested.savePath)))
+    })
+
+    it('uses successful outputs and recorded roots instead of changed settings or failed destinations', () => {
+      settingsWith(true)
+      emit('jobFinished', { ...job, state: 'Completed', outputPath: '/tmp/save/节目甲/a.mp4', saveRoot: '/tmp/save' })
+      emit('jobFinished', { ...job, state: 'Completed', outputPath: '/tmp/save/节目乙/b.mp4', saveRoot: '/tmp/save' })
+      emit('jobFinished', { ...job, state: 'Failed', savePath: '/tmp/failed/c.mp4' })
+      vi.mocked(mockConfig.getSettings).mockReturnValue({ autoOpenFolder: true, savePath: '/tmp/new-location' } as any)
+      emit('batchFinished', { ...done, completed: 2, failed: 1, total: 3 })
+      expect(shell.openPath).toHaveBeenCalledTimes(1)
+      expect(shell.openPath).toHaveBeenCalledWith(path.resolve('/tmp/save'))
+    })
+
+    it('does NOT open when the setting is off', () => {
+      settingsWith(false)
+      emit('jobFinished', { ...job, state: 'Completed', outputPath: job.savePath })
+      emit('batchFinished', done)
       expect(shell.openPath).not.toHaveBeenCalled()
     })
 
-    it('does NOT open when the setting is off', async () => {
-      settingsWith(false)
-      await handlers['start-download']({}, [job], true)
-      batchFinishedHandler()(done)
+    it('does not open for failed or cancelled files or reuse results from the previous batch', () => {
+      settingsWith(true)
+      emit('jobFinished', { ...job, state: 'Completed', outputPath: job.savePath })
+      emit('batchFinished', done)
+      vi.mocked(shell.openPath).mockClear()
+      emit('jobFinished', { ...job, state: 'Failed', outputPath: '/tmp/partial.mp4' })
+      emit('jobFinished', { ...job, state: 'Cancelled' })
+      emit('batchFinished', { ...done, completed: 0, failed: 1, cancelled: 1, total: 2 })
       expect(shell.openPath).not.toHaveBeenCalled()
     })
   })
@@ -397,6 +425,32 @@ describe('IPC Handlers', () => {
   })
 
   describe('start-download', () => {
+    it('does not create directories for videos skipped by history', async () => {
+      vi.mocked(checkSaveDir).mockClear()
+      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValueOnce(true)
+      await handlers['start-download']({}, [{
+        id: 'old', guid: 'old', sourceUrl: 'old', title: 'Old', savePath: '/tmp/old-programme/video.mp4',
+        quality: 'auto', threadCount: 1, reencode: false, state: 'Created', stage: 'None', progressPercent: 0
+      }])
+      expect(checkSaveDir).not.toHaveBeenCalled()
+      expect(mockCoordinator.appendJobs).not.toHaveBeenCalled()
+    })
+
+    it('checks every target directory before starting a mixed-programme batch', async () => {
+      vi.mocked(checkSaveDir).mockClear()
+      const jobs = ['one', 'two'].map(id => ({
+        id, guid: id, sourceUrl: id, title: id, savePath: path.join('/tmp', id, 'video.mp4'),
+        quality: 'auto', threadCount: 1, reencode: false,
+        state: 'Created', stage: 'None', progressPercent: 0
+      }))
+      vi.mocked(checkSaveDir).mockReturnValueOnce({ ok: true })
+        .mockReturnValueOnce({ ok: false, reason: '保存目录不可写' })
+      expect(() => handlers['start-download']({}, jobs)).toThrow('保存目录不可写')
+      expect(checkSaveDir).toHaveBeenCalledWith(path.dirname(jobs[0].savePath))
+      expect(checkSaveDir).toHaveBeenCalledWith(path.dirname(jobs[1].savePath))
+      expect(mockCoordinator.appendJobs).not.toHaveBeenCalled()
+    })
+
     it('calls coordinator.appendJobs for new jobs', async () => {
       const jobs = [{ id: 'j1', guid: 'g1', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }]
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
@@ -445,7 +499,7 @@ describe('IPC Handlers', () => {
       expect(mockWindow.webContents.send).not.toHaveBeenCalledWith('batch-finished', expect.anything())
     })
 
-    it('an all-skipped submission does not clear auto-open for the active batch', async () => {
+    it('an all-skipped submission does not discard successful outputs from the active batch', async () => {
       vi.mocked(shell.openPath).mockClear()
       vi.mocked(mockConfig.getSettings).mockReturnValue({
         savePath: '/tmp/save', autoOpenFolder: true, threadCount: 8,
@@ -453,23 +507,25 @@ describe('IPC Handlers', () => {
       } as any)
       const finished = vi.mocked(mockCoordinator.on).mock.calls
         .find(c => c[0] === 'batchFinished')?.[1] as (r: any) => void
+      const jobFinished = vi.mocked(mockCoordinator.on).mock.calls
+        .find(c => c[0] === 'jobFinished')?.[1] as (j: any) => void
       const job = { id: 'skipped', guid: 'g', title: 'T', savePath: '/tmp/save/a.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }
 
-      // Start a real full-set batch, then submit an already-downloaded item.
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
-      await handlers['start-download']({}, [job], true)
+      await handlers['start-download']({}, [job])
+      jobFinished({ ...job, state: 'Completed', outputPath: job.savePath })
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
-      await handlers['start-download']({}, [{ ...job, id: 'skipped-again' }], false)
+      await handlers['start-download']({}, [{ ...job, id: 'skipped-again' }])
       finished({ completed: 1, failed: 0, cancelled: 0, total: 1, failedJobs: [] })
 
-      expect(shell.openPath).toHaveBeenCalledWith('/tmp/save')
+      expect(shell.openPath).toHaveBeenCalledWith(path.resolve('/tmp/save'))
     })
 
     it('force-redownload bypasses history but still uses coordinator dedupe', async () => {
       const job = { id: 'redo', guid: 'g', title: 'T', savePath: '/tmp/t.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
 
-      const result = await handlers['start-download']({}, [job], false, true)
+      const result = await handlers['start-download']({}, [job], true)
 
       expect(mockConfig.isInDownloadHistory).not.toHaveBeenCalled()
       expect(mockCoordinator.appendJobs).toHaveBeenCalledWith([job])
@@ -481,7 +537,7 @@ describe('IPC Handlers', () => {
       vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(true)
       vi.mocked(mockCoordinator.appendJobs).mockReturnValueOnce([])
 
-      const result = await handlers['start-download']({}, [job], false, true)
+      const result = await handlers['start-download']({}, [job], true)
 
       expect(mockConfig.isInDownloadHistory).not.toHaveBeenCalled()
       expect(result).toEqual({ added: 0, skipped: 1, addedGuids: [] })
@@ -504,47 +560,6 @@ describe('IPC Handlers', () => {
       expect(mockCoordinator.appendJobs).toHaveBeenNthCalledWith(2, jobsB)
     })
 
-    it('currentBatchAutoOpen OR-accumulates: later autoOpen=false cannot wipe earlier autoOpen=true', async () => {
-      vi.mocked(mockConfig.isInDownloadHistory).mockReturnValue(false)
-      vi.mocked(mockConfig.getSettings).mockReturnValue({
-        savePath: '/tmp/save', autoOpenFolder: true, threadCount: 8,
-        quality: 'auto', logLevel: 'info', reencode: false
-      } as any)
-      const { shell } = await import('electron')
-      vi.mocked(shell.openPath).mockClear()
-
-      const batchFinishedHandler = vi.mocked(mockCoordinator.on).mock.calls
-        .find(c => c[0] === 'batchFinished')?.[1] as (r: any) => void
-
-      // First launch: "下载本月" (autoOpen=true)
-      await handlers['start-download']({}, [{ id: 'j1', guid: 'g1', title: 'A', savePath: '/tmp/save/a.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }], true)
-      // Second launch in the same batch: "下载选中" (autoOpen=false)
-      await handlers['start-download']({}, [{ id: 'j2', guid: 'g2', title: 'B', savePath: '/tmp/save/b.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }], false)
-
-      // Batch completes; the earlier autoOpen=true must still be in effect.
-      batchFinishedHandler({ completed: 2, failed: 0, cancelled: 0, total: 2, failedJobs: [] })
-      expect(shell.openPath).toHaveBeenCalledWith('/tmp/save')
-    })
-
-    it('resets auto-open after a completed batch', async () => {
-      vi.mocked(mockConfig.getSettings).mockReturnValue({
-        savePath: '/tmp/save', autoOpenFolder: true, threadCount: 8,
-        quality: 'auto', logLevel: 'info', reencode: false
-      } as any)
-      const { shell } = await import('electron')
-      const finished = vi.mocked(mockCoordinator.on).mock.calls
-        .find(c => c[0] === 'batchFinished')?.[1] as (r: any) => void
-      const job = { id: 'reset-auto-open', guid: 'g', title: 'T', savePath: '/tmp/save/a.mp4', state: 'Created' as const, stage: 'None' as const, progressPercent: 0, quality: 'auto' as const, threadCount: 8, sourceUrl: '' }
-      const done = { completed: 1, failed: 0, cancelled: 0, total: 1, failedJobs: [] }
-      await handlers['start-download']({}, [job], true)
-      finished(done)
-      vi.mocked(shell.openPath).mockClear()
-
-      await handlers['start-download']({}, [job], false)
-      finished(done)
-
-      expect(shell.openPath).not.toHaveBeenCalled()
-    })
   })
 
   describe('estimate-download', () => {

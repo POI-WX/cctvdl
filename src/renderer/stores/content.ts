@@ -60,7 +60,7 @@ export const useContentStore = defineStore('content', () => {
     if (!favs.length) return others.map(p => ({ type: 'item' as const, program: p, key: p.columnId }))
     const rows: ProgramRow[] = [{ type: 'header', label: '⭐ 收藏', key: '__hdr_fav' }]
     for (const p of favs) rows.push({ type: 'item', program: p, key: p.columnId })
-    rows.push({ type: 'header', label: '全部栏目', key: '__hdr_all' })
+    rows.push({ type: 'header', label: '全部节目', key: '__hdr_all' })
     for (const p of others) rows.push({ type: 'item', program: p, key: p.columnId })
     return rows
   })
@@ -87,8 +87,6 @@ export const useContentStore = defineStore('content', () => {
     return Array.from(groups.values())
   })
   const selectedCount = computed(() => selectedVideoMap.value.size)
-  const allSelectedAreSingleVideos = computed(() => selectedCount.value > 0
-    && Array.from(selectedVideoMap.value.values()).every(entry => entry.sourceProgramId === null))
   const allSelected = computed(() =>
     filteredVideos.value.length > 0
     && filteredVideos.value.every(v => selectedVideoMap.value.has(v.guid))
@@ -232,7 +230,6 @@ export const useContentStore = defineStore('content', () => {
     programQuery, searchQuery, debouncedSearch,
     isFav, filteredPrograms, displayRows,
     filteredVideos, isVideoSelected, allSelectedVideos, selectedVideoGroups, selectedCount,
-    allSelectedAreSingleVideos,
     allSelected, downloadedCount, allSelectedDownloaded,
     emptyHint, groupedVideos,
     refreshDownloadedSet, recordVideosLoaded, clearEmptyMonths, applyNewContent, clearNewContent,

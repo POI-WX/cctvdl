@@ -3,6 +3,11 @@
 // Windows reserved device names that cannot be used as a base filename.
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i
 const MAX_LEN = 120
+const WINDOWS_ROOT = /^(?:[A-Za-z]:[\\/]|\\\\)/
+
+function trimDirectory(saveDir: string): string {
+  return saveDir.replace(WINDOWS_ROOT.test(saveDir) ? /[\\/]+$/ : /\/+$/, '')
+}
 
 /**
  * Turn an arbitrary video title into a filesystem-safe base filename:
@@ -38,6 +43,14 @@ export function ensureMp4Extension(p: string): string {
  * drift between them. Trailing slashes on `saveDir` are normalised away.
  */
 export function buildOutputPath(saveDir: string, title: string, fallback = 'video'): string {
-  const base = saveDir.replace(/[\\/]+$/, '')
+  const base = trimDirectory(saveDir)
   return `${base}/${safeFilename(title, fallback)}.mp4`
+}
+
+export function buildProgramDirectory(saveDir: string, programName?: string): string {
+  if (!programName) return saveDir
+  let name = safeFilename(programName, '未命名节目')
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) name = `_${name}`
+  const separator = WINDOWS_ROOT.test(saveDir) && saveDir.includes('\\') ? '\\' : '/'
+  return `${trimDirectory(saveDir)}${separator}${name}`
 }

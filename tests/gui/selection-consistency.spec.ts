@@ -22,7 +22,7 @@ test('跨视图已选清单只移除删除来源和实际入队的视频', async
     await page.waitForLoadState('domcontentloaded')
     await app.evaluate(({ ipcMain }) => {
       const state = globalThis as typeof globalThis & {
-        selectionTest?: { calls: Array<{ guids: string[]; autoOpen: boolean }> }
+        selectionTest?: { calls: Array<{ guids: string[] }> }
       }
       const testState = state.selectionTest = { calls: [] }
       ipcMain.removeHandler('list-videos')
@@ -39,8 +39,8 @@ test('跨视图已选清单只移除删除来源和实际入队的视频', async
         estimatedCount: videos.length, totalCount: videos.length, diskFreeBytes: 1024 ** 3
       }))
       ipcMain.removeHandler('start-download')
-      ipcMain.handle('start-download', (_event, jobs: Array<{ guid: string }>, autoOpen: boolean) => {
-        testState.calls.push({ guids: jobs.map(job => job.guid), autoOpen })
+      ipcMain.handle('start-download', (_event, jobs: Array<{ guid: string }>) => {
+        testState.calls.push({ guids: jobs.map(job => job.guid) })
         if (testState.calls.length === 1) throw new Error('queue unavailable')
         if (testState.calls.length === 2) return { added: 0, skipped: jobs.length, addedGuids: [] }
         if (testState.calls.length === 3) return { added: 1, skipped: jobs.length - 1, addedGuids: ['column-b'] }
@@ -81,7 +81,7 @@ test('跨视图已选清单只移除删除来源和实际入队的视频', async
     await submit()
     await expect(page.locator('button', { hasText: '下载选中' })).toContainText('1')
 
-    await page.locator('button[title="清空全部栏目"]').click()
+    await page.locator('button[title="清空全部节目"]').click()
     await page.locator('.el-message-box').getByRole('button', { name: '清空' }).click()
     await expect(page.locator('button', { hasText: '下载选中' })).toContainText('1')
     await expect(page.locator('.video-item', { hasText: '独立视频' })).toBeVisible()
@@ -96,13 +96,13 @@ test('跨视图已选清单只移除删除来源和实际入队的视频', async
     await expect(page.locator('button', { hasText: '下载选中' })).toHaveCount(0)
 
     const calls = await app.evaluate(() => (globalThis as typeof globalThis & {
-      selectionTest?: { calls: Array<{ guids: string[]; autoOpen: boolean }> }
+      selectionTest?: { calls: Array<{ guids: string[] }> }
     }).selectionTest?.calls)
     expect(calls).toEqual([
-      { guids: ['column-b', 'single'], autoOpen: false },
-      { guids: ['column-b', 'single'], autoOpen: false },
-      { guids: ['column-b', 'single'], autoOpen: false },
-      { guids: ['single'], autoOpen: true }
+      { guids: ['column-b', 'single'] },
+      { guids: ['column-b', 'single'] },
+      { guids: ['column-b', 'single'] },
+      { guids: ['single'] }
     ])
   } finally {
     await app.close()

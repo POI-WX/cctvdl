@@ -21,6 +21,7 @@ interface StoreSchema {
 const defaults: StoreSchema = {
   settings: {
     savePath: app?.getPath?.('videos') || '',
+    groupByProgram: false,
     threadCount: 8,
     quality: 'auto',
     reencode: false,
@@ -209,7 +210,8 @@ export class ConfigStore {
         fileSize: typeof item.fileSize === 'number' && Number.isFinite(item.fileSize) ? item.fileSize : 0,
         completedAt: typeof item.completedAt === 'number' && Number.isFinite(item.completedAt) ? item.completedAt : 0,
         ...(typeof item.sourceUrl === 'string' ? { sourceUrl: item.sourceUrl } : {}),
-        ...(typeof item.sourceVideoIndex === 'number' && Number.isInteger(item.sourceVideoIndex) ? { sourceVideoIndex: item.sourceVideoIndex } : {})
+        ...(typeof item.sourceVideoIndex === 'number' && Number.isInteger(item.sourceVideoIndex) ? { sourceVideoIndex: item.sourceVideoIndex } : {}),
+        ...(typeof item.programName === 'string' && item.programName.trim() ? { programName: item.programName } : {})
       }]
     })
   }
@@ -297,6 +299,8 @@ function normalizePendingJob(value: unknown): DownloadJob | undefined {
     ...(typeof job.errorSegmentIndex === 'number' && Number.isInteger(job.errorSegmentIndex) ? { errorSegmentIndex: job.errorSegmentIndex } : {}),
     ...(typeof job.outputPath === 'string' ? { outputPath: job.outputPath } : {}),
     ...(typeof job.m3u8Url === 'string' ? { m3u8Url: job.m3u8Url } : {}),
-    ...(typeof job.sourceVideoIndex === 'number' && Number.isInteger(job.sourceVideoIndex) ? { sourceVideoIndex: job.sourceVideoIndex } : {})
+    ...(typeof job.sourceVideoIndex === 'number' && Number.isInteger(job.sourceVideoIndex) ? { sourceVideoIndex: job.sourceVideoIndex } : {}),
+    ...(typeof job.programName === 'string' && job.programName.trim() ? { programName: job.programName } : {}),
+    ...(typeof job.saveRoot === 'string' && job.saveRoot.trim() ? { saveRoot: job.saveRoot } : {})
   }
 }

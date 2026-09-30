@@ -26,8 +26,8 @@ const api: CctvdlApi = {
   importSingleVideos: () => ipcRenderer.invoke('import-single-videos'),
   exportSingleVideos: () => ipcRenderer.invoke('export-single-videos'),
   exportPrograms: () => ipcRenderer.invoke('export-programs'),
-  startDownload: (jobs: DownloadJob[], autoOpen?: boolean, forceRedownload?: boolean) =>
-    ipcRenderer.invoke('start-download', jobs, autoOpen, forceRedownload),
+  startDownload: (jobs: DownloadJob[], forceRedownload?: boolean) =>
+    ipcRenderer.invoke('start-download', jobs, forceRedownload),
   estimateDownload: (videos: DownloadEstimateInput[], quality: Quality, savePath: string) =>
     ipcRenderer.invoke('estimate-download', videos, quality, savePath),
   retryJob: (job: DownloadJob) => ipcRenderer.invoke('retry-job', job),

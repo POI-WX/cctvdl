@@ -59,6 +59,9 @@ export interface DownloadJob {
   guid: string
   sourceUrl: string
   title: string
+  programName?: string
+  // Snapshot of the selected base directory, independent of later settings changes.
+  saveRoot?: string
   savePath: string
   quality: Quality
   threadCount: number
@@ -147,6 +150,8 @@ export interface DownloadEstimate {
 
 export interface Settings {
   savePath: string
+  // Programme subfolders apply only when creating new jobs; default false.
+  groupByProgram?: boolean
   threadCount: number
   quality: Quality
   // false (default) = lossless stream-copy merge; true = libx264 re-encode (slower, max compatibility)
@@ -177,6 +182,8 @@ export interface HistoryEntry {
   // Optional origin metadata needed to recreate cctvnews jobs after restart.
   sourceUrl?: string
   sourceVideoIndex?: number
+  // Retained so history redownload can use the current folder setting.
+  programName?: string
 }
 
 export interface ProgramMonthBounds {
@@ -211,7 +218,7 @@ export interface CctvdlApi {
   importSingleVideos(): Promise<number>
   exportSingleVideos(): Promise<boolean>
   exportPrograms(): Promise<boolean>
-  startDownload(jobs: DownloadJob[], autoOpen?: boolean, forceRedownload?: boolean): Promise<DownloadStartResult>
+  startDownload(jobs: DownloadJob[], forceRedownload?: boolean): Promise<DownloadStartResult>
   estimateDownload(videos: DownloadEstimateInput[], quality: Quality, savePath: string): Promise<DownloadEstimate>
   retryJob(job: DownloadJob): Promise<void>
   retryJobs(jobs: DownloadJob[]): Promise<void>

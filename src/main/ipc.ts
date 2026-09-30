@@ -14,6 +14,7 @@ import type {
 import { getProgramListSource } from '../shared/programs'
 import { sortVideosChronologically } from '../shared/video-metadata'
 import { DownloadEstimator } from './download/estimate'
+import { completionFolders, type CompletedFile } from './download/completion-folders'
 
 export function registerIpcHandlers(
   getWindow: () => BrowserWindow,
@@ -27,12 +28,7 @@ export function registerIpcHandlers(
     const wc = getWindow()?.webContents
     if (wc && !wc.isDestroyed()) wc.send(channel, payload)
   }
-  // Whether the *current* batch should auto-open the save folder when it finishes.
-  // OR-accumulates across appends within the same batch so a later "下载选中"
-  // (autoOpen=false) cannot wipe an earlier "下载本月" (autoOpen=true) that was
-  // appended while the batch was in flight. Reset to false when a fresh batch
-  // starts (coordinator is idle at launch time).
-  let currentBatchAutoOpen = false
+  const completedFiles: CompletedFile[] = []
   const downloadEstimator = new DownloadEstimator()
   ipcMain.handle('browse-program', async (_, url: string) => {
     const info = await browse.resolveColumnInfo(url)
@@ -170,13 +166,7 @@ export function registerIpcHandlers(
     return true
   })
 
-  const launchBatch = (jobs: DownloadJob[], skipHistory: boolean, autoOpen = false): DownloadStartResult => {
-    // Pre-flight: make sure the target directory exists and is writable before
-    // spawning any work. Throws so the renderer's catch surfaces the reason.
-    const saveDir = jobs.length ? path.dirname(jobs[0].savePath) : ''
-    const pf = checkSaveDir(saveDir)
-    if (!pf.ok) throw new Error(pf.reason)
-
+  const launchBatch = (jobs: DownloadJob[], skipHistory: boolean): DownloadStartResult => {
     // Filter out already-downloaded videos (unless this is an explicit retry).
     const newJobs = skipHistory
       ? jobs
@@ -188,6 +178,11 @@ export function registerIpcHandlers(
           return true
         })
     if (newJobs.length > 0) {
+      // Check every destination before any task starts; skipped history needs no directory.
+      for (const saveDir of new Set(newJobs.map(job => path.dirname(job.savePath)))) {
+        const pf = checkSaveDir(saveDir)
+        if (!pf.ok) throw new Error(pf.reason)
+      }
       // Apply current concurrentVideos setting before starting
       const settings = config.getSettings()
       coordinator.setConcurrentVideos(settings.concurrentVideos ?? 1)
@@ -197,7 +192,6 @@ export function registerIpcHandlers(
         if (!addedIds.has(job.id)) send('download-skipped', { guid: job.guid, title: job.title, reason: '已在下载队列中' })
       }
       if (addedJobs.length > 0) {
-        currentBatchAutoOpen = currentBatchAutoOpen || !!autoOpen
         send('batch-started', {
           total: addedJobs.length,
           jobs: addedJobs.map(j => ({ id: j.id, title: j.title, guid: j.guid }))
@@ -211,8 +205,8 @@ export function registerIpcHandlers(
     } else return { added: 0, skipped: jobs.length, addedGuids: [] }
   }
 
-  ipcMain.handle('start-download', (_, jobs: DownloadJob[], autoOpen?: boolean, forceRedownload?: boolean) =>
-    launchBatch(jobs, !!forceRedownload, !!autoOpen))
+  ipcMain.handle('start-download', (_, jobs: DownloadJob[], forceRedownload?: boolean) =>
+    launchBatch(jobs, !!forceRedownload))
 
   ipcMain.handle('estimate-download', (_, videos: DownloadEstimateInput[], quality: Quality, savePath: string) =>
     downloadEstimator.estimate(videos, quality, savePath))
@@ -281,21 +275,21 @@ export function registerIpcHandlers(
   })
 
   coordinator.on('jobFinished', (job: DownloadJob) => {
+    if (job.state === 'Completed' && job.outputPath) {
+      completedFiles.push({ outputPath: job.outputPath, saveRoot: job.saveRoot })
+    }
     send('job-finished', job)
   })
 
   coordinator.on('batchFinished', (result: BatchResult) => {
-    const shouldAutoOpen = currentBatchAutoOpen
-    currentBatchAutoOpen = false
+    const folders = completionFolders(completedFiles)
+    completedFiles.length = 0
     send('batch-finished', result)
     if (result.failedJobs.length > 0) {
       appendFailures(new Date().toISOString(), result.failedJobs)
     }
-    // Auto-open the save folder only for full-set downloads (flagged at launch),
-    // when the user enabled it and something actually completed.
-    if (shouldAutoOpen && result.completed > 0 && config.getSettings().autoOpenFolder) {
-      const dir = config.getSettings().savePath
-      if (dir) shell.openPath(dir)
+    if (result.completed > 0 && config.getSettings().autoOpenFolder) {
+      for (const folder of folders) void shell.openPath(folder)
     }
   })
 }

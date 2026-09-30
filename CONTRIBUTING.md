@@ -55,7 +55,7 @@ shared types    → src/shared/      # 跨进程共享的 TypeScript 类型
 关键模块：
 - `src/main/api/cctv.ts` — 视频信息接口、HLS 解析、清晰度选择，以及 CCTV-16 明文 HLS 与加密流的自动回退
 - `src/main/api/cctvnews.ts` — 央视新闻移动端视频页（`cctvnews.cctv.com/snow-book`）解析：Emas 网关 HMAC-SHA256 签名、base64 响应解码、多画质 m3u8 选择
-- `src/main/api/browse.ts` — 栏目/节目集/单视频页面解析、跨 `TOPC` 的 `VIDA` 长期归档识别、`v.cctv` 历史目录、完整分页读取、按月定位及可选看点/片段加载；`resolveSingleVideoBatch` 统一调度普通 CCTV 页与 cctvnews 页
+- `src/main/api/browse.ts` — 栏目/专辑/单视频页面解析、跨 `TOPC` 的 `VIDA` 长期归档识别、`v.cctv` 历史目录、完整分页读取、按月定位及可选看点/片段加载；`resolveSingleVideoBatch` 统一调度普通 CCTV 页与 cctvnews 页
 - `src/main/api/browse-data.ts` — CCTV 列表响应映射、标题/简介清洗、日期格式化和月份边界等纯数据逻辑
 - `src/main/api/pagination.ts` — 列表完整性检查及倒序分页的月份二分定位；排序或总数不可靠时通知调用方回退到完整扫描
 - `src/shared/programs.ts` — 节目展示语义与列表数据源的兼容路由；旧配置从 `kind` 推导数据源，新配置使用 `listSource`
@@ -67,7 +67,19 @@ shared types    → src/shared/      # 跨进程共享的 TypeScript 类型
 - `src/main/download/finalizer.ts` — 调用 ffmpeg 合并分片
 - `resources/decrypt/` — 第三方解密脚本（**不可修改**，见下）
 
-`ProgramInfo.kind` 只表示界面语义：`column` 显示月份，`album` 显示选集。实际列表接口由 `ProgramInfo.listSource` 决定，因此一个按月栏目可以使用 `TOPC` 栏目接口、稳定的 `VIDA` album 接口或 `v.cctv` 的 `mid + chid` 目录。跨进程发送该对象时必须复制嵌套的 `listSource`，不要直接传递 Vue 响应式 Proxy。
+`ProgramInfo.kind` 的显示名称统一为 `column` → 栏目、`album` → 专辑，分别使用月份和选集浏览。实际列表接口由 `ProgramInfo.listSource` 决定；历史栏目可以使用稳定的专辑归档，仍保留月份浏览。跨进程发送该对象时必须复制嵌套的 `listSource`，不要直接传递 Vue 响应式 Proxy。
+
+当前使用以下节目列表接口：
+
+| `listSource.type` | 列表接口 | 标识 |
+|---|---|---|
+| `column` | `api.cntv.cn/NewVideo/getVideoListByColumn` | 栏目 ID，通常为 `TOPC`。 |
+| `album` | `api.cntv.cn/NewVideo/getVideoListByAlbumIdNew` | `album_id`，常见为 `VIDA`；用于专辑，也可用于长期栏目的归档。 |
+| `vcctv` | `media.app.cctv.com/vapi/video/vplist.do` | `mid + chid`，用于 `v.cctv.com` 历史目录。 |
+
+独立视频解析由 `resolveSingleVideoBatch` 调度：普通央视页面通过页面信息和 `videoinfoByGuid` 等接口确认视频；央视新闻移动端分享页使用 EMAS 文章接口。独立视频集合使用 `viewMode = single`，不属于 `ProgramInfo.kind` 的第三个值。
+
+新下载任务在确认时固定 `savePath`，同时记录保存根目录 `saveRoot` 和可用的节目名 `programName`。恢复和重试复用原任务路径，历史重新下载按当前设置创建新任务。自动打开文件夹统一在队列结束时处理，只依据成功任务的 `outputPath` 和保存根目录，不依赖导入来源或下载按钮。
 
 ## 代码规范
 
@@ -138,7 +150,7 @@ README 引用的界面图由脚本统一生成。界面或文案改动后，运�
 npm run docs:screenshots
 ```
 
-脚本会在临时应用数据目录中导入真实的 CCTV 栏目、节目集和单视频页，再生成首页、节目集、单视频预览、封面大图、已选内容、下载页、队列、设置和深色模式截图。它需要访问 CCTV，但不会读取或修改本机的真实应用数据，也不会下载视频文件。页面链接集中在 `scripts/capture-docs-screenshots.mjs` 文件开头；如原页面失效，可通过同名 `CCTV_DOCS_*_URL` 环境变量临时替换。
+脚本会在临时应用数据目录中导入真实的 CCTV 栏目、专辑和单视频页，再生成首页、专辑、单视频预览、封面大图、已选内容、下载页、队列、设置和深色模式截图。它需要访问 CCTV，但不会读取或修改本机的真实应用数据，也不会下载视频文件。页面链接集中在 `scripts/capture-docs-screenshots.mjs` 文件开头；如原页面失效，可通过同名 `CCTV_DOCS_*_URL` 环境变量临时替换。
 
 ## 打包安装包
 

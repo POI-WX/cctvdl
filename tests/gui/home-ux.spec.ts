@@ -38,7 +38,7 @@ test('首页选择、已选清单和下载确认在窄窗口保持可核对', as
     await page.setViewportSize({ width: 720, height: 680 })
     await page.locator('.sidebar-nav-item', { hasText: '首页' }).click()
     await expect(page.locator('.sidebar-nav-icon')).toHaveText(['🏠', '⬇️', '⚙️'])
-    await expect(page.locator('button[title="从 JSON 导入栏目"] svg')).toBeVisible()
+    await expect(page.locator('button[title="从 JSON 导入节目"] svg')).toBeVisible()
     await page.locator('.program-item', { hasText: '虚构测试栏目甲' }).click()
     await expect(page.locator('.video-item')).toHaveCount(2)
     const selectAll = page.locator('.select-current-list')

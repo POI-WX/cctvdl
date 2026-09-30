@@ -185,8 +185,8 @@ test.describe('cctvdl GUI 测试', () => {
   test('首页导出按钮存在且无节目时禁用', async () => {
     await navTab(page, '首页').click()
     await page.waitForTimeout(500)
-    // Export is an icon button with title="导出栏目"
-    const exportBtn = page.locator('.icon-btn[title="导出栏目"]')
+    // Export is an icon button with title="导出节目"
+    const exportBtn = page.locator('.icon-btn[title="导出节目"]')
     await expect(exportBtn).toBeVisible()
     await expect(exportBtn).toBeDisabled()
   })
@@ -194,7 +194,7 @@ test.describe('cctvdl GUI 测试', () => {
   test('首页 JSON 导入按钮存在且可用', async () => {
     await navTab(page, '首页').click()
     await page.waitForTimeout(300)
-    const importBtn = page.locator('.icon-btn[title="从 JSON 导入栏目"]')
+    const importBtn = page.locator('.icon-btn[title="从 JSON 导入节目"]')
     await expect(importBtn).toBeVisible()
     await expect(importBtn).toBeEnabled()
   })

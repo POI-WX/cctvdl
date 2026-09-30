@@ -44,6 +44,7 @@ export function normalizeSettings(raw: unknown, fallback: Settings): Settings {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<Settings>
   return {
     savePath: asString(r.savePath, fallback.savePath),
+    groupByProgram: asBool(r.groupByProgram, fallback.groupByProgram ?? false),
     threadCount: clampInt(r.threadCount, MIN_THREADS, MAX_THREADS, fallback.threadCount),
     quality: pickEnum(r.quality, QUALITIES, fallback.quality),
     reencode: asBool(r.reencode, fallback.reencode),

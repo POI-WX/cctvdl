@@ -83,7 +83,7 @@
         <div><span>清晰度</span><strong>{{ settings ? QUALITY_LABELS[settings.quality] : '—' }}</strong></div>
         <div><span>{{ estimateDetails?.sizeLabel || '预计大小' }}</span><strong>{{ estimateDetails?.sizeText || '暂无法估算' }}</strong></div>
         <div><span>磁盘剩余</span><strong>{{ estimate?.diskFreeBytes == null ? '无法检查' : (formatFileSize(estimate.diskFreeBytes) || '0 B') }}</strong></div>
-        <div><span>保存到</span><strong class="range-save-path">{{ settings ? displayPath(settings.savePath) : '—' }}</strong></div>
+        <div><span>保存到</span><strong class="range-save-path">{{ settings ? displayPath(downloadDirectory(settings, scanState?.program.name)) : '—' }}</strong></div>
       </div>
       <p v-if="estimateDetails?.note" class="range-result-note">{{ estimateDetails.note }}</p>
       <details v-if="resultVideos.length" class="range-video-list">
@@ -134,7 +134,7 @@ import { describeDownloadEstimate } from '../../shared/estimate-presentation'
 import { displayPath } from '../../shared/path-display'
 import { QUALITY_LABELS } from '../../shared/settings'
 import { humanizeError } from '../../shared/errors'
-import { prepareDownloadBatch, startDownloadBatch } from '../utils/download-jobs'
+import { downloadDirectory, prepareDownloadBatch, startDownloadBatch } from '../utils/download-jobs'
 
 const LARGE_BATCH = 100
 const props = defineProps<{
@@ -326,7 +326,8 @@ async function beginScan(retry: boolean) {
 }
 
 async function prepareSummary() {
-  if (!scanState.value || scanState.value.failedMonths.length) return
+  const scan = scanState.value
+  if (!scan || scan.failedMonths.length) return
   const currentRun = runId
   estimating.value = true
   errorMessage.value = ''
@@ -334,7 +335,8 @@ async function prepareSummary() {
     const history = await window.cctvdlApi.getDownloadHistory()
     if (currentRun !== runId) return
     const downloaded = new Set(history.map(item => item.guid))
-    const next = await prepareDownloadBatch(scanState.value.videos, downloaded)
+    const programNames = new Map(scan.videos.map(video => [video.guid, scan.program.name]))
+    const next = await prepareDownloadBatch(scan.videos, downloaded, false, programNames)
     if (currentRun !== runId) return
     prepared.value = next
   } catch (error) {
@@ -353,7 +355,7 @@ async function addToQueue() {
         '确认大量下载任务', { type: 'warning', confirmButtonText: '继续加入', cancelButtonText: '返回检查' }
       )
     }
-    const result = await startDownloadBatch(resultVideos.value, settings.value, true)
+    const result = await startDownloadBatch(resultVideos.value, settings.value, false, prepared.value?.programNames)
     if (result.added > 0) {
       ElMessage.success(`已添加 ${result.added} 个下载任务${result.skipped ? `，忽略 ${result.skipped} 个重复或已下载项` : ''}`)
       dialogOpen.value = false

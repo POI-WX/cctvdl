@@ -264,12 +264,10 @@ describe('useContentStore', () => {
       store.toggleVideoSelection(mkVideo('S'), '单个视频')
 
       expect(store.selectedVideoGroups.map(group => group.id)).toEqual(['TOPC-A', 'TOPC-B', '__single__'])
-      expect(store.allSelectedAreSingleVideos).toBe(false)
       store.removeProgramSelections('TOPC-A')
       expect(store.allSelectedVideos.map(video => video.guid)).toEqual(['B', 'S'])
       store.clearProgramSelections()
       expect(store.allSelectedVideos.map(video => video.guid)).toEqual(['S'])
-      expect(store.allSelectedAreSingleVideos).toBe(true)
     })
 
     it('retains selected clips when their optional list is turned off', () => {

@@ -375,6 +375,7 @@ async function rebuildJob(job: typeof jobs.value[0]): Promise<DownloadJob | null
   return {
     id: job.id, guid: job.guid, sourceUrl: job.guid, title: job.title,
     savePath: buildOutputPath(settings.savePath, job.title),
+    saveRoot: settings.savePath,
     quality: settings.quality, threadCount: settings.threadCount,
     reencode: settings.reencode ?? false,
     state: 'Created', stage: 'None', progressPercent: 0

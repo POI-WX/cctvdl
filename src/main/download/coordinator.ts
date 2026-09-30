@@ -395,7 +395,7 @@ export class DownloadCoordinator extends EventEmitter {
 
       if (job.guid && this.config) {
         const fileSize = (() => { try { return fs.statSync(finalPath).size } catch { return 0 } })()
-        this.config.addToDownloadHistory({ guid: job.guid, title: job.title, outputPath: finalPath, fileSize, completedAt: Date.now(), sourceUrl: job.sourceUrl, sourceVideoIndex: job.sourceVideoIndex })
+        this.config.addToDownloadHistory({ guid: job.guid, title: job.title, outputPath: finalPath, fileSize, completedAt: Date.now(), sourceUrl: job.sourceUrl, sourceVideoIndex: job.sourceVideoIndex, programName: job.programName })
       }
 
       this.emit('jobFinished', job)
@@ -578,7 +578,7 @@ export class DownloadCoordinator extends EventEmitter {
 
       if (job.guid && this.config) {
         const fileSize = (() => { try { return fs.statSync(finalPath).size } catch { return 0 } })()
-        this.config.addToDownloadHistory({ guid: job.guid, title: job.title, outputPath: finalPath, fileSize, completedAt: Date.now(), sourceUrl: job.sourceUrl, sourceVideoIndex: job.sourceVideoIndex })
+        this.config.addToDownloadHistory({ guid: job.guid, title: job.title, outputPath: finalPath, fileSize, completedAt: Date.now(), sourceUrl: job.sourceUrl, sourceVideoIndex: job.sourceVideoIndex, programName: job.programName })
       }
 
       this.emit('jobFinished', job)

@@ -1,5 +1,28 @@
 import { describe, it, expect } from 'vitest'
-import { safeFilename, ensureMp4Extension, buildOutputPath } from '../../src/shared/filename'
+import { safeFilename, ensureMp4Extension, buildOutputPath, buildProgramDirectory } from '../../src/shared/filename'
+
+describe('programme directory', () => {
+  it.each([
+    ['C:\\Videos\\', '新闻联播', 'C:\\Videos\\新闻联播'],
+    ['/home/user/Videos/', '专辑', '/home/user/Videos/专辑'],
+    ['/home/user/Video\\Archive', '节目', '/home/user/Video\\Archive/节目'],
+    ['/home/user/Videos\\', '节目', '/home/user/Videos\\/节目'],
+    ['\\\\server\\share\\', '节目', '\\\\server\\share\\节目'],
+    ['C:/Videos/', '节目', 'C:/Videos/节目'],
+    ['/', '节目', '/节目'],
+    ['C:\\Videos', '../节目/CON: . ', 'C:\\Videos\\.._节目_CON_'],
+    ['C:\\Videos', 'CON.txt', 'C:\\Videos\\_CON.txt'],
+    ['C:\\Videos', '..', 'C:\\Videos\\未命名节目']
+  ])('builds a safe child directory for %s and %s', (root, name, expected) => {
+    expect(buildProgramDirectory(root, name)).toBe(expected)
+  })
+  it('leaves independent videos in the root directory', () => {
+    expect(buildProgramDirectory('C:\\Videos')).toBe('C:\\Videos')
+  })
+  it('preserves a trailing backslash in a POSIX save directory for independent videos', () => {
+    expect(buildOutputPath('/home/user/Videos\\', '视频')).toBe('/home/user/Videos\\/视频.mp4')
+  })
+})
 
 describe('safeFilename', () => {
   it('keeps a normal title intact', () => {

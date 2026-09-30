@@ -8,9 +8,9 @@
         <div class="section-header">
           <span class="section-title">我的内容</span>
           <div class="section-actions">
-            <button class="icon-btn" title="从 JSON 导入栏目" @click="importPrograms"><el-icon><Upload /></el-icon></button>
-            <button class="icon-btn" title="导出栏目" :disabled="!programs.length" @click="exportPrograms"><el-icon><Download /></el-icon></button>
-            <button class="icon-btn" title="清空全部栏目" :disabled="!programs.length" @click="clearAllPrograms"><el-icon><Delete /></el-icon></button>
+            <button class="icon-btn" title="从 JSON 导入节目" @click="importPrograms"><el-icon><Upload /></el-icon></button>
+            <button class="icon-btn" title="导出节目" :disabled="!programs.length" @click="exportPrograms"><el-icon><Download /></el-icon></button>
+            <button class="icon-btn" title="清空全部节目" :disabled="!programs.length" @click="clearAllPrograms"><el-icon><Delete /></el-icon></button>
           </div>
         </div>
         <!-- import input -->
@@ -29,7 +29,7 @@
         <el-input
           v-if="programs.length > 3"
           v-model="programQuery"
-          placeholder="搜索栏目…"
+          placeholder="搜索节目…"
           size="small"
           clearable
           style="margin-bottom: 4px"
@@ -60,7 +60,7 @@
             </div>
           </div>
           <div v-else-if="filteredPrograms.length === 0" class="program-empty">
-            <span style="font-size:12px; color: var(--el-text-color-placeholder)">无匹配栏目</span>
+            <span style="font-size:12px; color: var(--el-text-color-placeholder)">无匹配节目</span>
           </div>
           <TransitionGroup v-else name="prog-list" tag="div">
             <div v-for="row in displayRows" :key="row.key" class="program-row">
@@ -85,7 +85,7 @@
                   ><el-icon><StarFilled v-if="isFav(row.program)" /><Star v-else /></el-icon></button>
                   <button
                     class="prog-action-btn del"
-                    title="删除栏目"
+                    :title="`删除${programKindLabel(row.program)}`"
                     @click.stop="deleteProgram(row.program)"
                   ><el-icon><Delete /></el-icon></button>
                 </span>
@@ -182,7 +182,7 @@
         />
         <!-- video items -->
         <div class="video-list" ref="videoListEl" @scroll="onVideoListScroll">
-          <div v-if="viewMode === 'column' && !selectedProgram" class="video-hint">← 先选择一个栏目</div>
+          <div v-if="viewMode === 'column' && !selectedProgram" class="video-hint">← 先选择一个节目</div>
           <el-skeleton v-else-if="loadingVideos" :rows="6" animated class="video-skeleton" />
           <div v-else-if="videoLoadFailed" class="video-hint video-load-error">
             <span>视频列表加载失败</span>
@@ -459,7 +459,7 @@
                   downloaded: downloadedSet.has(selectedVideo.guid),
                   dimmed: currentListSelectedCount > 0 && !downloadedSet.has(selectedVideo.guid)
                 }"
-                @click="downloadVideos([selectedVideo], viewMode === 'single', false, downloadedSet.has(selectedVideo.guid))"
+                @click="downloadVideos([selectedVideo], false, downloadedSet.has(selectedVideo.guid))"
               >
                 {{ estimating ? '估算中…' : (downloadedSet.has(selectedVideo.guid) ? '重新下载' : (viewMode === 'single' ? '下载此视频' : '下载此集')) }}
                 <el-icon class="preview-download-icon"><Download /></el-icon>
@@ -484,7 +484,7 @@
                 <span class="guide-step-num">2</span>
                 <div class="guide-step-content">
                   <strong>选择视频</strong>
-                  <span>点击左侧栏目，选择要下载的期数</span>
+                  <span>点击左侧节目，选择要下载的视频</span>
                 </div>
               </div>
               <div class="guide-step">
@@ -526,7 +526,7 @@ import {
   Picture, RefreshRight, Search, Star, StarFilled, Upload
 } from '@element-plus/icons-vue'
 import type { ProgramInfo, ProgramMonthBounds, VideoInfo } from '../../shared/types'
-import { isProgramDeleteKey } from '../../shared/programs'
+import { isProgramDeleteKey, programKindLabel } from '../../shared/programs'
 import { humanizeError } from '../../shared/errors'
 import { safeFilename } from '../../shared/filename'
 import { formatFileSize, formatMediaDuration } from '../../shared/format'
@@ -547,7 +547,6 @@ const {
   filteredPrograms, displayRows,
   filteredVideos, allSelected, downloadedCount, allSelectedDownloaded,
   emptyHint, groupedVideos, allSelectedVideos, selectedVideoGroups, selectedCount,
-  allSelectedAreSingleVideos,
   includeHighlightsEnabled, listLoadedIncludeHighlights, listNeedsReload
 } = storeToRefs(contentStore)
 
@@ -640,10 +639,10 @@ const importing = ref(false)
 const importSuccess = ref(false)
 
 const IMPORT_PLACEHOLDERS = [
-  '粘贴栏目 / 单视频链接…',
+  '粘贴节目 / 视频链接…',
   '示例：https://tv.cctv.com/lm/xwlb/',
   '单视频也支持：直接粘贴影片链接',
-  '支持栏目页 / 单视频页链接',
+  '支持栏目、专辑和视频页链接',
 ]
 
 const importPlaceholder = ref(IMPORT_PLACEHOLDERS[0])
@@ -833,7 +832,7 @@ async function importPrograms() {
     const count = await window.cctvdlApi.importPrograms()
     if (count < 0) return // cancelled
     programs.value = await window.cctvdlApi.getPrograms()
-    ElMessage.success(`已导入 ${count} 个栏目`)
+    ElMessage.success(`已导入 ${count} 个节目`)
   } catch (err) { ElMessage.error(`导入失败：${humanizeError(String(err))}`) }
 }
 
@@ -971,7 +970,7 @@ async function removeSingleVideo(v: VideoInfo) {
 
 async function deleteProgram(row: ProgramInfo) {
   try {
-    await ElMessageBox.confirm(`确定删除栏目「${row.name}」吗？`, '确认删除', {
+    await ElMessageBox.confirm(`确定删除${programKindLabel(row)}「${row.name}」吗？`, '确认删除', {
       confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning'
     })
     await window.cctvdlApi.deleteProgram(row.columnId)
@@ -1005,7 +1004,7 @@ async function toggleFavorite(row: ProgramInfo) {
 async function clearAllPrograms() {
   if (!programs.value.length) return
   try {
-    await ElMessageBox.confirm(`确定清空全部 ${programs.value.length} 个栏目吗？`, '确认清空', {
+    await ElMessageBox.confirm(`确定清空全部 ${programs.value.length} 个节目吗？`, '确认清空', {
       confirmButtonText: '清空', cancelButtonText: '取消', type: 'warning'
     })
     await window.cctvdlApi.clearPrograms()
@@ -1171,14 +1170,13 @@ async function downloadCoverImage() {
   }
 }
 
-// Only a batch consisting entirely of independent videos may auto-open its folder.
-async function downloadSelected() { await downloadVideos(allSelectedVideos.value, allSelectedAreSingleVideos.value, true) }
+async function downloadSelected() { await downloadVideos(allSelectedVideos.value, true) }
 
 // 下载本月（仅栏目）：始终下载当前月份的完整列表，不受搜索过滤或其他
-// 栏目、月份的已选项影响；这是「全量下载」意图，会触发自动打开文件夹。
+// 栏目、月份的已选项影响。
 async function downloadAll() {
   if (loadingVideos.value || videoLoadFailed.value) return
-  await downloadVideos(videos.value, true)
+  await downloadVideos(videos.value)
 }
 
 function onDownloadAction(command: string) {
@@ -1190,12 +1188,25 @@ const startingDownload = ref(false)
 const estimating = ref(false)
 
 async function downloadVideos(
-  videoList: VideoInfo[], autoOpen = false, consumeSelection = false, forceRedownload = false
+  videoList: VideoInfo[], consumeSelection = false, forceRedownload = false
 ) {
   if (startingDownload.value) return
   if (!videoList.length) return
   const validVideos = videoList.filter(v => v.guid)
   if (!validVideos.length) { ElMessage.warning('选中的视频链接无效'); return }
+  const selectionGroups = consumeSelection ? selectedVideoGroups.value : []
+  const downloadProgram = viewMode.value === 'column' ? selectedProgram.value : null
+  const albumIds = new Set(programs.value.filter(program => program.kind === 'album').map(program => program.columnId))
+  const programNames = new Map<string, string>()
+  if (consumeSelection) {
+    for (const group of selectionGroups) {
+      if (group.id === '__single__') continue
+      const name = programs.value.find(program => program.columnId === group.id)?.name || group.name
+      for (const video of group.videos) programNames.set(video.guid, name)
+    }
+  } else if (downloadProgram) {
+    for (const video of validVideos) programNames.set(video.guid, downloadProgram.name)
+  }
   const redownloadIntent = forceRedownload || (consumeSelection && allSelectedDownloaded.value)
   const estimateVideos = redownloadIntent
     ? validVideos
@@ -1204,8 +1215,8 @@ async function downloadVideos(
   startingDownload.value = true
   try {
     estimating.value = true
-    const { settings, skippedHistory, estimate } = await prepareDownloadBatch(
-      validVideos, downloadedSet.value, redownloadIntent
+    const { settings, skippedHistory, estimate, destinations } = await prepareDownloadBatch(
+      validVideos, downloadedSet.value, redownloadIntent, programNames
     )
     estimating.value = false
     const lowSpace = estimate.diskFreeBytes != null && estimate.estimatedBytes > estimate.diskFreeBytes
@@ -1217,16 +1228,15 @@ async function downloadVideos(
       : '日期未知'
     const includedGuids = new Set(estimateVideos.map(video => video.guid))
     const includedGroups = consumeSelection
-      ? selectedVideoGroups.value.filter(group => group.id !== '__single__'
+      ? selectionGroups.filter(group => group.id !== '__single__'
         && group.videos.some(video => includedGuids.has(video.guid)))
-      : selectedProgram.value && viewMode.value === 'column'
-        ? [{ id: selectedProgram.value.columnId }]
+      : downloadProgram
+        ? [{ id: downloadProgram.columnId }]
         : []
-    const albumCount = includedGroups.filter(group =>
-      programs.value.find(program => program.columnId === group.id)?.kind === 'album').length
+    const albumCount = includedGroups.filter(group => albumIds.has(group.id)).length
     const columnCount = includedGroups.length - albumCount
     const singleCount = consumeSelection
-      ? selectedVideoGroups.value.find(group => group.id === '__single__')?.videos.filter(video => includedGuids.has(video.guid)).length || 0
+      ? selectionGroups.find(group => group.id === '__single__')?.videos.filter(video => includedGuids.has(video.guid)).length || 0
       : includedGroups.length ? 0 : estimateVideos.length
     const scope = [columnCount ? `${columnCount} 个栏目` : '', albumCount ? `${albumCount} 个专辑` : '', singleCount ? `${singleCount} 个单视频` : '']
       .filter(Boolean).join(' · ')
@@ -1242,12 +1252,22 @@ async function downloadVideos(
       ...[
         ['清晰度', QUALITY_LABELS[settings.quality]],
         [estimateDetails.sizeLabel, estimateDetails.sizeText],
-        ['磁盘剩余', estimate.diskFreeBytes == null ? '无法检查' : (formatFileSize(estimate.diskFreeBytes) || '0 B')],
-        ['保存到', displayPath(settings.savePath)]
+        ['磁盘剩余', estimate.diskFreeBytes == null ? '无法检查' : (formatFileSize(estimate.diskFreeBytes) || '0 B')]
       ].map(([label, value]) => h('div', { class: 'download-confirm-row' }, [
         h('span', { class: 'download-confirm-label' }, label),
         h('span', { class: 'download-confirm-value' }, value)
       ])),
+      h('div', { class: 'download-confirm-row' }, [
+        h('span', { class: 'download-confirm-label' }, '保存到'),
+        destinations.length === 1
+          ? h('span', { class: 'download-confirm-value' }, displayPath(destinations[0].path))
+          : h('div', { class: 'download-confirm-destinations' }, destinations.map(destination =>
+            h('div', { class: 'download-confirm-destination' }, [
+              h('span', { title: displayPath(destination.path) }, displayPath(destination.path)),
+              h('small', `${destination.count} 个`)
+            ])
+          ))
+      ]),
       ...(skippedHistory > 0
         ? [h('p', { class: 'download-confirm-note' }, `${skippedHistory} 个已下载视频将跳过。`)]
         : []),
@@ -1278,7 +1298,7 @@ async function downloadVideos(
       return
     }
     // Explicit redownload actions bypass history; the coordinator still deduplicates active jobs.
-    const result = await startDownloadBatch(validVideos, settings, autoOpen, redownloadIntent)
+    const result = await startDownloadBatch(validVideos, settings, redownloadIntent, programNames)
     if (consumeSelection) contentStore.removeVideoSelections(result.addedGuids)
     if (result.added > 0) {
       ElMessage.success(`已添加 ${result.added} 个下载任务${result.skipped ? `，忽略 ${result.skipped} 个重复或已下载项` : ''}`)
@@ -1347,6 +1367,10 @@ async function downloadVideos(
   overflow-wrap: anywhere;
 }
 :global(.download-confirm-note) { margin: 0; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5; }
+:global(.download-confirm-destinations) { min-width: 0; max-height: 132px; overflow-y: auto; padding-right: 8px; }
+:global(.download-confirm-destination) { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; font-size: 13px; }
+:global(.download-confirm-destination span) { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: right; }
+:global(.download-confirm-destination small) { flex-shrink: 0; color: var(--el-text-color-secondary); font-size: 11px; }
 :global(.download-confirm-warning) {
   margin: 4px 0 0;
   padding: 8px 10px;

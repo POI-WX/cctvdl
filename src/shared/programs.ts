@@ -2,6 +2,10 @@
 
 import type { ProgramInfo, ProgramListSource } from './types'
 
+export function programKindLabel(program: Pick<ProgramInfo, 'kind'>): string {
+  return program.kind === 'album' ? '专辑' : '栏目'
+}
+
 export function getProgramListSource(program: ProgramInfo): ProgramListSource {
   if (program.listSource) return program.listSource
   return {
